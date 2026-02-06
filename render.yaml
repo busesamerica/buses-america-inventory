@@ -1,0 +1,28 @@
+services:
+  # Web Service - FastAPI Application
+  - type: web
+    name: buses-america
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend_api_FINAL:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: buses-america-db
+          property: connectionString
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: UPLOAD_DIR
+        value: /tmp/uploads
+    autoDeploy: true
+
+databases:
+  # PostgreSQL Database
+  - name: buses-america-db
+    plan: free
+    databaseName: buses_america
+    user: buses_america_user
