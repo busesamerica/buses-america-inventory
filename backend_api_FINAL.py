@@ -329,6 +329,26 @@ async def get_db():
     async with db_pool.acquire() as connection:
         yield connection
 
+# ==================== ROOT ENDPOINT ====================
+
+@app.get("/")
+async def root():
+    """Root endpoint - API status and available endpoints"""
+    return {
+        "message": "Buses America Inventory API",
+        "status": "online",
+        "version": "3.0.0",
+        "tagline": "Juntos Movemos América",
+        "documentation": "/docs",
+        "endpoints": {
+            "dashboard": "/api/reports/dashboard",
+            "inventory": "/api/inventory",
+            "suppliers": "/api/suppliers",
+            "inspections": "/api/pre-inspections",
+            "exchange_rates": "/api/exchange-rates/current"
+        }
+    }
+
 # ==================== EXCHANGE RATE ENDPOINTS ====================
 
 @app.get("/api/exchange-rates/current", response_model=ExchangeRate)
