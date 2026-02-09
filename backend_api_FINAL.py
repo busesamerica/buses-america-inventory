@@ -349,6 +349,53 @@ async def root():
         }
     }
 
+@app.post("/admin/initialize-database")
+async def initialize_database():
+    """Initialize database with schema - ONE TIME USE ONLY"""
+    try:
+        # Read schema file
+        with open('bus_inventory_schema_FINAL.sql', 'r') as f:
+            schema_sql = f.read()
+        
+        # Connect to database
+        conn = await asyncpg.connect(DATABASE_URL)
+        
+        # Check if already initialized
+        result = await conn.fetchval(
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'inventory'"
+        )
+        
+        if result > 0:
+            await conn.close()
+            return {
+                "status": "already_initialized",
+                "message": "Database already has tables. Skipping initialization."
+            }
+        
+        # Execute schema statements
+        statements = [s.strip() for s in schema_sql.split(';') if s.strip()]
+        executed = 0
+        
+        for statement in statements:
+            try:
+                await conn.execute(statement)
+                executed += 1
+            except Exception as e:
+                if "already exists" not in str(e):
+                    print(f"Warning: {e}")
+        
+        await conn.close()
+        
+        return {
+            "status": "success",
+            "message": "Database initialized successfully!",
+            "statements_executed": executed,
+            "next_step": "Visit /api/inventory to verify"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database initialization failed: {str(e)}")
+
 # ==================== EXCHANGE RATE ENDPOINTS ====================
 
 @app.get("/api/exchange-rates/current", response_model=ExchangeRate)
