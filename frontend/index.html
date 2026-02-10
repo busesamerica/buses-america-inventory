@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -64,31 +65,13 @@
     <!-- Load CSS -->
     <link rel="stylesheet" href="./App.css">
     
-    <!-- Load and render React app -->
+    <!-- Load React app -->
     <script type="text/babel" src="./App_COMPLETE.jsx"></script>
     
     <script type="text/babel">
-        const { useState, useEffect } = React;
-        
-        // Import the App component from App_COMPLETE.jsx
-        // (It will be available globally after the script loads)
-        
-        // Wait for App to be defined, then render
-        function renderApp() {
-            if (typeof App !== 'undefined') {
-                const root = ReactDOM.createRoot(document.getElementById('root'));
-                root.render(<App apiBaseUrl={window.API_BASE_URL} />);
-            } else {
-                setTimeout(renderApp, 100);
-            }
-        }
-        
-        // Start rendering once DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', renderApp);
-        } else {
-            renderApp();
-        }
+        // Render the app once loaded
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
