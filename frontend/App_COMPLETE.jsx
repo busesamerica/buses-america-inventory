@@ -392,7 +392,15 @@ const ProtectedApp = () => {
 };
 
 // ============= MAIN APP WITH AUTH =============
-const App = () => {
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}
+
+function AppContent() {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -412,13 +420,7 @@ const App = () => {
   }
 
   return user ? <ProtectedApp /> : <LoginPage />;
-};
+}
 
-// ============= ROOT RENDER =============
-const Root = () => (
-  <AuthProvider>
-    <App />
-  </AuthProvider>
-);
-
-window.App = Root;
+// Make App available globally
+window.App = App;
