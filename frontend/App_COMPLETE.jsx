@@ -1,11 +1,10 @@
 // Buses America - Main Application Component
 // Professional inventory management system
 
-import React, { useState, useEffect } from 'react';
-import './App.css';
+const { useState, useEffect } = React;
 
 const API_BASE_URL = window.API_BASE_URL || 'https://buses-america.onrender.com';
-const API_URL = `${API_URL}/api`;
+const API_URL = `${API_BASE_URL}/api`;
 
 // ============= UTILITY FUNCTIONS =============
 const formatCurrency = (amount, currency = 'USD') => {
@@ -584,7 +583,8 @@ function PreInspectionForm({ onSuccess }) {
 }
 
 // Export component
-export default App;
+// Render the app
+window.App = App;
 // Buses America - Inventory & Supplier Components
 // Part 2 - Add this to App.jsx after the PreInspectionForm component
 
