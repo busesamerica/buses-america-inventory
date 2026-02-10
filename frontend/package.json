@@ -1,0 +1,8 @@
+{
+  "name": "buses-america-frontend",
+  "version": "1.0.0",
+  "description": "Buses America Inventory Management Frontend",
+  "scripts": {
+    "build": "echo 'Static site - no build needed'"
+  }
+}
