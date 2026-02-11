@@ -238,6 +238,22 @@ const LoginPage = () => {
         {/* Footer */}
         <div style={{
           marginTop: '2rem',
+          paddingTop: '1.5rem',
+          borderTop: '1px solid #eee',
+          textAlign: 'center'
+        }}>
+          <p style={{
+            color: '#999',
+            fontSize: '0.85rem',
+            margin: 0
+          }}>
+            Juntos Movemos América 🚌
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // ============= UTILITY FUNCTIONS =============
 const formatCurrency = (amount, currency = 'USD') => {
