@@ -6,9 +6,6 @@ const { useState, useEffect } = React;
 const API_BASE_URL = window.API_BASE_URL || 'https://buses-america.onrender.com';
 const API_URL = `${API_BASE_URL}/api`;
 
-const API_BASE_URL = window.API_BASE_URL || 'https://buses-america.onrender.com';
-const API_URL = `${API_BASE_URL}/api`;
-
 // ============= AUTH CONTEXT =============
 const AuthContext = React.createContext(null);
 
