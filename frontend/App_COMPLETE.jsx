@@ -224,6 +224,7 @@ function InventoryApp() {
   const [stats, setStats] = useState(null);
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showAddForm, setShowAddForm] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -304,7 +305,9 @@ function InventoryApp() {
         <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
             <h3 style={{margin:0}}>Recent Inventory</h3>
-            <button style={{padding:'0.75rem 1.5rem',background:'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
+            <button 
+              onClick={() => setShowAddForm(true)}
+              style={{padding:'0.75rem 1.5rem',background:'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
               ➕ Add New Bus
             </button>
           </div>
@@ -333,6 +336,105 @@ function InventoryApp() {
             </div>
           )}
         </div>
+
+        {/* Add Bus Modal */}
+        {showAddForm && (
+          <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}}>
+            <div style={{background:'white',padding:'2rem',borderRadius:'8px',maxWidth:'600px',width:'90%',maxHeight:'90vh',overflow:'auto'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
+                <h2 style={{margin:0}}>Add New Bus</h2>
+                <button onClick={() => setShowAddForm(false)} style={{background:'none',border:'none',fontSize:'1.5rem',cursor:'pointer'}}>×</button>
+              </div>
+              
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = {
+                  stock_number: formData.get('stock_number'),
+                  vin: formData.get('vin'),
+                  year: parseInt(formData.get('year')),
+                  make: formData.get('make'),
+                  model: formData.get('model'),
+                  passenger_capacity: parseInt(formData.get('passenger_capacity')) || null,
+                  purchase_date: formData.get('purchase_date'),
+                  purchase_price_usd: parseFloat(formData.get('purchase_price_usd')),
+                  status: 'Available',
+                  condition: 'Good',
+                  current_location: formData.get('current_location') || 'US'
+                };
+                
+                try {
+                  await api.createInventory(data);
+                  setShowAddForm(false);
+                  loadData(); // Reload data
+                  alert('Bus added successfully!');
+                } catch (error) {
+                  alert('Error adding bus: ' + error.message);
+                }
+              }}>
+                <div style={{display:'grid',gap:'1rem'}}>
+                  <div>
+                    <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Stock Number *</label>
+                    <input name="stock_number" required style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+                  </div>
+                  
+                  <div>
+                    <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>VIN *</label>
+                    <input name="vin" required style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+                  </div>
+                  
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 2fr 2fr',gap:'1rem'}}>
+                    <div>
+                      <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Year *</label>
+                      <input name="year" type="number" required min="1990" max="2030" style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+                    </div>
+                    <div>
+                      <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Make *</label>
+                      <input name="make" required style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+                    </div>
+                    <div>
+                      <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Model *</label>
+                      <input name="model" required style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Passenger Capacity</label>
+                    <input name="passenger_capacity" type="number" min="1" max="99" style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+                  </div>
+                  
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+                    <div>
+                      <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Purchase Date *</label>
+                      <input name="purchase_date" type="date" required style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+                    </div>
+                    <div>
+                      <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Purchase Price (USD) *</label>
+                      <input name="purchase_price_usd" type="number" step="0.01" required min="0" style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Location *</label>
+                    <select name="current_location" required style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}>
+                      <option value="US">United States</option>
+                      <option value="Mexico">Mexico</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div style={{display:'flex',gap:'1rem',marginTop:'2rem'}}>
+                  <button type="submit" style={{flex:1,padding:'0.75rem',background:'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
+                    💾 Save Bus
+                  </button>
+                  <button type="button" onClick={() => setShowAddForm(false)} style={{flex:1,padding:'0.75rem',background:'#e0e0e0',color:'#333',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
