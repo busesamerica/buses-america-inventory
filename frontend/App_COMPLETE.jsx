@@ -1,18 +1,20 @@
-// Buses America - Minimal Working Inventory with Auth
-// Built incrementally to avoid infinite loops
+// Buses America - Complete Inventory Management System
+// Production-ready with full authentication and features
+// Version: 1.0 Final
 
 const { useState, useEffect } = React;
 
 const API_BASE_URL = window.API_BASE_URL || 'https://buses-america.onrender.com';
 const API_URL = `${API_BASE_URL}/api`;
 
-// ============= UTILITY FUNCTIONS =============
+// ============= UTILITIES =============
 const formatCurrency = (amount, currency = 'USD') => {
   if (!amount && amount !== 0) return currency === 'USD' ? '$0.00' : 'MXN $0.00';
+  const roundedAmount = Math.round(amount * 100) / 100;
   const formatted = new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(roundedAmount);
   return currency === 'USD' ? `$${formatted}` : `MXN $${formatted}`;
 };
 
@@ -25,14 +27,9 @@ const formatDate = (dateString) => {
   });
 };
 
-// ============= AUTH CONTEXT =============
+// ============= AUTH =============
 const AuthContext = React.createContext(null);
-
-const useAuth = () => {
-  const context = React.useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be within AuthProvider');
-  return context;
-};
+const useAuth = () => React.useContext(AuthContext);
 
 function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -42,13 +39,13 @@ function AuthProvider({ children }) {
   useEffect(() => {
     const savedToken = localStorage.getItem('session_token');
     const savedUser = localStorage.getItem('user');
-    
     if (savedToken && savedUser) {
       try {
         setToken(savedToken);
         setUser(JSON.parse(savedUser));
       } catch (e) {
-        console.error('Error loading saved session:', e);
+        localStorage.removeItem('session_token');
+        localStorage.removeItem('user');
       }
     }
     setLoading(false);
@@ -60,11 +57,7 @@ function AuthProvider({ children }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
     });
-
-    if (!response.ok) {
-      throw new Error('Invalid credentials');
-    }
-
+    if (!response.ok) throw new Error('Invalid credentials');
     const data = await response.json();
     setToken(data.session_token);
     setUser(data.user);
@@ -79,9 +72,7 @@ function AuthProvider({ children }) {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}` }
         });
-      } catch (e) {
-        console.error('Logout error:', e);
-      }
+      } catch (e) {}
     }
     setToken(null);
     setUser(null);
@@ -96,9 +87,9 @@ function AuthProvider({ children }) {
   );
 }
 
-// ============= API WITH AUTH =============
-const createApi = () => {
-  const getAuthHeaders = () => {
+// ============= API =============
+const api = (() => {
+  const headers = () => {
     const token = localStorage.getItem('session_token');
     return {
       'Content-Type': 'application/json',
@@ -107,30 +98,49 @@ const createApi = () => {
   };
 
   return {
-    async getDashboard() {
-      const response = await fetch(`${API_URL}/reports/dashboard`);
-      return response.json();
-    },
-    
-    async getInventory(filters = {}) {
+    getDashboard: async () => (await fetch(`${API_URL}/reports/dashboard`)).json(),
+    getInventory: async (filters = {}) => {
       const params = new URLSearchParams(filters);
-      const response = await fetch(`${API_URL}/inventory?${params}`);
-      return response.json();
+      return (await fetch(`${API_URL}/inventory?${params}`)).json();
     },
-    
-    async createInventory(data) {
-      const response = await fetch(`${API_URL}/inventory`, {
+    createInventory: async (data) => {
+      const res = await fetch(`${API_URL}/inventory`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: headers(),
         body: JSON.stringify(data)
       });
-      if (!response.ok) throw new Error('Failed to create');
-      return response.json();
+      if (!res.ok) throw new Error('Failed to create');
+      return res.json();
+    },
+    updateInventory: async (id, data) => {
+      const res = await fetch(`${API_URL}/inventory/${id}`, {
+        method: 'PATCH',
+        headers: headers(),
+        body: JSON.stringify(data)
+      });
+      if (!res.ok) throw new Error('Failed to update');
+      return res.json();
+    },
+    deleteInventory: async (id) => {
+      const res = await fetch(`${API_URL}/inventory/${id}`, {
+        method: 'DELETE',
+        headers: headers()
+      });
+      if (!res.ok) throw new Error('Failed to delete');
+      return res.json();
+    },
+    getSuppliers: async () => (await fetch(`${API_URL}/suppliers`)).json(),
+    createSupplier: async (data) => {
+      const res = await fetch(`${API_URL}/suppliers`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify(data)
+      });
+      if (!res.ok) throw new Error('Failed to create supplier');
+      return res.json();
     }
   };
-};
-
-const api = createApi();
+})();
 
 // ============= LOGIN PAGE =============
 function LoginPage() {
@@ -144,7 +154,6 @@ function LoginPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
-
     try {
       await login(username, password);
     } catch (err) {
@@ -188,7 +197,6 @@ function LoginPage() {
 function UserDropdown() {
   const { user, logout } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-
   if (!user) return null;
 
   return (
@@ -198,21 +206,257 @@ function UserDropdown() {
         <span>{user.full_name}</span>
         <span style={{fontSize:'0.7rem'}}>▼</span>
       </button>
-
       {isOpen && (
-        <div style={{position:'absolute',right:0,top:'100%',marginTop:'0.5rem',background:'white',borderRadius:'6px',boxShadow:'0 4px 12px rgba(0,0,0,0.15)',minWidth:'200px',zIndex:1000}}>
-          <div style={{padding:'1rem',borderBottom:'1px solid #eee'}}>
-            <div style={{fontSize:'0.9rem',fontWeight:'600',color:'#333'}}>{user.full_name}</div>
-            <div style={{fontSize:'0.8rem',color:'#666',marginTop:'0.25rem'}}>{user.email}</div>
-            <div style={{fontSize:'0.75rem',color:'#999',marginTop:'0.25rem',textTransform:'uppercase'}}>
-              {user.role==='admin'?'👑 Administrador':'👔 Manager'}
+        <>
+          <div onClick={()=>setIsOpen(false)} style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:999}}/>
+          <div style={{position:'absolute',right:0,top:'100%',marginTop:'0.5rem',background:'white',borderRadius:'6px',boxShadow:'0 4px 12px rgba(0,0,0,0.15)',minWidth:'200px',zIndex:1000}}>
+            <div style={{padding:'1rem',borderBottom:'1px solid #eee'}}>
+              <div style={{fontSize:'0.9rem',fontWeight:'600',color:'#333'}}>{user.full_name}</div>
+              <div style={{fontSize:'0.8rem',color:'#666',marginTop:'0.25rem'}}>{user.email}</div>
+              <div style={{fontSize:'0.75rem',color:'#999',marginTop:'0.25rem'}}>
+                {user.role==='admin'?'👑 Admin':'👔 Manager'}
+              </div>
+            </div>
+            <button onClick={()=>{setIsOpen(false);logout();}} style={{width:'100%',padding:'0.75rem 1rem',background:'none',border:'none',color:'#c33',textAlign:'left',cursor:'pointer',fontSize:'0.9rem',fontWeight:'500'}}>
+              🚪 Cerrar Sesión
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ============= BUS FORM (ADD/EDIT) =============
+function BusForm({ bus, onSave, onCancel }) {
+  const [formData, setFormData] = useState(bus || {
+    stock_number: '',
+    vin: '',
+    year: new Date().getFullYear(),
+    make: '',
+    model: '',
+    passenger_capacity: '',
+    purchase_date: new Date().toISOString().split('T')[0],
+    purchase_price_usd: '',
+    current_location: 'US',
+    status: 'Available',
+    condition: 'Good'
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const data = {
+        ...formData,
+        year: parseInt(formData.year),
+        passenger_capacity: formData.passenger_capacity ? parseInt(formData.passenger_capacity) : null,
+        purchase_price_usd: parseFloat(formData.purchase_price_usd)
+      };
+      await onSave(data);
+    } catch (error) {
+      alert('Error: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  return (
+    <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:'1rem'}}>
+      <div style={{background:'white',borderRadius:'8px',maxWidth:'700px',width:'100%',maxHeight:'90vh',overflow:'auto'}}>
+        <div style={{padding:'1.5rem',borderBottom:'1px solid #ddd',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,background:'white',zIndex:1}}>
+          <h2 style={{margin:0}}>{bus ? 'Edit Bus' : 'Add New Bus'}</h2>
+          <button onClick={onCancel} style={{background:'none',border:'none',fontSize:'1.5rem',cursor:'pointer',color:'#666'}}>×</button>
+        </div>
+        
+        <form onSubmit={handleSubmit} style={{padding:'1.5rem'}}>
+          <div style={{display:'grid',gap:'1.25rem'}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Stock Number *</label>
+                <input name="stock_number" value={formData.stock_number} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+              </div>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>VIN *</label>
+                <input name="vin" value={formData.vin} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+              </div>
+            </div>
+            
+            <div style={{display:'grid',gridTemplateColumns:'1fr 2fr 2fr',gap:'1rem'}}>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Year *</label>
+                <input name="year" type="number" value={formData.year} onChange={handleChange} required min="1990" max="2030" style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+              </div>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Make *</label>
+                <input name="make" value={formData.make} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+              </div>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Model *</label>
+                <input name="model" value={formData.model} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+              </div>
+            </div>
+            
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Capacity</label>
+                <input name="passenger_capacity" type="number" value={formData.passenger_capacity} onChange={handleChange} min="1" max="99" style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+              </div>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Purchase Date *</label>
+                <input name="purchase_date" type="date" value={formData.purchase_date} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+              </div>
+            </div>
+            
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'1rem'}}>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Price (USD) *</label>
+                <input name="purchase_price_usd" type="number" step="0.01" value={formData.purchase_price_usd} onChange={handleChange} required min="0" style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+              </div>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Location *</label>
+                <select name="current_location" value={formData.current_location} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}>
+                  <option value="US">United States</option>
+                  <option value="Mexico">Mexico</option>
+                </select>
+              </div>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Status *</label>
+                <select name="status" value={formData.status} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}>
+                  <option value="Available">Available</option>
+                  <option value="Sold">Sold</option>
+                  <option value="In Transit">In Transit</option>
+                  <option value="Under Repair">Under Repair</option>
+                  <option value="Delivered">Delivered</option>
+                </select>
+              </div>
             </div>
           </div>
-          <button onClick={()=>{setIsOpen(false);logout();}} style={{width:'100%',padding:'0.75rem 1rem',background:'none',border:'none',color:'#c33',textAlign:'left',cursor:'pointer',fontSize:'0.9rem',fontWeight:'500'}}>
-            🚪 Cerrar Sesión
-          </button>
+          
+          <div style={{display:'flex',gap:'1rem',marginTop:'2rem',paddingTop:'1.5rem',borderTop:'1px solid #eee'}}>
+            <button type="submit" disabled={saving} style={{flex:1,padding:'0.75rem',background:saving?'#ccc':'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:saving?'not-allowed':'pointer'}}>
+              {saving ? 'Saving...' : (bus ? '💾 Update Bus' : '💾 Save Bus')}
+            </button>
+            <button type="button" onClick={onCancel} style={{flex:1,padding:'0.75rem',background:'#e0e0e0',color:'#333',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ============= SUPPLIER FORM =============
+function SupplierForm({ onSave, onCancel }) {
+  const [formData, setFormData] = useState({
+    company_name: '',
+    supplier_type: 'Dealer',
+    contact_person: '',
+    email: '',
+    phone: '',
+    address: '',
+    city: '',
+    state: '',
+    zip_code: '',
+    country: 'US'
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await onSave(formData);
+    } catch (error) {
+      alert('Error: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  return (
+    <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:'1rem'}}>
+      <div style={{background:'white',borderRadius:'8px',maxWidth:'600px',width:'100%',maxHeight:'90vh',overflow:'auto'}}>
+        <div style={{padding:'1.5rem',borderBottom:'1px solid #ddd',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <h2 style={{margin:0}}>Add Supplier</h2>
+          <button onClick={onCancel} style={{background:'none',border:'none',fontSize:'1.5rem',cursor:'pointer'}}>×</button>
         </div>
-      )}
+        
+        <form onSubmit={handleSubmit} style={{padding:'1.5rem'}}>
+          <div style={{display:'grid',gap:'1rem'}}>
+            <div>
+              <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Company Name *</label>
+              <input name="company_name" value={formData.company_name} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+            </div>
+            
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Type *</label>
+                <select name="supplier_type" value={formData.supplier_type} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}>
+                  <option value="Dealer">Dealer</option>
+                  <option value="Auction">Auction</option>
+                  <option value="Private Seller">Private Seller</option>
+                  <option value="Manufacturer">Manufacturer</option>
+                </select>
+              </div>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Contact Person</label>
+                <input name="contact_person" value={formData.contact_person} onChange={handleChange} style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+              </div>
+            </div>
+            
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Email</label>
+                <input name="email" type="email" value={formData.email} onChange={handleChange} style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+              </div>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Phone</label>
+                <input name="phone" value={formData.phone} onChange={handleChange} style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+              </div>
+            </div>
+            
+            <div>
+              <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Address</label>
+              <input name="address" value={formData.address} onChange={handleChange} style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+            </div>
+            
+            <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:'1rem'}}>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>City</label>
+                <input name="city" value={formData.city} onChange={handleChange} style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+              </div>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>State</label>
+                <input name="state" value={formData.state} onChange={handleChange} style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+              </div>
+              <div>
+                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>ZIP</label>
+                <input name="zip_code" value={formData.zip_code} onChange={handleChange} style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
+              </div>
+            </div>
+          </div>
+          
+          <div style={{display:'flex',gap:'1rem',marginTop:'2rem'}}>
+            <button type="submit" disabled={saving} style={{flex:1,padding:'0.75rem',background:saving?'#ccc':'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:saving?'not-allowed':'pointer'}}>
+              {saving ? 'Saving...' : '💾 Save Supplier'}
+            </button>
+            <button type="button" onClick={onCancel} style={{flex:1,padding:'0.75rem',background:'#e0e0e0',color:'#333',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -220,11 +464,15 @@ function UserDropdown() {
 // ============= MAIN INVENTORY APP =============
 function InventoryApp() {
   const { user } = useAuth();
-  const [currentView, setCurrentView] = useState('dashboard');
+  const [view, setView] = useState('dashboard');
   const [stats, setStats] = useState(null);
   const [inventory, setInventory] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [search, setSearch] = useState('');
+  const [showBusForm, setShowBusForm] = useState(false);
+  const [editingBus, setEditingBus] = useState(null);
+  const [showSupplierForm, setShowSupplierForm] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -232,12 +480,14 @@ function InventoryApp() {
 
   const loadData = async () => {
     try {
-      const [dashboardData, inventoryData] = await Promise.all([
+      const [dashboardData, inventoryData, suppliersData] = await Promise.all([
         api.getDashboard(),
-        api.getInventory()
+        api.getInventory(),
+        api.getSuppliers()
       ]);
       setStats(dashboardData);
       setInventory(inventoryData);
+      setSuppliers(suppliersData);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -245,202 +495,313 @@ function InventoryApp() {
     }
   };
 
+  const handleSaveBus = async (data) => {
+    if (editingBus) {
+      await api.updateInventory(editingBus.inventory_id, data);
+    } else {
+      await api.createInventory(data);
+    }
+    await loadData();
+    setShowBusForm(false);
+    setEditingBus(null);
+  };
+
+  const handleDeleteBus = async (bus) => {
+    if (!window.confirm(`Delete ${bus.year} ${bus.make} ${bus.model}?`)) return;
+    try {
+      await api.deleteInventory(bus.inventory_id);
+      await loadData();
+      alert('Bus deleted successfully');
+    } catch (error) {
+      alert('Error deleting bus: ' + error.message);
+    }
+  };
+
+  const handleSaveSupplier = async (data) => {
+    await api.createSupplier(data);
+    await loadData();
+    setShowSupplierForm(false);
+    alert('Supplier added successfully!');
+  };
+
+  const filteredInventory = inventory.filter(bus => {
+    if (!search) return true;
+    const s = search.toLowerCase();
+    return (
+      bus.stock_number?.toLowerCase().includes(s) ||
+      bus.vin?.toLowerCase().includes(s) ||
+      bus.make?.toLowerCase().includes(s) ||
+      bus.model?.toLowerCase().includes(s) ||
+      `${bus.year}`.includes(s)
+    );
+  });
+
   if (loading) {
     return (
       <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#f5f5f5'}}>
         <div style={{textAlign:'center'}}>
-          <div style={{fontSize:'2rem',marginBottom:'1rem'}}>🚌</div>
-          <div>Cargando datos...</div>
+          <div style={{fontSize:'3rem',marginBottom:'1rem'}}>🚌</div>
+          <div style={{fontSize:'1.25rem',color:'#666'}}>Loading...</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{minHeight:'100vh',background:'#f5f5f5'}}>
-      {/* Header */}
-      <div style={{background:'#1a1a1a',padding:'1rem 2rem',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'3px solid #FFD700'}}>
-        <div style={{display:'flex',alignItems:'center',gap:'1rem'}}>
-          <img src={window.LOGO_PATH||'./logo.png'} alt="Buses America" style={{width:'40px',height:'40px'}}/>
-          <div>
-            <h1 style={{color:'white',margin:0,fontSize:'1.25rem'}}>Buses America</h1>
-            <p style={{color:'#FFD700',margin:0,fontSize:'0.75rem'}}>Sistema de Inventario</p>
+    <div style={{minHeight:'100vh',display:'flex',background:'#f5f5f5'}}>
+      {/* Sidebar */}
+      <div style={{width:'250px',background:'#1a1a1a',minHeight:'100vh',display:'flex',flexDirection:'column'}}>
+        <div style={{padding:'1.5rem',borderBottom:'1px solid rgba(255,255,255,0.1)'}}>
+          <img src={window.LOGO_PATH||'./logo.png'} alt="Logo" style={{width:'50px',height:'50px',marginBottom:'0.75rem'}}/>
+          <div style={{fontSize:'1.1rem',fontWeight:'700',color:'white'}}>Buses America</div>
+          <div style={{fontSize:'0.75rem',color:'#FFD700'}}>Inventory System</div>
+        </div>
+        
+        <nav style={{flex:1,padding:'1rem'}}>
+          {[
+            {id:'dashboard',label:'Dashboard',icon:'📊'},
+            {id:'inventory',label:'Inventory',icon:'🚌'},
+            {id:'suppliers',label:'Suppliers',icon:'🏢'}
+          ].map(item => (
+            <button
+              key={item.id}
+              onClick={() => setView(item.id)}
+              style={{
+                display:'block',
+                width:'100%',
+                padding:'0.75rem 1rem',
+                marginBottom:'0.5rem',
+                background: view === item.id ? 'rgba(255,215,0,0.2)' : 'transparent',
+                border: view === item.id ? '1px solid #FFD700' : '1px solid transparent',
+                borderRadius:'6px',
+                color:'white',
+                textAlign:'left',
+                cursor:'pointer',
+                fontSize:'0.95rem'
+              }}
+            >
+              <span style={{marginRight:'0.75rem'}}>{item.icon}</span>
+              {item.label}
+            </button>
+          ))}
+        </nav>
+        
+        <div style={{padding:'1rem',borderTop:'1px solid rgba(255,255,255,0.1)'}}>
+          <div style={{padding:'0.75rem',background:'rgba(255,255,255,0.05)',borderRadius:'6px',fontSize:'0.85rem',color:'white'}}>
+            <div style={{color:'#999',fontSize:'0.75rem'}}>Logged in as</div>
+            <div style={{fontWeight:'600',marginTop:'0.25rem'}}>{user.full_name}</div>
+            <div style={{color:'#FFD700',fontSize:'0.75rem',marginTop:'0.25rem'}}>
+              {user.role === 'admin' ? '👑 Admin' : '👔 Manager'}
+            </div>
           </div>
         </div>
-        <UserDropdown />
       </div>
 
       {/* Main Content */}
-      <div style={{padding:'2rem',maxWidth:'1400px',margin:'0 auto'}}>
-        <h2 style={{marginBottom:'2rem'}}>Dashboard</h2>
-        
-        {/* Stats Grid */}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))',gap:'1.5rem',marginBottom:'3rem'}}>
-          <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',borderLeft:'4px solid #007bff'}}>
-            <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'0.5rem'}}>🇺🇸 US Inventory</div>
-            <div style={{fontSize:'2rem',fontWeight:'700',color:'#333'}}>{stats?.us_inventory || 0}</div>
-            <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.5rem'}}>units in stock</div>
-          </div>
-          
-          <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',borderLeft:'4px solid #dc3545'}}>
-            <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'0.5rem'}}>🇲🇽 Mexico Inventory</div>
-            <div style={{fontSize:'2rem',fontWeight:'700',color:'#333'}}>{stats?.mexico_inventory || 0}</div>
-            <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.5rem'}}>units in stock</div>
-          </div>
-          
-          <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',borderLeft:'4px solid #28a745'}}>
-            <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'0.5rem'}}>✅ Available for Sale</div>
-            <div style={{fontSize:'2rem',fontWeight:'700',color:'#333'}}>{stats?.available_for_sale || 0}</div>
-            <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.5rem'}}>ready to sell</div>
-          </div>
-          
-          <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',borderLeft:'4px solid #ffc107'}}>
-            <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'0.5rem'}}>💰 Total Value</div>
-            <div style={{fontSize:'2rem',fontWeight:'700',color:'#333'}}>{formatCurrency(stats?.total_inventory_value || 0)}</div>
-            <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.5rem'}}>inventory value</div>
-          </div>
+      <div style={{flex:1,display:'flex',flexDirection:'column'}}>
+        <div style={{background:'white',padding:'1rem 2rem',borderBottom:'1px solid #ddd',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <h1 style={{margin:0,fontSize:'1.5rem'}}>
+            {view === 'dashboard' && 'Dashboard'}
+            {view === 'inventory' && 'Inventory Management'}
+            {view === 'suppliers' && 'Suppliers'}
+          </h1>
+          <UserDropdown />
         </div>
 
-        {/* Inventory List */}
-        <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
-            <h3 style={{margin:0}}>Recent Inventory</h3>
-            <button 
-              onClick={() => setShowAddForm(true)}
-              style={{padding:'0.75rem 1.5rem',background:'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
-              ➕ Add New Bus
-            </button>
-          </div>
-          
-          {inventory.length === 0 ? (
-            <div style={{textAlign:'center',padding:'3rem',color:'#666'}}>
-              <div style={{fontSize:'3rem',marginBottom:'1rem'}}>🚌</div>
-              <div>No inventory yet. Click "Add New Bus" to get started!</div>
-            </div>
-          ) : (
-            <div style={{display:'grid',gap:'1rem'}}>
-              {inventory.slice(0, 10).map((bus) => (
-                <div key={bus.inventory_id} style={{padding:'1rem',border:'1px solid #ddd',borderRadius:'6px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <div>
-                    <div style={{fontWeight:'600',fontSize:'1.1rem'}}>{bus.year} {bus.make} {bus.model}</div>
-                    <div style={{color:'#666',fontSize:'0.9rem',marginTop:'0.25rem'}}>
-                      Stock: {bus.stock_number} | VIN: {bus.vin}
-                    </div>
-                  </div>
-                  <div style={{textAlign:'right'}}>
-                    <div style={{fontWeight:'600',color:'#28a745'}}>{formatCurrency(bus.purchase_price_usd)}</div>
-                    <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.25rem'}}>{bus.status}</div>
-                  </div>
+        <div style={{flex:1,overflow:'auto',padding:'2rem'}}>
+          {view === 'dashboard' && (
+            <div style={{maxWidth:'1400px'}}>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))',gap:'1.5rem',marginBottom:'3rem'}}>
+                <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',borderLeft:'4px solid #007bff'}}>
+                  <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'0.5rem'}}>🇺🇸 US Inventory</div>
+                  <div style={{fontSize:'2rem',fontWeight:'700',color:'#333'}}>{stats?.us_inventory || 0}</div>
+                  <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.5rem'}}>units in stock</div>
                 </div>
-              ))}
+                <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',borderLeft:'4px solid #dc3545'}}>
+                  <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'0.5rem'}}>🇲🇽 Mexico Inventory</div>
+                  <div style={{fontSize:'2rem',fontWeight:'700',color:'#333'}}>{stats?.mexico_inventory || 0}</div>
+                  <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.5rem'}}>units in stock</div>
+                </div>
+                <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',borderLeft:'4px solid #28a745'}}>
+                  <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'0.5rem'}}>✅ Available</div>
+                  <div style={{fontSize:'2rem',fontWeight:'700',color:'#333'}}>{stats?.available_for_sale || 0}</div>
+                  <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.5rem'}}>ready to sell</div>
+                </div>
+                <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',borderLeft:'4px solid #ffc107'}}>
+                  <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'0.5rem'}}>💰 Total Value</div>
+                  <div style={{fontSize:'2rem',fontWeight:'700',color:'#333'}}>{formatCurrency(stats?.total_inventory_value || 0)}</div>
+                  <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.5rem'}}>inventory value</div>
+                </div>
+              </div>
+              
+              <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
+                  <h3 style={{margin:0}}>Recent Inventory</h3>
+                  <button onClick={() => setView('inventory')} style={{padding:'0.5rem 1rem',background:'#007bff',color:'white',border:'none',borderRadius:'4px',cursor:'pointer'}}>
+                    View All →
+                  </button>
+                </div>
+                {inventory.length === 0 ? (
+                  <div style={{textAlign:'center',padding:'3rem',color:'#666'}}>
+                    <div style={{fontSize:'3rem',marginBottom:'1rem'}}>🚌</div>
+                    <div>No inventory yet</div>
+                  </div>
+                ) : (
+                  <div style={{display:'grid',gap:'1rem'}}>
+                    {inventory.slice(0, 5).map((bus) => (
+                      <div key={bus.inventory_id} style={{padding:'1rem',border:'1px solid #ddd',borderRadius:'6px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                        <div>
+                          <div style={{fontWeight:'600',fontSize:'1.1rem'}}>{bus.year} {bus.make} {bus.model}</div>
+                          <div style={{color:'#666',fontSize:'0.9rem',marginTop:'0.25rem'}}>
+                            Stock: {bus.stock_number} | VIN: {bus.vin}
+                          </div>
+                        </div>
+                        <div style={{textAlign:'right'}}>
+                          <div style={{fontWeight:'600',color:'#28a745'}}>{formatCurrency(bus.purchase_price_usd)}</div>
+                          <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.25rem'}}>{bus.status}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {view === 'inventory' && (
+            <div style={{maxWidth:'1400px'}}>
+              <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',marginBottom:'1.5rem'}}>
+                <div style={{display:'flex',gap:'1rem',flexWrap:'wrap'}}>
+                  <input
+                    type="text"
+                    placeholder="🔍 Search by stock#, VIN, make, model, year..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    style={{flex:1,minWidth:'300px',padding:'0.75rem',border:'1px solid #ddd',borderRadius:'6px',fontSize:'1rem'}}
+                  />
+                  <button onClick={() => setShowBusForm(true)} style={{padding:'0.75rem 1.5rem',background:'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer',whiteSpace:'nowrap'}}>
+                    ➕ Add New Bus
+                  </button>
+                </div>
+              </div>
+
+              <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
+                <h3 style={{marginTop:0,marginBottom:'1.5rem'}}>
+                  All Buses ({filteredInventory.length})
+                </h3>
+                {filteredInventory.length === 0 ? (
+                  <div style={{textAlign:'center',padding:'3rem',color:'#666'}}>
+                    <div style={{fontSize:'3rem',marginBottom:'1rem'}}>🚌</div>
+                    <div>{search ? 'No buses match your search' : 'No inventory yet'}</div>
+                  </div>
+                ) : (
+                  <div style={{display:'grid',gap:'1rem'}}>
+                    {filteredInventory.map((bus) => (
+                      <div key={bus.inventory_id} style={{padding:'1.25rem',border:'1px solid #ddd',borderRadius:'6px'}}>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',marginBottom:'0.75rem'}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontWeight:'700',fontSize:'1.2rem',marginBottom:'0.5rem'}}>
+                              {bus.year} {bus.make} {bus.model}
+                            </div>
+                            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:'0.5rem',color:'#666',fontSize:'0.9rem'}}>
+                              <div>📋 Stock: <strong>{bus.stock_number}</strong></div>
+                              <div>🔖 VIN: <strong>{bus.vin}</strong></div>
+                              <div>👥 Capacity: <strong>{bus.passenger_capacity || 'N/A'}</strong></div>
+                              <div>📍 Location: <strong>{bus.current_location}</strong></div>
+                              <div>📅 Purchased: <strong>{formatDate(bus.purchase_date)}</strong></div>
+                              <div>📊 Status: <strong style={{color:bus.status==='Available'?'#28a745':'#666'}}>{bus.status}</strong></div>
+                            </div>
+                          </div>
+                          <div style={{textAlign:'right',marginLeft:'1rem'}}>
+                            <div style={{fontSize:'1.5rem',fontWeight:'700',color:'#28a745',marginBottom:'0.5rem'}}>
+                              {formatCurrency(bus.purchase_price_usd)}
+                            </div>
+                            <div style={{display:'flex',gap:'0.5rem'}}>
+                              <button onClick={() => {setEditingBus(bus);setShowBusForm(true);}} style={{padding:'0.5rem 1rem',background:'#007bff',color:'white',border:'none',borderRadius:'4px',fontSize:'0.875rem',cursor:'pointer'}}>
+                                ✏️ Edit
+                              </button>
+                              {user.role === 'admin' && (
+                                <button onClick={() => handleDeleteBus(bus)} style={{padding:'0.5rem 1rem',background:'#dc3545',color:'white',border:'none',borderRadius:'4px',fontSize:'0.875rem',cursor:'pointer'}}>
+                                  🗑️ Delete
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {view === 'suppliers' && (
+            <div style={{maxWidth:'1400px'}}>
+              <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
+                  <h3 style={{margin:0}}>Suppliers ({suppliers.length})</h3>
+                  <button onClick={() => setShowSupplierForm(true)} style={{padding:'0.75rem 1.5rem',background:'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
+                    ➕ Add Supplier
+                  </button>
+                </div>
+                
+                {suppliers.length === 0 ? (
+                  <div style={{textAlign:'center',padding:'3rem',color:'#666'}}>
+                    <div style={{fontSize:'3rem',marginBottom:'1rem'}}>🏢</div>
+                    <div>No suppliers yet</div>
+                  </div>
+                ) : (
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:'1.5rem'}}>
+                    {suppliers.map((supplier) => (
+                      <div key={supplier.supplier_id} style={{padding:'1.5rem',border:'1px solid #ddd',borderRadius:'8px',background:'#fafafa'}}>
+                        <div style={{fontWeight:'700',fontSize:'1.1rem',marginBottom:'0.5rem'}}>{supplier.company_name}</div>
+                        <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'1rem'}}>
+                          <span style={{background:'#e3f2fd',color:'#1976d2',padding:'0.25rem 0.5rem',borderRadius:'4px',fontSize:'0.75rem'}}>
+                            {supplier.supplier_type}
+                          </span>
+                        </div>
+                        {supplier.contact_person && (
+                          <div style={{fontSize:'0.9rem',marginBottom:'0.25rem'}}>👤 {supplier.contact_person}</div>
+                        )}
+                        {supplier.email && (
+                          <div style={{fontSize:'0.9rem',marginBottom:'0.25rem'}}>📧 {supplier.email}</div>
+                        )}
+                        {supplier.phone && (
+                          <div style={{fontSize:'0.9rem',marginBottom:'0.25rem'}}>📞 {supplier.phone}</div>
+                        )}
+                        {supplier.city && supplier.state && (
+                          <div style={{fontSize:'0.9rem',color:'#666'}}>📍 {supplier.city}, {supplier.state}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
-
-        {/* Add Bus Modal */}
-        {showAddForm && (
-          <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}}>
-            <div style={{background:'white',padding:'2rem',borderRadius:'8px',maxWidth:'600px',width:'90%',maxHeight:'90vh',overflow:'auto'}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
-                <h2 style={{margin:0}}>Add New Bus</h2>
-                <button onClick={() => setShowAddForm(false)} style={{background:'none',border:'none',fontSize:'1.5rem',cursor:'pointer'}}>×</button>
-              </div>
-              
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                const formData = new FormData(e.target);
-                const data = {
-                  stock_number: formData.get('stock_number'),
-                  vin: formData.get('vin'),
-                  year: parseInt(formData.get('year')),
-                  make: formData.get('make'),
-                  model: formData.get('model'),
-                  passenger_capacity: parseInt(formData.get('passenger_capacity')) || null,
-                  purchase_date: formData.get('purchase_date'),
-                  purchase_price_usd: parseFloat(formData.get('purchase_price_usd')),
-                  status: 'Available',
-                  condition: 'Good',
-                  current_location: formData.get('current_location') || 'US'
-                };
-                
-                try {
-                  await api.createInventory(data);
-                  setShowAddForm(false);
-                  loadData(); // Reload data
-                  alert('Bus added successfully!');
-                } catch (error) {
-                  alert('Error adding bus: ' + error.message);
-                }
-              }}>
-                <div style={{display:'grid',gap:'1rem'}}>
-                  <div>
-                    <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Stock Number *</label>
-                    <input name="stock_number" required style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
-                  </div>
-                  
-                  <div>
-                    <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>VIN *</label>
-                    <input name="vin" required style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
-                  </div>
-                  
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 2fr 2fr',gap:'1rem'}}>
-                    <div>
-                      <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Year *</label>
-                      <input name="year" type="number" required min="1990" max="2030" style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
-                    </div>
-                    <div>
-                      <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Make *</label>
-                      <input name="make" required style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
-                    </div>
-                    <div>
-                      <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Model *</label>
-                      <input name="model" required style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Passenger Capacity</label>
-                    <input name="passenger_capacity" type="number" min="1" max="99" style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
-                  </div>
-                  
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
-                    <div>
-                      <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Purchase Date *</label>
-                      <input name="purchase_date" type="date" required style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
-                    </div>
-                    <div>
-                      <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Purchase Price (USD) *</label>
-                      <input name="purchase_price_usd" type="number" step="0.01" required min="0" style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Location *</label>
-                    <select name="current_location" required style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}>
-                      <option value="US">United States</option>
-                      <option value="Mexico">Mexico</option>
-                    </select>
-                  </div>
-                </div>
-                
-                <div style={{display:'flex',gap:'1rem',marginTop:'2rem'}}>
-                  <button type="submit" style={{flex:1,padding:'0.75rem',background:'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
-                    💾 Save Bus
-                  </button>
-                  <button type="button" onClick={() => setShowAddForm(false)} style={{flex:1,padding:'0.75rem',background:'#e0e0e0',color:'#333',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Modals */}
+      {showBusForm && (
+        <BusForm
+          bus={editingBus}
+          onSave={handleSaveBus}
+          onCancel={() => {setShowBusForm(false);setEditingBus(null);}}
+        />
+      )}
+      {showSupplierForm && (
+        <SupplierForm
+          onSave={handleSaveSupplier}
+          onCancel={() => setShowSupplierForm(false)}
+        />
+      )}
     </div>
   );
 }
 
-// ============= MAIN APP =============
+// ============= ROOT =============
 function AppContent() {
   const { user, loading } = useAuth();
 
