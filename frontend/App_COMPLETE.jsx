@@ -500,15 +500,18 @@ function InventoryApp() {
   }, []);
 
   const loadData = async () => {
+    console.log('loadData: Fetching fresh data from API...');
     try {
       const [dashboardData, inventoryData, suppliersData] = await Promise.all([
         api.getDashboard(),
         api.getInventory(),
         api.getSuppliers()
       ]);
+      console.log('loadData: Received inventory:', inventoryData);
       setStats(dashboardData);
       setInventory(inventoryData);
       setSuppliers(suppliersData);
+      console.log('loadData: State updated');
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -517,14 +520,26 @@ function InventoryApp() {
   };
 
   const handleSaveBus = async (data) => {
-    if (editingBus) {
-      await api.updateInventory(editingBus.inventory_id, data);
-    } else {
-      await api.createInventory(data);
+    console.log('handleSaveBus called with:', data);
+    try {
+      if (editingBus) {
+        console.log('Updating bus ID:', editingBus.inventory_id);
+        const result = await api.updateInventory(editingBus.inventory_id, data);
+        console.log('Update result:', result);
+      } else {
+        console.log('Creating new bus');
+        const result = await api.createInventory(data);
+        console.log('Create result:', result);
+      }
+      console.log('Reloading data...');
+      await loadData();
+      console.log('Data reloaded, closing form');
+      setShowBusForm(false);
+      setEditingBus(null);
+    } catch (error) {
+      console.error('Error in handleSaveBus:', error);
+      alert('Error saving: ' + error.message);
     }
-    await loadData();
-    setShowBusForm(false);
-    setEditingBus(null);
   };
 
   const handleDeleteBus = async (bus) => {
