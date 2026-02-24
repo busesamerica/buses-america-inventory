@@ -229,7 +229,7 @@ function UserDropdown() {
 
 // ============= BUS FORM (ADD/EDIT) =============
 function BusForm({ bus, onSave, onCancel }) {
-  const [formData, setFormData] = useState(bus || {
+  const [formData, setFormData] = useState({
     stock_number: '',
     vin: '',
     year: new Date().getFullYear(),
@@ -242,6 +242,20 @@ function BusForm({ bus, onSave, onCancel }) {
     status: 'Available',
     condition: 'Good'
   });
+  
+  // Initialize form data from bus if editing
+  useEffect(() => {
+    if (bus) {
+      setFormData({
+        ...bus,
+        // Keep price as number for proper editing
+        purchase_price_usd: bus.purchase_price_usd || '',
+        passenger_capacity: bus.passenger_capacity || '',
+        purchase_date: bus.purchase_date ? bus.purchase_date.split('T')[0] : new Date().toISOString().split('T')[0]
+      });
+    }
+  }, [bus]);
+  
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -252,7 +266,8 @@ function BusForm({ bus, onSave, onCancel }) {
         ...formData,
         year: parseInt(formData.year),
         passenger_capacity: formData.passenger_capacity ? parseInt(formData.passenger_capacity) : null,
-        purchase_price_usd: parseFloat(formData.purchase_price_usd)
+        // Parse price properly - convert to cents, round, convert back
+        purchase_price_usd: Math.round(parseFloat(formData.purchase_price_usd) * 100) / 100
       };
       await onSave(data);
     } catch (error) {
