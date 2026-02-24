@@ -269,8 +269,14 @@ function BusForm({ bus, onSave, onCancel }) {
         // Parse price properly - convert to cents, round, convert back
         purchase_price_usd: Math.round(parseFloat(formData.purchase_price_usd) * 100) / 100
       };
+      
+      console.log('Submitting data:', data);
+      console.log('Original price from form:', formData.purchase_price_usd);
+      console.log('Parsed price:', data.purchase_price_usd);
+      
       await onSave(data);
     } catch (error) {
+      console.error('Save error:', error);
       alert('Error: ' + error.message);
     } finally {
       setSaving(false);
