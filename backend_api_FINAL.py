@@ -5,24 +5,17 @@ Final version matching actual business operation
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 import asyncpg
 import os
-import secrets
-import hashlib
-import json
 from contextlib import asynccontextmanager
 
 # Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/buses_america")
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
-
-# Security
-security = HTTPBearer()
 
 # ==================== PYDANTIC MODELS ====================
 
@@ -189,6 +182,17 @@ class InventoryCreate(BaseModel):
     created_by: Optional[str] = "system"
 
 class InventoryUpdate(BaseModel):
+    # Core inventory fields that can be updated
+    stock_number: Optional[str] = None
+    vin: Optional[str] = None
+    year: Optional[int] = None
+    make: Optional[str] = None
+    model: Optional[str] = None
+    passenger_capacity: Optional[int] = None
+    purchase_price_usd: Optional[Decimal] = None
+    purchase_date: Optional[date] = None
+    condition: Optional[str] = None
+    
     # Allow partial updates
     status: Optional[str] = None
     current_location: Optional[str] = None
@@ -306,34 +310,6 @@ class WarrantyClaim(WarrantyClaimCreate):
     class Config:
         from_attributes = True
 
-# ==================== AUTHENTICATION MODELS ====================
-
-class UserCreate(BaseModel):
-    username: str
-    email: EmailStr
-    password: str
-    full_name: str
-    role: str = 'manager'  # 'admin', 'manager'
-
-class UserLogin(BaseModel):
-    username: str
-    password: str
-
-class UserResponse(BaseModel):
-    user_id: int
-    username: str
-    email: str
-    full_name: str
-    role: str
-    is_active: bool
-    last_login: Optional[datetime] = None
-    created_at: datetime
-
-class SessionResponse(BaseModel):
-    user: dict
-    session_token: str
-    expires_at: str
-
 # Database pool
 db_pool = None
 
@@ -363,263 +339,6 @@ app.add_middleware(
 async def get_db():
     async with db_pool.acquire() as connection:
         yield connection
-
-# ==================== AUTHENTICATION HELPERS ====================
-
-def hash_password(password: str) -> str:
-    """Hash password using PBKDF2"""
-    salt = secrets.token_hex(16)
-    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
-    return f"{salt}${pwd_hash.hex()}"
-
-def verify_password(password: str, password_hash: str) -> bool:
-    """Verify password against hash"""
-    try:
-        salt, pwd_hash = password_hash.split('$')
-        new_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
-        return new_hash.hex() == pwd_hash
-    except:
-        return False
-
-def generate_session_token() -> str:
-    """Generate secure session token"""
-    return secrets.token_urlsafe(32)
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db = Depends(get_db)
-):
-    """Get current authenticated user from session token"""
-    token = credentials.credentials
-    
-    session = await db.fetchrow("""
-        SELECT s.*, u.* 
-        FROM user_sessions s
-        JOIN users u ON s.user_id = u.user_id
-        WHERE s.session_token = $1 
-        AND s.expires_at > CURRENT_TIMESTAMP
-        AND u.is_active = TRUE
-    """, token)
-    
-    if not session:
-        raise HTTPException(status_code=401, detail="Invalid or expired session")
-    
-    await db.execute("""
-        UPDATE user_sessions 
-        SET last_activity = CURRENT_TIMESTAMP 
-        WHERE session_token = $1
-    """, token)
-    
-    return dict(session)
-
-async def require_admin(current_user: dict = Depends(get_current_user)):
-    """Require admin role"""
-    if current_user['role'] != 'admin':
-        raise HTTPException(status_code=403, detail="Admin access required")
-    return current_user
-
-async def require_manager_or_admin(current_user: dict = Depends(get_current_user)):
-    """Require manager or admin role"""
-    if current_user['role'] not in ['admin', 'manager']:
-        raise HTTPException(status_code=403, detail="Manager or admin access required")
-    return current_user
-
-async def log_audit(
-    db, user_id: int, username: str, action: str,
-    table_name: str = None, record_id: int = None,
-    old_values: dict = None, new_values: dict = None,
-    description: str = None
-):
-    """Log action to audit trail"""
-    await db.execute("""
-        INSERT INTO audit_log 
-        (user_id, username, action, table_name, record_id, old_values, new_values, description)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    """, user_id, username, action, table_name, record_id, 
-         json.dumps(old_values) if old_values else None,
-         json.dumps(new_values) if new_values else None,
-         description)
-
-# ==================== ROOT ENDPOINT ====================
-
-@app.get("/")
-async def root():
-    """Root endpoint - API status and available endpoints"""
-    return {
-        "message": "Buses America Inventory API",
-        "status": "online",
-        "version": "3.0.0",
-        "tagline": "Juntos Movemos América",
-        "documentation": "/docs",
-        "endpoints": {
-            "dashboard": "/api/reports/dashboard",
-            "inventory": "/api/inventory",
-            "suppliers": "/api/suppliers",
-            "inspections": "/api/pre-inspections",
-            "exchange_rates": "/api/exchange-rates/current"
-        }
-    }
-
-@app.post("/admin/initialize-database")
-async def initialize_database():
-    """Initialize database with schema - ONE TIME USE ONLY"""
-    try:
-        # Read schema file
-        with open('bus_inventory_schema_FINAL.sql', 'r') as f:
-            schema_sql = f.read()
-        
-        # Connect to database
-        conn = await asyncpg.connect(DATABASE_URL)
-        
-        # Check if already initialized
-        result = await conn.fetchval(
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'inventory'"
-        )
-        
-        if result > 0:
-            await conn.close()
-            return {
-                "status": "already_initialized",
-                "message": "Database already has tables. Skipping initialization."
-            }
-        
-        # Execute schema statements
-        statements = [s.strip() for s in schema_sql.split(';') if s.strip()]
-        executed = 0
-        
-        for statement in statements:
-            try:
-                await conn.execute(statement)
-                executed += 1
-            except Exception as e:
-                if "already exists" not in str(e):
-                    print(f"Warning: {e}")
-        
-        await conn.close()
-        
-        return {
-            "status": "success",
-            "message": "Database initialized successfully!",
-            "statements_executed": executed,
-            "next_step": "Visit /api/inventory to verify"
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database initialization failed: {str(e)}")
-
-# ==================== AUTHENTICATION ENDPOINTS ====================
-
-@app.post("/api/auth/login", response_model=SessionResponse)
-async def login(credentials: UserLogin, db=Depends(get_db)):
-    """User login - returns session token"""
-    user = await db.fetchrow("""
-        SELECT * FROM users 
-        WHERE username = $1 AND is_active = TRUE
-    """, credentials.username)
-    
-    if not user or not verify_password(credentials.password, user['password_hash']):
-        await log_audit(db, None, credentials.username, 'login_failed',
-                       description=f"Failed login attempt for {credentials.username}")
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    session_token = generate_session_token()
-    expires_at = datetime.utcnow() + timedelta(hours=8)
-    
-    await db.execute("""
-        INSERT INTO user_sessions (user_id, session_token, expires_at)
-        VALUES ($1, $2, $3)
-    """, user['user_id'], session_token, expires_at)
-    
-    await db.execute("""
-        UPDATE users SET last_login = CURRENT_TIMESTAMP
-        WHERE user_id = $1
-    """, user['user_id'])
-    
-    await log_audit(db, user['user_id'], user['username'], 'login',
-                   description=f"{user['full_name']} logged in")
-    
-    return {
-        "user": dict(user),
-        "session_token": session_token,
-        "expires_at": expires_at.isoformat()
-    }
-
-@app.post("/api/auth/logout")
-async def logout(current_user: dict = Depends(get_current_user), db=Depends(get_db)):
-    """User logout"""
-    await db.execute("""
-        DELETE FROM user_sessions 
-        WHERE user_id = $1
-    """, current_user['user_id'])
-    
-    await log_audit(db, current_user['user_id'], current_user['username'], 'logout',
-                   description=f"{current_user['full_name']} logged out")
-    
-    return {"message": "Logged out successfully"}
-
-@app.get("/api/auth/me", response_model=UserResponse)
-async def get_me(current_user: dict = Depends(get_current_user)):
-    """Get current user info"""
-    return current_user
-
-@app.post("/api/users", response_model=UserResponse)
-async def create_user(
-    user_data: UserCreate,
-    current_user: dict = Depends(require_admin),
-    db=Depends(get_db)
-):
-    """Create new user (admin only)"""
-    password_hash = hash_password(user_data.password)
-    
-    new_user = await db.fetchrow("""
-        INSERT INTO users (username, email, password_hash, full_name, role, created_by)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING *
-    """, user_data.username, user_data.email, password_hash, 
-         user_data.full_name, user_data.role, current_user['user_id'])
-    
-    await log_audit(db, current_user['user_id'], current_user['username'], 
-                   'create', 'users', new_user['user_id'],
-                   description=f"Created user {user_data.username}")
-    
-    return dict(new_user)
-
-@app.get("/api/users", response_model=List[UserResponse])
-async def list_users(current_user: dict = Depends(require_admin), db=Depends(get_db)):
-    """List all users (admin only)"""
-    users = await db.fetch("SELECT * FROM users ORDER BY created_at DESC")
-    return [dict(u) for u in users]
-
-@app.put("/api/users/{user_id}/deactivate")
-async def deactivate_user(
-    user_id: int,
-    current_user: dict = Depends(require_admin),
-    db=Depends(get_db)
-):
-    """Deactivate user (admin only)"""
-    if user_id == current_user['user_id']:
-        raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
-    
-    await db.execute("UPDATE users SET is_active = FALSE WHERE user_id = $1", user_id)
-    await log_audit(db, current_user['user_id'], current_user['username'],
-                   'update', 'users', user_id,
-                   description=f"Deactivated user ID {user_id}")
-    
-    return {"message": "User deactivated"}
-
-@app.get("/api/audit-log")
-async def get_audit_log(
-    limit: int = 100,
-    current_user: dict = Depends(require_admin),
-    db=Depends(get_db)
-):
-    """Get audit log (admin only)"""
-    logs = await db.fetch("""
-        SELECT * FROM audit_log 
-        ORDER BY timestamp DESC 
-        LIMIT $1
-    """, limit)
-    return [dict(log) for log in logs]
 
 # ==================== EXCHANGE RATE ENDPOINTS ====================
 
@@ -776,12 +495,8 @@ async def update_inspection_decision(
 # ==================== INVENTORY ENDPOINTS ====================
 
 @app.post("/api/inventory", response_model=Inventory)
-async def create_inventory(
-    inventory: InventoryCreate,
-    current_user: dict = Depends(require_manager_or_admin),
-    db=Depends(get_db)
-):
-    """Add new bus to inventory (after purchase) - Requires manager or admin role"""
+async def create_inventory(inventory: InventoryCreate, db=Depends(get_db)):
+    """Add new bus to inventory (after purchase)"""
     query = """
         INSERT INTO inventory (
             stock_number, vin, year, make, model, body_style, bus_type,
@@ -923,21 +638,12 @@ async def update_inventory(inventory_id: int, updates: InventoryUpdate, db=Depen
     return dict(row)
 
 @app.delete("/api/inventory/{inventory_id}")
-async def delete_inventory(
-    inventory_id: int,
-    current_user: dict = Depends(require_admin),
-    db=Depends(get_db)
-):
-    """Soft delete inventory item - ADMIN ONLY"""
-    query = "UPDATE inventory SET is_deleted = TRUE WHERE inventory_id = $1 RETURNING inventory_id, stock_number"
+async def delete_inventory(inventory_id: int, db=Depends(get_db)):
+    """Soft delete inventory item"""
+    query = "UPDATE inventory SET is_deleted = TRUE WHERE inventory_id = $1 RETURNING inventory_id"
     row = await db.fetchrow(query, inventory_id)
     if not row:
         raise HTTPException(status_code=404, detail="Inventory item not found")
-    
-    await log_audit(db, current_user['user_id'], current_user['username'],
-                   'delete', 'inventory', inventory_id,
-                   description=f"Deleted bus {row['stock_number']}")
-    
     return {"message": "Inventory item deleted successfully"}
 
 # ==================== WORK PLAN ENDPOINTS ====================
