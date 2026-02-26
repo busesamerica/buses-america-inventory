@@ -1368,7 +1368,14 @@ async def create_inventory_from_inspection(
             gvwr, length_feet, exterior_color, interior_color, title_status,
             condition, reconditioning_cost_usd,
             acquisition_location, pre_inspection_id, internal_notes,
-
+            purchase_date, purchase_price_usd, supplier_id,
+            current_location, status, created_by
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+            $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29
+        )
+        RETURNING *
+    """
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
