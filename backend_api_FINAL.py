@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, EmailStr
 from typing import Optional, List
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from inspection_summary_helper import generate_inspection_summary, calculate_pre_fill_data
 import asyncpg
 import os
 import secrets
@@ -313,6 +314,88 @@ class WarrantyClaim(WarrantyClaimCreate):
     resolution: Optional[str] = None
     cost: Optional[Decimal] = None
     created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# ==================== PRE-INSPECTION MODELS ====================
+
+class PreInspectionCreate(BaseModel):
+    vin: str
+    year: Optional[int] = None
+    make: Optional[str] = None
+    model: Optional[str] = None
+    odometer: Optional[int] = None
+    odometer_unit: str = "miles"
+    passenger_capacity: Optional[int] = None
+    wheelchair_capacity: Optional[int] = None
+    engine_make: Optional[str] = None
+    engine_model: Optional[str] = None
+    engine_type: Optional[str] = None
+    transmission: Optional[str] = None
+    fuel_type: Optional[str] = None
+    gvwr: Optional[int] = None
+    length_feet: Optional[Decimal] = None
+    exterior_color: Optional[str] = None
+    interior_color: Optional[str] = None
+    title_status: Optional[str] = None
+    inspection_location: Optional[str] = None
+    seller_name: Optional[str] = None
+    seller_asking_price: Optional[Decimal] = None
+    seller_contact: Optional[str] = None
+    inspection_date: date
+    inspector_name: Optional[str] = None
+    engine_condition: Optional[str] = None
+    engine_starts: Optional[bool] = None
+    engine_oil_condition: Optional[str] = None
+    engine_coolant_condition: Optional[str] = None
+    engine_leaks: Optional[bool] = None
+    engine_noise: Optional[bool] = None
+    engine_notes: Optional[str] = None
+    transmission_condition: Optional[str] = None
+    transmission_shifts_properly: Optional[bool] = None
+    transmission_fluid_condition: Optional[str] = None
+    transmission_leaks: Optional[bool] = None
+    transmission_notes: Optional[str] = None
+    suspension_condition: Optional[str] = None
+    steering_condition: Optional[str] = None
+    alignment_ok: Optional[bool] = None
+    suspension_notes: Optional[str] = None
+    chassis_condition: Optional[str] = None
+    body_condition: Optional[str] = None
+    rust_present: Optional[bool] = None
+    rust_severity: Optional[str] = None
+    structural_damage: Optional[bool] = None
+    chassis_notes: Optional[str] = None
+    brake_condition: Optional[str] = None
+    brake_pads_percentage: Optional[int] = None
+    brake_lines_condition: Optional[str] = None
+    brake_notes: Optional[str] = None
+    electrical_system_condition: Optional[str] = None
+    lights_working: Optional[bool] = None
+    battery_condition: Optional[str] = None
+    alternator_working: Optional[bool] = None
+    electrical_notes: Optional[str] = None
+    interior_condition: Optional[str] = None
+    seats_condition: Optional[str] = None
+    floor_condition: Optional[str] = None
+    interior_notes: Optional[str] = None
+    road_test_performed: Optional[bool] = None
+    road_test_notes: Optional[str] = None
+    overall_rating: Optional[str] = None
+    recommendation: Optional[str] = None
+    estimated_repair_cost_usd: Optional[Decimal] = None
+    inspector_notes: Optional[str] = None
+
+class PreInspection(PreInspectionCreate):
+    inspection_id: int
+    purchased: bool = False
+    inventory_id: Optional[int] = None
+    purchase_date: Optional[date] = None
+    actual_purchase_price: Optional[Decimal] = None
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -1116,6 +1199,175 @@ async def get_active_warranties(db=Depends(get_db)):
     query = "SELECT * FROM units_under_warranty"
     rows = await db.fetch(query)
     return [dict(row) for row in rows]
+
+# ==================== PRE-INSPECTION ENDPOINTS ====================
+
+@app.post("/api/pre-inspections", response_model=PreInspection)
+async def create_pre_inspection(inspection: PreInspectionCreate, db=Depends(get_db), user=Depends(get_current_user)):
+    """Create a new pre-purchase inspection"""
+    query = """
+        INSERT INTO pre_purchase_inspections (
+            vin, year, make, model, odometer, odometer_unit,
+            passenger_capacity, wheelchair_capacity, engine_make, engine_model,
+            engine_type, transmission, fuel_type, gvwr, length_feet,
+            exterior_color, interior_color, title_status,
+            inspection_location, seller_name, seller_asking_price, seller_contact,
+            inspection_date, inspector_name,
+            engine_condition, engine_starts, engine_oil_condition, engine_coolant_condition,
+            engine_leaks, engine_noise, engine_notes,
+            transmission_condition, transmission_shifts_properly, transmission_fluid_condition,
+            transmission_leaks, transmission_notes,
+            suspension_condition, steering_condition, alignment_ok, suspension_notes,
+            chassis_condition, body_condition, rust_present, rust_severity,
+            structural_damage, chassis_notes,
+            brake_condition, brake_pads_percentage, brake_lines_condition, brake_notes,
+            electrical_system_condition, lights_working, battery_condition,
+            alternator_working, electrical_notes,
+            interior_condition, seats_condition, floor_condition, interior_notes,
+            road_test_performed, road_test_notes,
+            overall_rating, recommendation, estimated_repair_cost_usd, inspector_notes,
+            created_by
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+            $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28,
+            $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41,
+            $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54,
+            $55, $56, $57, $58, $59, $60, $61, $62, $63
+        )
+        RETURNING *
+    """
+    
+    row = await db.fetchrow(
+        query,
+        inspection.vin, inspection.year, inspection.make, inspection.model,
+        inspection.odometer, inspection.odometer_unit,
+        inspection.passenger_capacity, inspection.wheelchair_capacity,
+        inspection.engine_make, inspection.engine_model, inspection.engine_type,
+        inspection.transmission, inspection.fuel_type, inspection.gvwr, inspection.length_feet,
+        inspection.exterior_color, inspection.interior_color, inspection.title_status,
+        inspection.inspection_location, inspection.seller_name, inspection.seller_asking_price,
+        inspection.seller_contact, inspection.inspection_date, inspection.inspector_name,
+        inspection.engine_condition, inspection.engine_starts, inspection.engine_oil_condition,
+        inspection.engine_coolant_condition, inspection.engine_leaks, inspection.engine_noise,
+        inspection.engine_notes, inspection.transmission_condition, inspection.transmission_shifts_properly,
+        inspection.transmission_fluid_condition, inspection.transmission_leaks, inspection.transmission_notes,
+        inspection.suspension_condition, inspection.steering_condition, inspection.alignment_ok,
+        inspection.suspension_notes, inspection.chassis_condition, inspection.body_condition,
+        inspection.rust_present, inspection.rust_severity, inspection.structural_damage,
+        inspection.chassis_notes, inspection.brake_condition, inspection.brake_pads_percentage,
+        inspection.brake_lines_condition, inspection.brake_notes, inspection.electrical_system_condition,
+        inspection.lights_working, inspection.battery_condition, inspection.alternator_working,
+        inspection.electrical_notes, inspection.interior_condition, inspection.seats_condition,
+        inspection.floor_condition, inspection.interior_notes, inspection.road_test_performed,
+        inspection.road_test_notes, inspection.overall_rating, inspection.recommendation,
+        inspection.estimated_repair_cost_usd, inspection.inspector_notes, user['username']
+    )
+    
+    return dict(row)
+
+@app.get("/api/pre-inspections", response_model=List[PreInspection])
+async def get_pre_inspections(
+    vin: Optional[str] = None,
+    recommendation: Optional[str] = None,
+    purchased: Optional[bool] = None,
+    limit: int = 100,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Get all pre-inspections with optional filters"""
+    conditions = []
+    params = []
+    param_count = 1
+    
+    if vin:
+        conditions.append(f"vin ILIKE ${param_count}")
+        params.append(f"%{vin}%")
+        param_count += 1
+    
+    if recommendation:
+        conditions.append(f"recommendation = ${param_count}")
+        params.append(recommendation)
+        param_count += 1
+    
+    if purchased is not None:
+        conditions.append(f"purchased = ${param_count}")
+        params.append(purchased)
+        param_count += 1
+    
+    where_clause = " AND ".join(conditions) if conditions else "TRUE"
+    
+    query = f"""
+        SELECT * FROM pre_purchase_inspections
+        WHERE {where_clause}
+        ORDER BY inspection_date DESC, created_at DESC
+        LIMIT ${param_count}
+    """
+    params.append(limit)
+    
+    rows = await db.fetch(query, *params)
+    return [dict(row) for row in rows]
+
+@app.get("/api/pre-inspections/{inspection_id}", response_model=PreInspection)
+async def get_pre_inspection(inspection_id: int, db=Depends(get_db), user=Depends(get_current_user)):
+    """Get a specific pre-inspection by ID"""
+    query = "SELECT * FROM pre_purchase_inspections WHERE inspection_id = $1"
+    row = await db.fetchrow(query, inspection_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    return dict(row)
+
+@app.get("/api/pre-inspections/by-vin/{vin}")
+async def get_pre_inspection_by_vin(vin: str, db=Depends(get_db), user=Depends(get_current_user)):
+    """Get pre-inspection by VIN"""
+    query = "SELECT * FROM pre_purchase_inspections WHERE vin = $1 ORDER BY inspection_date DESC LIMIT 1"
+    row = await db.fetchrow(query, vin)
+    if not row:
+        raise HTTPException(status_code=404, detail="No inspection found for this VIN")
+    return dict(row)
+
+@app.post("/api/pre-inspections/{inspection_id}/create-inventory")
+async def create_inventory_from_inspection(
+    inspection_id: int,
+    additional_data: dict,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Create inventory record from approved inspection"""
+    inspection = await db.fetchrow(
+        "SELECT * FROM pre_purchase_inspections WHERE inspection_id = $1",
+        inspection_id
+    )
+    
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    
+    if inspection['recommendation'] != 'Approve':
+        raise HTTPException(status_code=400, detail="Can only create inventory from approved inspections")
+    
+    if inspection['purchased']:
+        raise HTTPException(status_code=400, detail="Inspection already used to create inventory")
+    
+    # Generate inspection summary
+    summary = generate_inspection_summary(dict(inspection))
+    
+    # Determine condition
+    condition_map = {
+        'Excellent': 'Excellent',
+        'Good': 'Good',
+        'Fair': 'Fair',
+        'Poor': 'Needs Major Work'
+    }
+    condition = condition_map.get(inspection['overall_rating'], 'Used')
+    
+    # Create inventory
+    inventory_query = """
+        INSERT INTO inventory (
+            vin, stock_number, year, make, model, odometer,
+            passenger_capacity, wheelchair_capacity,
+            engine_make, engine_model, engine_type, transmission, fuel_type,
+            gvwr, length_feet, exterior_color, interior_color, title_status,
+            condition, reconditioning_cost_usd,
+            acquisition_location, pre_inspection_id, internal_notes,
 
 if __name__ == "__main__":
     import uvicorn
