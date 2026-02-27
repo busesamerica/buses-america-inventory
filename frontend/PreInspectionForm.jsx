@@ -108,14 +108,27 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
+  e.preventDefault();
+  console.log('Form submitted!', formData);
+  console.log('onSave prop:', onSave);
+  
+  setSaving(true);
+  try {
+    if (typeof onSave === 'function') {
+      console.log('Calling onSave with formData...');
       await onSave(formData);
-    } finally {
-      setSaving(false);
+      console.log('onSave completed successfully!');
+    } else {
+      console.error('onSave is not a function!', typeof onSave);
+      alert('Error: Form save handler not configured properly');
     }
-  };
+  } catch (error) {
+    console.error('Submit error:', error);
+    alert('Error saving inspection: ' + error.message);
+  } finally {
+    setSaving(false);
+  }
+};
 
   const sections = [
     { id: 0, title: '📋 Basic Information', icon: '📋' },
