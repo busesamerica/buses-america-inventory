@@ -927,15 +927,19 @@ function InventoryApp() {
         <PreInspectionForm
           onClose={() => setShowInspectionForm(false)}
           onSave={async (data) => {
-            try {
-              await api.createPreInspection(data);
-              setShowInspectionForm(false);
-              await loadData();
-              alert('✅ Inspection saved successfully!');
-            } catch (error) {
-              alert('Error: ' + error.message);
-            }
-          }}
+  console.log('onSave called with data:', data);
+  try {
+    console.log('About to call API...');
+    await api.createPreInspection(data);
+    console.log('API call succeeded!');
+    setShowInspectionForm(false);
+    await loadData();
+    alert('✅ Inspection saved successfully!');
+  } catch (error) {
+    console.error('Error saving:', error);
+    alert('Error: ' + error.message);
+  }
+}}
         />
       )}
       {showInspectionReport && selectedInspection && (
