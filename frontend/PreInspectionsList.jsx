@@ -394,4 +394,4 @@ const PreInspectionsList = ({ onViewReport, onCreateInventory }) => {
   );
 };
 
-export default PreInspectionsList;
+window.PreInspectionsList = PreInspectionsList;
