@@ -1122,4 +1122,4 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
   );
 };
 
-export default PreInspectionForm;
+window.PreInspectionForm = PreInspectionForm;
