@@ -617,4 +617,4 @@ const PreInspectionReport = ({ inspection, onClose, onCreateInventory }) => {
   );
 };
 
-export default PreInspectionReport;
+window.PreInspectionReport = PreInspectionReport;
