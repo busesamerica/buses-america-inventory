@@ -1,4 +1,4 @@
-import React from 'react';
+
 
 const PreInspectionReport = ({ inspection, onClose, onCreateInventory }) => {
   if (!inspection) return null;
