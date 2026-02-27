@@ -523,6 +523,9 @@ function InventoryApp() {
   const [showBusForm, setShowBusForm] = useState(false);
   const [editingBus, setEditingBus] = useState(null);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
+  const [showInspectionForm, setShowInspectionForm] = useState(false);
+  const [selectedInspection, setSelectedInspection] = useState(null);
+  const [showInspectionReport, setShowInspectionReport] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -848,7 +851,7 @@ function InventoryApp() {
               <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
                   <h3 style={{margin:0}}>Pre-Purchase Inspections ({inspections.length})</h3>
-                  <button onClick={() => alert('Inspection form coming soon!')} style={{padding:'0.75rem 1.5rem',background:'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
+                  <button onClick={() => setShowInspectionForm(true)} style={{padding:'0.75rem 1.5rem',background:'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
                     ➕ New Inspection
                   </button>
                 </div>
@@ -918,6 +921,34 @@ function InventoryApp() {
         <SupplierForm
           onSave={handleSaveSupplier}
           onCancel={() => setShowSupplierForm(false)}
+        />
+      )}
+      {showInspectionForm && (
+        <PreInspectionForm
+          onClose={() => setShowInspectionForm(false)}
+          onSave={async (data) => {
+            try {
+              await api.createPreInspection(data);
+              setShowInspectionForm(false);
+              await loadData();
+              alert('✅ Inspection saved successfully!');
+            } catch (error) {
+              alert('Error: ' + error.message);
+            }
+          }}
+        />
+      )}
+      {showInspectionReport && selectedInspection && (
+        <PreInspectionReport
+          inspection={selectedInspection}
+          onClose={() => {
+            setShowInspectionReport(false);
+            setSelectedInspection(null);
+          }}
+          onCreateInventory={(insp) => {
+            setSelectedInspection(insp);
+            alert('Create inventory from inspection - coming soon!');
+          }}
         />
       )}
     </div>
