@@ -1,4 +1,4 @@
-import React from 'react';
+
 
 const InspectionBadge = ({ inspection, onClick, size = 'medium' }) => {
   if (!inspection) return null;
