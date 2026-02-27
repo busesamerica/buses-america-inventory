@@ -437,4 +437,4 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
   );
 };
 
-export default CreateInventoryModal;
+window.CreateInventoryModal = CreateInventoryModal;
