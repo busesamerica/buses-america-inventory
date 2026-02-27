@@ -69,4 +69,4 @@ const InspectionBadge = ({ inspection, onClick, size = 'medium' }) => {
   );
 };
 
-export default InspectionBadge;
+window.InspectionBadge = InspectionBadge;
