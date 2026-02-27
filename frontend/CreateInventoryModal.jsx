@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+
 
 const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
   const [formData, setFormData] = useState({
