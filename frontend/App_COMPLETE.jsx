@@ -1012,8 +1012,30 @@ function InventoryApp() {
             setSelectedInspection(null);
           }}
           onCreateInventory={(insp) => {
-            setSelectedInspection(insp);
-            alert('Create inventory from inspection - coming soon!');
+      setShowInspectionReport(false);
+      setShowCreateInventoryModal(true);
+    }}
+  />
+)}
+
+      {showCreateInventoryModal && selectedInspection && (
+        <CreateInventoryModal
+          inspection={selectedInspection}
+          suppliers={suppliers}
+          onClose={() => {
+            setShowCreateInventoryModal(false);
+            setSelectedInspection(null);
+          }}
+            onCreate={async (inventoryData) => {
+              try {
+                await api.createInventoryFromInspection(selectedInspection.inspection_id, inventoryData);
+                setShowCreateInventoryModal(false);
+                setSelectedInspection(null);
+                await loadData();
+                alert('✅ Inventory created successfully from inspection!');
+              } catch (error) {
+                alert('Error: ' + error.message);
+              }
           }}
         />
       )}
