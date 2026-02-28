@@ -460,12 +460,17 @@ function SupplierForm({ onSave, onCancel }) {
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
               <div>
                 <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Type *</label>
-                <select name="supplier_type" value={formData.supplier_type} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}>
-                  <option value="Dealer">Dealer</option>
-                  <option value="Auction">Auction</option>
-                  <option value="Private Seller">Private Seller</option>
-                  <option value="Manufacturer">Manufacturer</option>
-                </select>
+                <select name="supplier_type" value={formData.supplier_type} onChange={handleChange} required style={{...}}>
+                <option value="Dealer">Dealer</option>
+                <option value="Auction">Auction</option>
+                <option value="Private Seller">Private Seller</option>
+                <option value="Manufacturer">Manufacturer</option>
+                <option value="School District">School District</option>
+                <option value="Public School">Public School</option>
+                <option value="City Government">City Government</option>
+                <option value="County Government">County Government</option>
+                <option value="State Government">State Government</option>
+              </select>
               </div>
               <div>
                 <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Contact Person</label>
