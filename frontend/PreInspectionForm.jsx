@@ -1024,6 +1024,7 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
             {sections.map((section, idx) => (
               <button
                 key={section.id}
+                type="button"
                 onClick={() => setCurrentSection(idx)}
                 style={{
                   padding: '0.5rem 0.75rem',
@@ -1047,89 +1048,90 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
           </div>
         </div>
 
-        {/* Form Content */}
-        <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
-          {renderSection()}
-        </form>
+        {/* Form with Content and Footer */}
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
+            {renderSection()}
+          </div>
 
-        {/* Footer */}
-        <div style={{
-          padding: '1.5rem',
-          borderTop: '2px solid #e5e7eb',
-          display: 'flex',
-          justifyContent: 'space-between',
-          gap: '1rem',
-          background: '#f9fafb'
-        }}>
-          <button
-            type="button"
-            onClick={() => setCurrentSection(Math.max(0, currentSection - 1))}
-            disabled={currentSection === 0}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: currentSection === 0 ? '#e5e7eb' : 'white',
-              color: currentSection === 0 ? '#9ca3af' : '#374151',
-              border: '2px solid #e5e7eb',
-              borderRadius: '0.5rem',
-              cursor: currentSection === 0 ? 'not-allowed' : 'pointer',
-              fontWeight: '600'
-            }}
-          >
-            ← Previous
-          </button>
-
-          <div style={{ display: 'flex', gap: '1rem' }}>
+          <div style={{
+            padding: '1.5rem',
+            borderTop: '2px solid #e5e7eb',
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: '1rem',
+            background: '#f9fafb'
+          }}>
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => setCurrentSection(Math.max(0, currentSection - 1))}
+              disabled={currentSection === 0}
               style={{
                 padding: '0.75rem 1.5rem',
-                background: 'white',
-                color: '#374151',
+                background: currentSection === 0 ? '#e5e7eb' : 'white',
+                color: currentSection === 0 ? '#9ca3af' : '#374151',
                 border: '2px solid #e5e7eb',
                 borderRadius: '0.5rem',
-                cursor: 'pointer',
+                cursor: currentSection === 0 ? 'not-allowed' : 'pointer',
                 fontWeight: '600'
               }}
             >
-              Cancel
+              ← Previous
             </button>
 
-            {currentSection < sections.length - 1 ? (
+            <div style={{ display: 'flex', gap: '1rem' }}>
               <button
                 type="button"
-                onClick={() => setCurrentSection(currentSection + 1)}
+                onClick={onClose}
                 style={{
                   padding: '0.75rem 1.5rem',
-                  background: '#FFD700',
-                  color: '#1a1a1a',
-                  border: 'none',
+                  background: 'white',
+                  color: '#374151',
+                  border: '2px solid #e5e7eb',
                   borderRadius: '0.5rem',
                   cursor: 'pointer',
-                  fontWeight: '700'
+                  fontWeight: '600'
                 }}
               >
-                Next →
+                Cancel
               </button>
-            ) : (
-              <button
-                type="submit"
-                disabled={saving}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  background: saving ? '#9ca3af' : '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '0.5rem',
-                  cursor: saving ? 'not-allowed' : 'pointer',
-                  fontWeight: '700'
-                }}
-              >
-                {saving ? '💾 Saving...' : '✅ Save Inspection'}
-              </button>
-            )}
+
+              {currentSection < sections.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setCurrentSection(currentSection + 1)}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: '#FFD700',
+                    color: '#1a1a1a',
+                    border: 'none',
+                    borderRadius: '0.5rem',
+                    cursor: 'pointer',
+                    fontWeight: '700'
+                  }}
+                >
+                  Next →
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={saving}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: saving ? '#9ca3af' : '#10b981',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '0.5rem',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    fontWeight: '700'
+                  }}
+                >
+                  {saving ? '💾 Saving...' : '✅ Save Inspection'}
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        </form>
       </div>
     </div>
   );
