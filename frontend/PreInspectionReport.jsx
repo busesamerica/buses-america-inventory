@@ -1,7 +1,33 @@
-
-
 const PreInspectionReport = ({ inspection, onClose, onCreateInventory }) => {
   if (!inspection) return null;
+
+  // Print styles
+  React.useEffect(() => {
+    const style = document.createElement('style');
+    style.innerHTML = `
+      @media print {
+        body * {
+          visibility: hidden;
+        }
+        #inspection-report, #inspection-report * {
+          visibility: visible;
+        }
+        #inspection-report {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+          max-height: none !important;
+          overflow: visible !important;
+        }
+        .no-print {
+          display: none !important;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
 
   const formatCurrency = (amount) => {
     if (!amount) return 'N/A';
@@ -134,7 +160,7 @@ const PreInspectionReport = ({ inspection, onClose, onCreateInventory }) => {
       padding: '1rem',
       overflowY: 'auto'
     }}>
-      <div style={{
+      <div id="inspection-report" style={{
         background: 'white',
         borderRadius: '1rem',
         maxWidth: '1200px',
