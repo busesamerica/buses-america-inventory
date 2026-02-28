@@ -175,25 +175,43 @@ const PreInspectionReport = ({ inspection, onClose, onCreateInventory }) => {
                 VIN: {inspection.vin}
               </div>
             </div>
-            <button
-              onClick={onClose}
-              style={{
-                background: 'rgba(255,255,255,0.1)',
-                border: '2px solid rgba(255,255,255,0.2)',
-                color: 'white',
-                fontSize: '1.5rem',
-                width: '3rem',
-                height: '3rem',
-                borderRadius: '0.5rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: '700'
-              }}
-            >
-              ✕
-            </button>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button
+                onClick={() => window.print()}
+                style={{
+                  background: '#FFD700',
+                  border: 'none',
+                  color: '#1a1a1a',
+                  fontSize: '0.9rem',
+                  padding: '0.75rem 1.25rem',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                  fontWeight: '700',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                🖨️ Print
+              </button>
+              <button
+                onClick={onClose}
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  border: '2px solid rgba(255,255,255,0.2)',
+                  color: 'white',
+                  fontSize: '1.5rem',
+                  width: '3rem',
+                  height: '3rem',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: '700'
+                }}
+              >
+                ✕
+              </button>
+            </div>
           </div>
 
           {/* Quick Stats */}
