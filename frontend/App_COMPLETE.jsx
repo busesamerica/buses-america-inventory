@@ -897,6 +897,26 @@ function InventoryApp() {
                                 ✓ Purchased
                               </div>
                             )}
+                            <button 
+                              onClick={() => {
+                                setSelectedInspection(insp);
+                                 setShowInspectionReport(true);
+                              }}
+                              style={{
+                                width:'100%',
+                                padding:'0.5rem 1rem',
+                                background:'#3b82f6',
+                                color:'white',
+                                border:'none',
+                                borderRadius:'4px',
+                                cursor:'pointer',
+                                fontSize:'0.875rem',
+                                fontWeight:'600',
+                                marginTop:'0.75rem'
+                              }}
+                           >
+                              📄 View Report
+                            </button>
                           </div>
                         </div>
                       </div>
