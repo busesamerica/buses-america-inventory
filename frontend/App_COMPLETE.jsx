@@ -312,8 +312,17 @@ function BusForm({ bus, onSave, onCancel }) {
   };
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  const { name, value } = e.target;
+  const updated = { ...formData, [name]: value };
+  
+  // Auto-generate stock number from VIN
+  if (name === 'vin' && value.length >= 6) {
+    const last6 = value.slice(-6).toUpperCase();
+    updated.stock_number = `BA-${last6}`;
+  }
+  
+  setFormData(updated);
+};
 
   return (
     <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:'1rem'}}>
