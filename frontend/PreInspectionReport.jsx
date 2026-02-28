@@ -3,48 +3,44 @@ const PreInspectionReport = ({ inspection, onClose, onCreateInventory }) => {
 
   // Print styles
 React.useEffect(() => {
+    const handlePrint = () => {
+      window.print();
+    };
+    
+    // Add print button handler
+    const printBtn = document.querySelector('[data-print-btn]');
+    if (printBtn) {
+      printBtn.addEventListener('click', handlePrint);
+    }
+    
     const style = document.createElement('style');
     style.innerHTML = `
       @media print {
-        @page {
-          size: auto;
-          margin: 15mm;
+        body * {
+          visibility: hidden;
         }
-        
-        /* Hide the main app but keep modals */
-        body > div:not(.modal-backdrop) {
-          display: none !important;
+        #inspection-report,
+        #inspection-report * {
+          visibility: visible;
         }
-        
-        .modal-backdrop {
-          position: static !important;
-          background: white !important;
-          padding: 0 !important;
-          overflow: visible !important;
-        }
-        
         #inspection-report {
-          position: static !important;
-          max-height: none !important;
-          max-width: 100% !important;
-          overflow: visible !important;
-          margin: 0 !important;
-          box-shadow: none !important;
-          border-radius: 0 !important;
+          position: absolute;
+          left: 0;
+          top: 0;
         }
-        
-        #inspection-content {
-          max-height: none !important;
-          overflow: visible !important;
-        }
-        
         .no-print {
           display: none !important;
         }
       }
     `;
     document.head.appendChild(style);
-    return () => document.head.removeChild(style);
+    
+    return () => {
+      document.head.removeChild(style);
+      if (printBtn) {
+        printBtn.removeEventListener('click', handlePrint);
+      }
+    };
   }, []);
 
   const formatCurrency = (amount) => {
@@ -220,22 +216,23 @@ React.useEffect(() => {
               </div>
             </div>
             <div className="no-print" style={{ display: 'flex', gap: '0.75rem' }}>
-              <button
+             <button
                 onClick={() => window.print()}
+                data-print-btn
                 style={{
-                  background: '#FFD700',
-                  border: 'none',
-                  color: '#1a1a1a',
-                  fontSize: '0.9rem',
-                  padding: '0.75rem 1.25rem',
-                  borderRadius: '0.5rem',
-                  cursor: 'pointer',
-                  fontWeight: '700',
-                  whiteSpace: 'nowrap'
-                }}
+                background: '#FFD700',
+                border: 'none',
+                color: '#1a1a1a',
+                fontSize: '0.9rem',
+                padding: '0.75rem 1.25rem',
+                borderRadius: '0.5rem',
+                cursor: 'pointer',
+                fontWeight: '700',
+                whiteSpace: 'nowrap'
+                      }}
               >
                 🖨️ Print
-              </button>
+            </button>
               <button
                 onClick={onClose}
                 style={{
