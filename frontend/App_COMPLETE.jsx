@@ -930,7 +930,19 @@ function InventoryApp() {
   console.log('onSave called with data:', data);
   try {
     console.log('About to call API...');
-    await api.createPreInspection(data);
+    
+    // Clean the data - convert empty strings to null for numeric fields
+    const cleanedData = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value === '') {
+        cleanedData[key] = null;
+      } else {
+        cleanedData[key] = value;
+      }
+    }
+    
+    console.log('Cleaned data:', cleanedData);
+    await api.createPreInspection(cleanedData);
     console.log('API call succeeded!');
     setShowInspectionForm(false);
     await loadData();
