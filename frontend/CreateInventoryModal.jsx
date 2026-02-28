@@ -378,6 +378,21 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
                           onChange={(e) => setNewSupplier({...newSupplier, contact_person: e.target.value})}
                           style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}
                         />
+                        <select
+                        value={newSupplier.supplier_type}
+                        onChange={(e) => setNewSupplier({...newSupplier, supplier_type: e.target.value})}
+                        style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}
+                      >
+                        <option value="School District">School District</option>
+                        <option value="Public School">Public School</option>
+                        <option value="City Government">City Government</option>
+                        <option value="County Government">County Government</option>
+                        <option value="State Government">State Government</option>
+                        <option value="Dealer">Dealer</option>
+                        <option value="Auction">Auction</option>
+                        <option value="Private Seller">Private Seller</option>
+                        <option value="Manufacturer">Manufacturer</option>
+                      </select>
                         <input
                           type="email"
                           placeholder="Email"
