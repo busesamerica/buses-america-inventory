@@ -201,7 +201,7 @@ const PreInspectionReport = ({ inspection, onClose, onCreateInventory }) => {
                 VIN: {inspection.vin}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <div className="no-print" style={{ display: 'flex', gap: '0.75rem' }}>
               <button
                 onClick={() => window.print()}
                 style={{
