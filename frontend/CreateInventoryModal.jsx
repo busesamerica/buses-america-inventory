@@ -13,12 +13,12 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
   
   const [showNewSupplier, setShowNewSupplier] = useState(false);
   const [newSupplier, setNewSupplier] = useState({
-    company_name: inspection.seller_name || '',
-    contact_person: '',
-    email: '',
-    phone: inspection.seller_contact || '',
-    supplier_type: 'Private Seller'
-  });
+  company_name: inspection.seller_name || '',
+  contact_person: '',
+  email: '',
+  phone: inspection.seller_contact || '',
+  supplier_type: 'School District'  // Changed default to School District
+});
   
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
