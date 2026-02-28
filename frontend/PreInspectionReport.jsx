@@ -11,41 +11,33 @@ React.useEffect(() => {
           margin: 15mm;
         }
         
-        /* Hide everything */
-        body > *:not(.modal-backdrop) {
+        /* Hide the main app but keep modals */
+        body > div:not(.modal-backdrop) {
           display: none !important;
         }
         
-        /* Make modal backdrop cover page */
         .modal-backdrop {
           position: static !important;
           background: white !important;
           padding: 0 !important;
-          display: block !important;
+          overflow: visible !important;
         }
         
-        /* Make report container full width */
         #inspection-report {
           position: static !important;
           max-height: none !important;
           max-width: 100% !important;
-          width: 100% !important;
           overflow: visible !important;
           margin: 0 !important;
           box-shadow: none !important;
           border-radius: 0 !important;
-          display: block !important;
         }
         
-        /* Make content scrollable area printable */
         #inspection-content {
           max-height: none !important;
           overflow: visible !important;
-          flex: none !important;
-          display: block !important;
         }
         
-        /* Hide buttons and other non-print elements */
         .no-print {
           display: none !important;
         }
