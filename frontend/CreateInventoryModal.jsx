@@ -2,7 +2,7 @@
 
 const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
   const [formData, setFormData] = useState({
-    stock_number: '',
+  stock_number: inspection.vin ? `BA-${inspection.vin.slice(-6).toUpperCase()}` : '',
     purchase_price_usd: '',
     purchase_date: new Date().toISOString().split('T')[0],
     supplier_id: '',
