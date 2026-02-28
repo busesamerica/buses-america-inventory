@@ -8,6 +8,17 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
     supplier_id: '',
     current_location: 'United States'
   });
+
+  const API_URL = `${window.API_BASE_URL || 'https://buses-america.onrender.com'}/api`;
+  
+  const [showNewSupplier, setShowNewSupplier] = useState(false);
+  const [newSupplier, setNewSupplier] = useState({
+    company_name: inspection.seller_name || '',
+    contact_person: '',
+    email: '',
+    phone: inspection.seller_contact || '',
+    supplier_type: 'Private Seller'
+  });
   
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -21,16 +32,48 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
     e.preventDefault();
     setError('');
     
-    if (!formData.stock_number || !formData.purchase_price_usd || !formData.supplier_id) {
+    if (!formData.stock_number || !formData.purchase_price_usd) {
       setError('Please fill in all required fields');
       return;
     }
-
+    
     setSaving(true);
     try {
+      let supplierIdToUse = formData.supplier_id;
+      
+      // Create new supplier if needed
+      if (formData.supplier_id === 'CREATE_NEW' || formData.supplier_id === 'FROM_INSPECTION') {
+        if (!newSupplier.company_name) {
+          setError('Supplier company name is required');
+          setSaving(false);
+          return;
+        }
+        
+        // Create the supplier
+        const createdSupplier = await fetch(`${API_URL}/suppliers`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+          },
+          body: JSON.stringify(newSupplier)
+        });
+        
+        if (!createdSupplier.ok) {
+          throw new Error('Failed to create supplier');
+        }
+        
+        const supplierData = await createdSupplier.json();
+        supplierIdToUse = supplierData.supplier_id;
+      }
+      
+      // Now create inventory with the supplier ID
       await onSave({
         inspection_id: inspection.inspection_id,
-        additional_data: formData
+        additional_data: {
+          ...formData,
+          supplier_id: supplierIdToUse
+        }
       });
     } catch (err) {
       setError(err.message || 'Failed to create inventory');
@@ -287,26 +330,72 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
                 }}>
                   Supplier *
                 </label>
-                <select
-                  name="supplier_id"
-                  value={formData.supplier_id}
-                  onChange={handleChange}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '2px solid #e5e7eb',
-                    borderRadius: '0.5rem',
-                    fontSize: '1rem'
-                  }}
-                >
-                  <option value="">Select supplier...</option>
-                  {suppliers && suppliers.map(supplier => (
-                    <option key={supplier.supplier_id} value={supplier.supplier_id}>
-                      {supplier.company_name}
-                    </option>
-                  ))}
-                </select>
+                <div>
+                  <select
+                    name="supplier_id"
+                    value={formData.supplier_id}
+                    onChange={(e) => {
+                      if (e.target.value === 'CREATE_NEW') {
+                        setShowNewSupplier(true);
+                      } else {
+                        handleChange(e);
+                      }
+                    }}
+                    style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}
+                  >
+                    <option value="">Select supplier...</option>
+                    {inspection.seller_name && (
+                      <option value="FROM_INSPECTION">
+                        📝 {inspection.seller_name} (from inspection)
+                      </option>
+                    )}
+                    <option value="CREATE_NEW">➕ Create New Supplier</option>
+                    {suppliers.map(s => (
+                      <option key={s.supplier_id} value={s.supplier_id}>
+                        {s.company_name}
+                      </option>
+                    ))}
+                  </select>
+                  
+                  {showNewSupplier && (
+                    <div style={{marginTop:'1rem',padding:'1rem',background:'#f9fafb',borderRadius:'6px',border:'1px solid #e5e7eb'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:'0.75rem'}}>
+                        <strong>New Supplier</strong>
+                        <button type="button" onClick={() => setShowNewSupplier(false)} style={{background:'none',border:'none',cursor:'pointer'}}>✕</button>
+                      </div>
+                      <div style={{display:'grid',gap:'0.75rem'}}>
+                        <input
+                          type="text"
+                          placeholder="Company Name *"
+                          value={newSupplier.company_name}
+                          onChange={(e) => setNewSupplier({...newSupplier, company_name: e.target.value})}
+                          style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Contact Person"
+                          value={newSupplier.contact_person}
+                          onChange={(e) => setNewSupplier({...newSupplier, contact_person: e.target.value})}
+                          style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}
+                        />
+                        <input
+                          type="email"
+                          placeholder="Email"
+                          value={newSupplier.email}
+                          onChange={(e) => setNewSupplier({...newSupplier, email: e.target.value})}
+                          style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}
+                        />
+                        <input
+                          type="tel"
+                          placeholder="Phone"
+                          value={newSupplier.phone}
+                          onChange={(e) => setNewSupplier({...newSupplier, phone: e.target.value})}
+                          style={{width:'100%',padding:'0.5rem',border:'1px solid #ddd',borderRadius:'4px'}}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
                 {inspection.seller_name && (
                   <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
                     Inspected at: {inspection.seller_name}
