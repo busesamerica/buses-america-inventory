@@ -931,7 +931,7 @@ function InventoryApp() {
   try {
     console.log('About to call API...');
     
-    // Clean the data - convert empty strings to null for numeric fields
+    // Clean the data - convert empty strings to null
     const cleanedData = {};
     for (const [key, value] of Object.entries(data)) {
       if (value === '') {
@@ -945,8 +945,15 @@ function InventoryApp() {
     await api.createPreInspection(cleanedData);
     console.log('API call succeeded!');
     setShowInspectionForm(false);
-    await loadData();
-    alert('✅ Inspection saved successfully!');
+    
+    // Try to reload data, but don't fail if it errors
+    try {
+      await loadData();
+    } catch (reloadError) {
+      console.warn('Could not reload data, but inspection was saved:', reloadError);
+    }
+    
+    alert('✅ Inspection saved successfully! Refresh the page to see it.');
   } catch (error) {
     console.error('Error saving:', error);
     alert('Error: ' + error.message);
