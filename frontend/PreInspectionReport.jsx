@@ -2,10 +2,14 @@ const PreInspectionReport = ({ inspection, onClose, onCreateInventory }) => {
   if (!inspection) return null;
 
   // Print styles
-  React.useEffect(() => {
+ React.useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
       @media print {
+        @page {
+          size: auto;
+          margin: 20mm;
+        }
         body * {
           visibility: hidden;
         }
@@ -18,10 +22,16 @@ const PreInspectionReport = ({ inspection, onClose, onCreateInventory }) => {
           top: 0;
           width: 100%;
           max-height: none !important;
+          max-width: none !important;
           overflow: visible !important;
+          display: block !important;
         }
         .no-print {
           display: none !important;
+        }
+        #inspection-content {
+          max-height: none !important;
+          overflow: visible !important;
         }
       }
     `;
@@ -278,7 +288,7 @@ const PreInspectionReport = ({ inspection, onClose, onCreateInventory }) => {
         </div>
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '2rem' }}>
+        <div id="inspection-content" style={{ flex: 1, overflowY: 'auto', padding: '2rem' }}>
           
           {/* Basic Information */}
           <Section title="Vehicle Information" icon="🚌">
