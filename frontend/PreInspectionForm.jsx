@@ -1049,7 +1049,7 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
         </div>
 
         {/* Form with Content and Footer */}
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
           <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
             {renderSection()}
           </div>
