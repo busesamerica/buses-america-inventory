@@ -3,16 +3,6 @@ const PreInspectionReport = ({ inspection, onClose, onCreateInventory }) => {
 
   // Print styles
 React.useEffect(() => {
-    const handlePrint = () => {
-      window.print();
-    };
-    
-    // Add print button handler
-    const printBtn = document.querySelector('[data-print-btn]');
-    if (printBtn) {
-      printBtn.addEventListener('click', handlePrint);
-    }
-    
     const style = document.createElement('style');
     style.innerHTML = `
       @media print {
@@ -27,20 +17,15 @@ React.useEffect(() => {
           position: absolute;
           left: 0;
           top: 0;
+          width: 100%;
         }
         .no-print {
-          display: none !important;
+          visibility: hidden !important;
         }
       }
     `;
     document.head.appendChild(style);
-    
-    return () => {
-      document.head.removeChild(style);
-      if (printBtn) {
-        printBtn.removeEventListener('click', handlePrint);
-      }
-    };
+    return () => document.head.removeChild(style);
   }, []);
 
   const formatCurrency = (amount) => {
@@ -217,9 +202,8 @@ React.useEffect(() => {
             </div>
             <div className="no-print" style={{ display: 'flex', gap: '0.75rem' }}>
              <button
-                onClick={() => window.print()}
-                data-print-btn
-                style={{
+              onClick={() => window.print()}
+              style={{
                 background: '#FFD700',
                 border: 'none',
                 color: '#1a1a1a',
@@ -229,9 +213,9 @@ React.useEffect(() => {
                 cursor: 'pointer',
                 fontWeight: '700',
                 whiteSpace: 'nowrap'
-                      }}
-              >
-                🖨️ Print
+              }}
+            >
+              🖨️ Print
             </button>
               <button
                 onClick={onClose}
