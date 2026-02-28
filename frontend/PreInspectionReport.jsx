@@ -147,7 +147,7 @@ const PreInspectionReport = ({ inspection, onClose, onCreateInventory }) => {
       }}>
         {/* Header */}
         <div style={{
-          padding: '2rem',
+          padding: '1rem',
           background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
           borderRadius: '1rem 1rem 0 0',
           color: 'white'
@@ -155,7 +155,7 @@ const PreInspectionReport = ({ inspection, onClose, onCreateInventory }) => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                <h2 style={{ margin: 0, fontSize: '2rem', color: '#FFD700', fontWeight: '700' }}>
+                <h2 style={{ margin: 0, fontSize: '1.5rem', color: '#FFD700', fontWeight: '700' }}>
                   🔍 Pre-Purchase Inspection Report
                 </h2>
                 <span style={{ 
