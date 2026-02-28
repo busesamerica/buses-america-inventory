@@ -526,6 +526,7 @@ function InventoryApp() {
   const [showInspectionForm, setShowInspectionForm] = useState(false);
   const [selectedInspection, setSelectedInspection] = useState(null);
   const [showInspectionReport, setShowInspectionReport] = useState(false);
+  const [showCreateInventoryModal, setShowCreateInventoryModal] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -917,6 +918,28 @@ function InventoryApp() {
                            >
                               📄 View Report
                             </button>
+                            {insp.recommendation === 'Approve' && !insp.purchased && (
+                              <button 
+                                onClick={() => {
+                                  setSelectedInspection(insp);
+                                  setShowCreateInventoryModal(true);
+                                }}
+                                style={{
+                                  width:'100%',
+                                  padding:'0.5rem 1rem',
+                                  background:'#10b981',
+                                  color:'white',
+                                  border:'none',
+                                  borderRadius:'4px',
+                                  cursor:'pointer',
+                                  fontSize:'0.875rem',
+                                  fontWeight:'600',
+                                  marginTop:'0.5rem'
+                                }}
+                              >
+                                🚌 Create Inventory
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
