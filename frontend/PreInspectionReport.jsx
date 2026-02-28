@@ -2,36 +2,38 @@ const PreInspectionReport = ({ inspection, onClose, onCreateInventory }) => {
   if (!inspection) return null;
 
   // Print styles
- React.useEffect(() => {
+React.useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
       @media print {
         @page {
           size: auto;
-          margin: 20mm;
+          margin: 15mm;
         }
-        body * {
-          visibility: hidden;
+        body {
+          margin: 0;
         }
-        #inspection-report, #inspection-report * {
-          visibility: visible;
+        .modal-backdrop {
+          position: static !important;
+          background: white !important;
+          padding: 0 !important;
         }
         #inspection-report {
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 100%;
+          position: static !important;
           max-height: none !important;
-          max-width: none !important;
+          max-width: 100% !important;
           overflow: visible !important;
-          display: block !important;
-        }
-        .no-print {
-          display: none !important;
+          margin: 0 !important;
+          box-shadow: none !important;
+          border-radius: 0 !important;
         }
         #inspection-content {
           max-height: none !important;
           overflow: visible !important;
+          flex: none !important;
+        }
+        .no-print {
+          display: none !important;
         }
       }
     `;
@@ -156,7 +158,7 @@ const PreInspectionReport = ({ inspection, onClose, onCreateInventory }) => {
   const recommendationStyle = getRecommendationStyle(inspection.recommendation);
 
   return (
-    <div style={{
+    <div className="modal-backdrop" style={{
       position: 'fixed',
       top: 0,
       left: 0,
