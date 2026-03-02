@@ -48,8 +48,15 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
         setSaving(false);
         return;
       }
-      
-      // Create the supplier
+      // Check if supplier already exists
+  const existingSupplier = suppliers.find(s => 
+    s.company_name.toLowerCase() === newSupplier.company_name.toLowerCase()
+  );
+  
+  if (existingSupplier) {
+    supplierIdToUse = existingSupplier.supplier_id;
+  } else {
+    // Create the supplier only if it doesn't exist
       const createdSupplier = await fetch(`${API_URL}/suppliers`, {
         method: 'POST',
         headers: {
