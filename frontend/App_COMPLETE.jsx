@@ -164,7 +164,7 @@ const api = (() => {
       if (!res.ok) return null;
       return res.json();
     },
-    createInventoryFromInspection: async (inspectionId, additionalData) => {
+ createInventoryFromInspection: async (inspectionId, additionalData) => {
       const res = await fetch(`${API_URL}/pre-inspections/${inspectionId}/create-inventory`, {
         method: 'POST',
         headers: headers(),
@@ -175,10 +175,14 @@ const api = (() => {
         throw new Error(err.detail || 'Failed to create inventory');
       }
       return res.json();
+    },
+    getCurrentExchangeRate: async () => {
+      const res = await fetch(`${API_URL}/exchange-rates/current`, { headers: headers() });
+      if (!res.ok) throw new Error('Failed to fetch exchange rate');
+      return res.json();
     }
   };
 })();
-
 // ============= LOGIN PAGE =============
 function LoginPage() {
   const [username, setUsername] = useState('');
