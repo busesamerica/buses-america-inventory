@@ -29,57 +29,54 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
+  e.preventDefault();
+  setError('');
+  
+  if (!formData.stock_number || !formData.purchase_price_usd) {
+    setError('Please fill in all required fields');
+    return;
+  }
+  
+  setSaving(true);
+  try {
+    let supplierIdToUse = formData.supplier_id;
     
-    if (!formData.stock_number || !formData.purchase_price_usd) {
-      setError('Please fill in all required fields');
-      return;
-    }
-    
-    setSaving(true);
-    try {
-      let supplierIdToUse = formData.supplier_id;
-      
-      // Create new supplier if needed
-      if (formData.supplier_id === 'CREATE_NEW' || formData.supplier_id === 'FROM_INSPECTION') {
-        if (!newSupplier.company_name) {
-          setError('Supplier company name is required');
-          setSaving(false);
-          return;
-        }
-        
-        // Create the supplier
-        const createdSupplier = await fetch(`${API_URL}/suppliers`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('session_token')}`
-          },
-          body: JSON.stringify(newSupplier)
-        });
-        
-        if (!createdSupplier.ok) {
-          throw new Error('Failed to create supplier');
-        }
-        
-        const supplierData = await createdSupplier.json();
-        supplierIdToUse = supplierData.supplier_id;
+    // Create new supplier if needed
+    if (formData.supplier_id === 'CREATE_NEW' || formData.supplier_id === 'FROM_INSPECTION') {
+      if (!newSupplier.company_name) {
+        setError('Supplier company name is required');
+        setSaving(false);
+        return;
       }
       
-      // Now create inventory with the supplier ID
-      await onSave({
-        inspection_id: inspection.inspection_id,
-        additional_data: {
-          ...formData,
-          supplier_id: supplierIdToUse
-        }
+      // Create the supplier
+      const createdSupplier = await fetch(`${API_URL}/suppliers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+        },
+        body: JSON.stringify(newSupplier)
       });
-    } catch (err) {
-      setError(err.message || 'Failed to create inventory');
-      setSaving(false);
+      
+      if (!createdSupplier.ok) {
+        throw new Error('Failed to create supplier');
+      }
+      
+      const supplierData = await createdSupplier.json();
+      supplierIdToUse = supplierData.supplier_id;
     }
-  };
+    
+    // Now create inventory with the supplier ID
+    await onSave({
+      ...formData,
+      supplier_id: supplierIdToUse
+    });
+  } catch (err) {
+    setError(err.message || 'Failed to create inventory');
+    setSaving(false);
+  }
+};
 
   const formatCurrency = (amount) => {
     if (!amount) return '$0.00';
