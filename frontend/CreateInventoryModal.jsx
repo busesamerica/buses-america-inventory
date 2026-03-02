@@ -79,7 +79,8 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
     // Now create inventory with the supplier ID
     await onSave({
       ...formData,
-      supplier_id: supplierIdToUse
+      supplier_id: parseInt(supplierIdToUse),
+      purchase_price_usd: parseFloat(formData.purchase_price_usd)
     });
   } catch (err) {
     setError(err.message || 'Failed to create inventory');
