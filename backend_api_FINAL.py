@@ -717,11 +717,16 @@ async def get_audit_log(
 
 # ==================== EXCHANGE RATE ENDPOINTS ====================
 
-@app.get("/api/exchange-rates/current", response_model=ExchangeRate)
+@app.get("/api/exchange-rates/current")
 async def get_current_exchange_rate(db=Depends(get_db)):
     """Get current active USD/MXN exchange rate"""
-    query = "SELECT * FROM current_exchange_rate"
-    row = await db.fetchrow(query)
+    row = await db.fetchrow("""
+        SELECT rate_id, from_currency, to_currency, rate, effective_date, created_at, is_active
+        FROM exchange_rates
+        WHERE is_active = TRUE
+        ORDER BY effective_date DESC
+        LIMIT 1
+    """)
     if not row:
         raise HTTPException(status_code=404, detail="No active exchange rate found")
     return dict(row)
