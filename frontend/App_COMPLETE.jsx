@@ -1032,27 +1032,27 @@ function InventoryApp() {
   />
 )}
 
-      {showCreateInventoryModal && selectedInspection && (
-        <CreateInventoryModal
-          inspection={selectedInspection}
-          suppliers={suppliers}
-          onClose={() => {
-            setShowCreateInventoryModal(false);
-            setSelectedInspection(null);
-          }}
-            onCreate={async (inventoryData) => {
-              try {
-                await api.createInventoryFromInspection(selectedInspection.inspection_id, inventoryData);
-                setShowCreateInventoryModal(false);
-                setSelectedInspection(null);
-                await loadData();
-                alert('✅ Inventory created successfully from inspection!');
-              } catch (error) {
-                alert('Error: ' + error.message);
-              }
-          }}
-        />
-      )}
+        {showCreateInventoryModal && selectedInspection && (
+    <CreateInventoryModal
+      inspection={selectedInspection}
+      suppliers={suppliers}
+      onClose={() => {
+        setShowCreateInventoryModal(false);
+        setSelectedInspection(null);
+      }}
+      onSave={async (inventoryData) => {
+        try {
+          await api.createInventoryFromInspection(selectedInspection.inspection_id, inventoryData);
+          setShowCreateInventoryModal(false);
+          setSelectedInspection(null);
+          await loadData();
+          alert('✅ Inventory created successfully from inspection!');
+        } catch (error) {
+          alert('Error: ' + error.message);
+        }
+      }}
+    />
+  )}  
     </div>
   );
 }
