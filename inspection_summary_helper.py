@@ -84,16 +84,19 @@ Estimated Repair Cost: ${inspection_data.get('estimated_repair_cost_usd', 0):,.2
 
 {f"Inspector Notes: {inspection_data.get('inspector_notes')}" if inspection_data.get('inspector_notes') else ''}
 
+# Handle asking price with None check
+asking_price = inspection_data.get('seller_asking_price')
+asking_price_str = f"${asking_price:,.2f} USD" if asking_price is not None else "Not provided"
+
+summary_parts.append(f"""
 ───────────────────────────────────────────────────────────
 SELLER INFORMATION
 ───────────────────────────────────────────────────────────
-
 Seller: {inspection_data.get('seller_name', 'N/A')}
-Asking Price: ${inspection_data.get('seller_asking_price', 0):,.2f} USD
+Asking Price: {asking_price_str}
 Contact: {inspection_data.get('seller_contact', 'N/A')}
-
 ═══════════════════════════════════════════════════════════
-"""
+""")
     
     return summary.strip()
 
