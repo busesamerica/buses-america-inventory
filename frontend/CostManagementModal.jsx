@@ -1,87 +1,123 @@
-// CostManagementModal.jsx - Complete Cost Tracking for Inventory Units
-// Handles both USD (US Operations) and MXN (Mexico Operations) costs
+// CostManagementModal.jsx - Flexible Cost Tracking System
+// Uses cost_items table for unlimited cost entries
 
 const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
-  const [activeTab, setActiveTab] = React.useState('us-costs');
+  const [activeTab, setActiveTab] = React.useState('add-cost');
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
-
-  // Initialize form data with existing values
-  const [formData, setFormData] = React.useState({
-    // USD Costs (US Operations)
-    transport_to_stock_cost_usd: bus.transport_to_stock_cost_usd || 0,
-    initial_reconditioning_cost_usd: bus.initial_reconditioning_cost_usd || 0,
-    other_acquisition_costs_usd: bus.other_acquisition_costs_usd || 0,
-    
-    // MXN Costs (Mexico Operations)
-    import_cost_mxn: bus.import_cost_mxn || 0,
-    customs_cost_mxn: bus.customs_cost_mxn || 0,
-    regulatory_cost_mxn: bus.regulatory_cost_mxn || 0,
-    other_import_costs_mxn: bus.other_import_costs_mxn || 0,
-    transport_to_client_cost_mxn: bus.transport_to_client_cost_mxn || 0,
-    
-    // Preventive Maintenance (can be USD or MXN)
-    preventive_maintenance_cost: bus.preventive_maintenance_cost || 0,
-    preventive_maintenance_currency: bus.preventive_maintenance_currency || 'USD',
-    
-    // Notes
-    transport_to_stock_notes: bus.transport_to_stock_notes || '',
-    import_notes: bus.import_notes || '',
-    preventive_maintenance_notes: bus.preventive_maintenance_notes || ''
+  const [costs, setCosts] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  
+  // Form for adding new cost
+  const [newCost, setNewCost] = React.useState({
+    cost_category: 'Transport to Stock',
+    description: '',
+    amount: '',
+    currency: 'USD',
+    vendor: '',
+    invoice_number: '',
+    date_incurred: new Date().toISOString().split('T')[0]
   });
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+  const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
+
+  // Load existing costs
+  React.useEffect(() => {
+    loadCosts();
+  }, []);
+
+  const loadCosts = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('session_token');
+      const response = await fetch(`${API_URL}/inventory/${bus.inventory_id}/costs`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCosts(data);
+      }
+    } catch (err) {
+      console.error('Error loading costs:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleNumberChange = (e) => {
-    const { name, value } = e.target;
-    // Allow empty string or valid numbers
-    const numValue = value === '' ? 0 : parseFloat(value) || 0;
-    setFormData({ ...formData, [name]: numValue });
+  const handleAddCost = async (e) => {
+    e.preventDefault();
+    if (!newCost.description || !newCost.amount) {
+      setError('Description and amount are required');
+      return;
+    }
+    
+    setSaving(true);
+    setError('');
+    
+    try {
+      const token = localStorage.getItem('session_token');
+      const response = await fetch(`${API_URL}/inventory/${bus.inventory_id}/costs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ...newCost,
+          amount: parseFloat(newCost.amount)
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add cost');
+      }
+
+      // Reset form
+      setNewCost({
+        cost_category: 'Transport to Stock',
+        description: '',
+        amount: '',
+        currency: 'USD',
+        vendor: '',
+        invoice_number: '',
+        date_incurred: new Date().toISOString().split('T')[0]
+      });
+
+      // Reload costs
+      await loadCosts();
+      setActiveTab('cost-list');
+      alert('✅ Cost added successfully!');
+    } catch (err) {
+      setError(err.message || 'Failed to add cost');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  // Calculate totals
-  const purchasePrice = parseFloat(bus.purchase_price_usd) || 0;
-  
-  const usCostsTotal = 
-    parseFloat(formData.transport_to_stock_cost_usd) +
-    parseFloat(formData.initial_reconditioning_cost_usd) +
-    parseFloat(formData.other_acquisition_costs_usd);
-  
-  const totalCostInUSStock = purchasePrice + usCostsTotal;
-  
-  const mxCostsTotal = 
-    parseFloat(formData.import_cost_mxn) +
-    parseFloat(formData.customs_cost_mxn) +
-    parseFloat(formData.regulatory_cost_mxn) +
-    parseFloat(formData.other_import_costs_mxn) +
-    parseFloat(formData.transport_to_client_cost_mxn);
-  
-  // Add preventive maintenance to appropriate currency
-  const prevMaintCost = parseFloat(formData.preventive_maintenance_cost) || 0;
-  const prevMaintCurrency = formData.preventive_maintenance_currency;
-  
-  const hasMXNCosts = mxCostsTotal > 0 || (prevMaintCost > 0 && prevMaintCurrency === 'MXN');
-  
-  // Calculate grand total
-  let grandTotal = 0;
-  let grandTotalCurrency = 'USD';
-  
-  if (hasMXNCosts) {
-    // Convert everything to MXN
-    const exchangeRate = currentExchangeRate || 17.50;
-    const usdToMxn = totalCostInUSStock * exchangeRate;
-    const prevMaintMxn = prevMaintCurrency === 'MXN' ? prevMaintCost : prevMaintCost * exchangeRate;
-    grandTotal = usdToMxn + mxCostsTotal + prevMaintMxn;
-    grandTotalCurrency = 'MXN';
-  } else {
-    // Only USD costs
-    const prevMaintUsd = prevMaintCurrency === 'USD' ? prevMaintCost : 0;
-    grandTotal = totalCostInUSStock + prevMaintUsd;
-    grandTotalCurrency = 'USD';
-  }
+  const handleDeleteCost = async (costId) => {
+    if (!window.confirm('Delete this cost entry?')) return;
+    
+    try {
+      const token = localStorage.getItem('session_token');
+      const response = await fetch(`${API_URL}/inventory/${bus.inventory_id}/costs/${costId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete cost');
+      }
+
+      await loadCosts();
+      alert('Cost deleted successfully');
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  };
 
   const formatCurrency = (amount, currency = 'USD') => {
     if (!amount && amount !== 0) return currency === 'USD' ? '$0.00' : 'MXN $0.00';
@@ -92,30 +128,50 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
     return currency === 'USD' ? `$${formatted}` : `MXN $${formatted}`;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSaving(true);
-
-    try {
-      await onSave({
-        ...formData,
-        // Convert to numbers
-        transport_to_stock_cost_usd: parseFloat(formData.transport_to_stock_cost_usd) || 0,
-        initial_reconditioning_cost_usd: parseFloat(formData.initial_reconditioning_cost_usd) || 0,
-        other_acquisition_costs_usd: parseFloat(formData.other_acquisition_costs_usd) || 0,
-        import_cost_mxn: parseFloat(formData.import_cost_mxn) || 0,
-        customs_cost_mxn: parseFloat(formData.customs_cost_mxn) || 0,
-        regulatory_cost_mxn: parseFloat(formData.regulatory_cost_mxn) || 0,
-        other_import_costs_mxn: parseFloat(formData.other_import_costs_mxn) || 0,
-        transport_to_client_cost_mxn: parseFloat(formData.transport_to_client_cost_mxn) || 0,
-        preventive_maintenance_cost: parseFloat(formData.preventive_maintenance_cost) || 0
-      });
-    } catch (err) {
-      setError(err.message || 'Failed to save costs');
-      setSaving(false);
-    }
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
   };
+
+  // Calculate totals
+  const purchasePrice = parseFloat(bus.purchase_price_usd) || 0;
+  
+  const usdCosts = costs
+    .filter(c => c.currency === 'USD')
+    .reduce((sum, c) => sum + parseFloat(c.amount), 0);
+  
+  const mxnCosts = costs
+    .filter(c => c.currency === 'MXN')
+    .reduce((sum, c) => sum + parseFloat(c.amount), 0);
+  
+  const totalUSD = purchasePrice + usdCosts;
+  
+  // Grand total logic: if ANY MXN costs, convert everything to MXN
+  const hasMXNCosts = mxnCosts > 0;
+  let grandTotal = 0;
+  let grandTotalCurrency = 'USD';
+  
+  if (hasMXNCosts) {
+    const exchangeRate = currentExchangeRate || 17.50;
+    grandTotal = (totalUSD * exchangeRate) + mxnCosts;
+    grandTotalCurrency = 'MXN';
+  } else {
+    grandTotal = totalUSD;
+    grandTotalCurrency = 'USD';
+  }
+
+  // Group costs by category
+  const costsByCategory = costs.reduce((acc, cost) => {
+    if (!acc[cost.cost_category]) {
+      acc[cost.cost_category] = [];
+    }
+    acc[cost.cost_category].push(cost);
+    return acc;
+  }, {});
 
   return (
     <div style={{
@@ -135,7 +191,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
         background: 'white',
         borderRadius: '12px',
         width: '100%',
-        maxWidth: '900px',
+        maxWidth: '1000px',
         maxHeight: '90vh',
         display: 'flex',
         flexDirection: 'column',
@@ -185,36 +241,36 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
           background: '#f9fafb'
         }}>
           <button
-            onClick={() => setActiveTab('us-costs')}
+            onClick={() => setActiveTab('add-cost')}
             style={{
               flex: 1,
               padding: '1rem',
               border: 'none',
-              background: activeTab === 'us-costs' ? 'white' : 'transparent',
-              borderBottom: activeTab === 'us-costs' ? '2px solid #10b981' : '2px solid transparent',
+              background: activeTab === 'add-cost' ? 'white' : 'transparent',
+              borderBottom: activeTab === 'add-cost' ? '2px solid #10b981' : '2px solid transparent',
               cursor: 'pointer',
-              fontWeight: activeTab === 'us-costs' ? '700' : '500',
-              color: activeTab === 'us-costs' ? '#10b981' : '#6b7280',
+              fontWeight: activeTab === 'add-cost' ? '700' : '500',
+              color: activeTab === 'add-cost' ? '#10b981' : '#6b7280',
               fontSize: '0.875rem'
             }}
           >
-            🇺🇸 US Costs (USD)
+            ➕ Add Cost
           </button>
           <button
-            onClick={() => setActiveTab('mx-costs')}
+            onClick={() => setActiveTab('cost-list')}
             style={{
               flex: 1,
               padding: '1rem',
               border: 'none',
-              background: activeTab === 'mx-costs' ? 'white' : 'transparent',
-              borderBottom: activeTab === 'mx-costs' ? '2px solid #10b981' : '2px solid transparent',
+              background: activeTab === 'cost-list' ? 'white' : 'transparent',
+              borderBottom: activeTab === 'cost-list' ? '2px solid #10b981' : '2px solid transparent',
               cursor: 'pointer',
-              fontWeight: activeTab === 'mx-costs' ? '700' : '500',
-              color: activeTab === 'mx-costs' ? '#10b981' : '#6b7280',
+              fontWeight: activeTab === 'cost-list' ? '700' : '500',
+              color: activeTab === 'cost-list' ? '#10b981' : '#6b7280',
               fontSize: '0.875rem'
             }}
           >
-            🇲🇽 Mexico Costs (MXN)
+            📋 Cost List ({costs.length})
           </button>
           <button
             onClick={() => setActiveTab('summary')}
@@ -235,7 +291,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
         </div>
 
         {/* Content */}
-        <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
           {error && (
             <div style={{
               padding: '1rem',
@@ -249,36 +305,17 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
             </div>
           )}
 
-          {/* US Costs Tab */}
-          {activeTab === 'us-costs' && (
-            <div style={{ display: 'grid', gap: '1.5rem' }}>
-              <div style={{
-                padding: '1rem',
-                background: '#f0fdf4',
-                borderRadius: '0.5rem',
-                border: '1px solid #86efac'
-              }}>
-                <div style={{ fontWeight: '600', marginBottom: '0.5rem' }}>Purchase Price</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#10b981' }}>
-                  {formatCurrency(purchasePrice, 'USD')}
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                  Already recorded at purchase
-                </div>
-              </div>
-
+          {/* Add Cost Tab */}
+          {activeTab === 'add-cost' && (
+            <form onSubmit={handleAddCost} style={{ display: 'grid', gap: '1.5rem', maxWidth: '600px', margin: '0 auto' }}>
               <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Transport to US Stock (USD)
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
+                  Category *
                 </label>
-                <input
-                  type="number"
-                  name="transport_to_stock_cost_usd"
-                  value={formData.transport_to_stock_cost_usd}
-                  onChange={handleNumberChange}
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
+                <select
+                  value={newCost.cost_category}
+                  onChange={(e) => setNewCost({ ...newCost, cost_category: e.target.value })}
+                  required
                   style={{
                     width: '100%',
                     padding: '0.75rem',
@@ -286,121 +323,31 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                     borderRadius: '0.5rem',
                     fontSize: '1rem'
                   }}
-                />
-                <textarea
-                  name="transport_to_stock_notes"
-                  value={formData.transport_to_stock_notes}
-                  onChange={handleChange}
-                  placeholder="Notes (optional)"
-                  rows="2"
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '0.5rem',
-                    fontSize: '0.875rem',
-                    marginTop: '0.5rem',
-                    resize: 'vertical'
-                  }}
-                />
+                >
+                  <option value="Purchase">Purchase</option>
+                  <option value="Transport to Stock">Transport to Stock</option>
+                  <option value="Initial Reconditioning">Initial Reconditioning</option>
+                  <option value="Other Acquisition">Other Acquisition</option>
+                  <option value="Import">Import</option>
+                  <option value="Customs">Customs</option>
+                  <option value="Regulatory">Regulatory</option>
+                  <option value="Preventive Maintenance">Preventive Maintenance</option>
+                  <option value="Transport to Client">Transport to Client</option>
+                  <option value="Repair">Repair</option>
+                  <option value="Other">Other</option>
+                </select>
               </div>
 
               <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Initial Reconditioning (USD)
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
+                  Description *
                 </label>
                 <input
-                  type="number"
-                  name="initial_reconditioning_cost_usd"
-                  value={formData.initial_reconditioning_cost_usd}
-                  onChange={handleNumberChange}
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '0.5rem',
-                    fontSize: '1rem'
-                  }}
-                />
-                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                  Repairs, cleaning, prep work before sale
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Other Acquisition Costs (USD)
-                </label>
-                <input
-                  type="number"
-                  name="other_acquisition_costs_usd"
-                  value={formData.other_acquisition_costs_usd}
-                  onChange={handleNumberChange}
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '0.5rem',
-                    fontSize: '1rem'
-                  }}
-                />
-                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                  Title, registration, fees, etc.
-                </div>
-              </div>
-
-              <div style={{
-                padding: '1rem',
-                background: '#f9fafb',
-                borderRadius: '0.5rem',
-                border: '1px solid #e5e7eb'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                  <span style={{ fontWeight: '500' }}>Total Cost in US Stock:</span>
-                  <span style={{ fontWeight: '700', fontSize: '1.25rem', color: '#10b981' }}>
-                    {formatCurrency(totalCostInUSStock, 'USD')}
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                  Purchase + Transport + Reconditioning + Other
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Mexico Costs Tab */}
-          {activeTab === 'mx-costs' && (
-            <div style={{ display: 'grid', gap: '1.5rem' }}>
-              <div style={{
-                padding: '1rem',
-                background: '#fef3c7',
-                borderRadius: '0.5rem',
-                border: '1px solid #fcd34d'
-              }}>
-                <div style={{ fontWeight: '600', marginBottom: '0.5rem' }}>ℹ️ Mexico Operations</div>
-                <div style={{ fontSize: '0.875rem', color: '#92400e' }}>
-                  All costs in this section are in Mexican Pesos (MXN)
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Import Costs (MXN)
-                </label>
-                <input
-                  type="number"
-                  name="import_cost_mxn"
-                  value={formData.import_cost_mxn}
-                  onChange={handleNumberChange}
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
+                  type="text"
+                  value={newCost.description}
+                  onChange={(e) => setNewCost({ ...newCost, description: e.target.value })}
+                  placeholder="e.g., Towing from auction to warehouse"
+                  required
                   style={{
                     width: '100%',
                     padding: '0.75rem',
@@ -411,104 +358,16 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Customs Costs (MXN)
-                </label>
-                <input
-                  type="number"
-                  name="customs_cost_mxn"
-                  value={formData.customs_cost_mxn}
-                  onChange={handleNumberChange}
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '0.5rem',
-                    fontSize: '1rem'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Regulatory Costs (MXN)
-                </label>
-                <input
-                  type="number"
-                  name="regulatory_cost_mxn"
-                  value={formData.regulatory_cost_mxn}
-                  onChange={handleNumberChange}
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '0.5rem',
-                    fontSize: '1rem'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Other Import Costs (MXN)
-                </label>
-                <input
-                  type="number"
-                  name="other_import_costs_mxn"
-                  value={formData.other_import_costs_mxn}
-                  onChange={handleNumberChange}
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '0.5rem',
-                    fontSize: '1rem'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Transport to Client (MXN)
-                </label>
-                <input
-                  type="number"
-                  name="transport_to_client_cost_mxn"
-                  value={formData.transport_to_client_cost_mxn}
-                  onChange={handleNumberChange}
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '0.5rem',
-                    fontSize: '1rem'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                  Preventive Maintenance
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.5rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
+                    Currency *
+                  </label>
                   <select
-                    name="preventive_maintenance_currency"
-                    value={formData.preventive_maintenance_currency}
-                    onChange={handleChange}
+                    value={newCost.currency}
+                    onChange={(e) => setNewCost({ ...newCost, currency: e.target.value })}
                     style={{
+                      width: '100%',
                       padding: '0.75rem',
                       border: '1px solid #d1d5db',
                       borderRadius: '0.5rem',
@@ -518,15 +377,22 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                     <option value="USD">USD</option>
                     <option value="MXN">MXN</option>
                   </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
+                    Amount *
+                  </label>
                   <input
                     type="number"
-                    name="preventive_maintenance_cost"
-                    value={formData.preventive_maintenance_cost}
-                    onChange={handleNumberChange}
                     step="0.01"
                     min="0"
+                    value={newCost.amount}
+                    onChange={(e) => setNewCost({ ...newCost, amount: e.target.value })}
                     placeholder="0.00"
+                    required
                     style={{
+                      width: '100%',
                       padding: '0.75rem',
                       border: '1px solid #d1d5db',
                       borderRadius: '0.5rem',
@@ -534,170 +400,277 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                     }}
                   />
                 </div>
-                <textarea
-                  name="preventive_maintenance_notes"
-                  value={formData.preventive_maintenance_notes}
-                  onChange={handleChange}
-                  placeholder="Notes (optional)"
-                  rows="2"
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
+                  Date
+                </label>
+                <input
+                  type="date"
+                  value={newCost.date_incurred}
+                  onChange={(e) => setNewCost({ ...newCost, date_incurred: e.target.value })}
                   style={{
                     width: '100%',
                     padding: '0.75rem',
                     border: '1px solid #d1d5db',
                     borderRadius: '0.5rem',
-                    fontSize: '0.875rem',
-                    marginTop: '0.5rem',
-                    resize: 'vertical'
+                    fontSize: '1rem'
                   }}
                 />
               </div>
 
-              <textarea
-                name="import_notes"
-                value={formData.import_notes}
-                onChange={handleChange}
-                placeholder="General import/Mexico operations notes (optional)"
-                rows="3"
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.5rem',
-                  fontSize: '0.875rem',
-                  resize: 'vertical'
-                }}
-              />
-
-              <div style={{
-                padding: '1rem',
-                background: '#f9fafb',
-                borderRadius: '0.5rem',
-                border: '1px solid #e5e7eb'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                  <span style={{ fontWeight: '500' }}>Total Mexico Costs:</span>
-                  <span style={{ fontWeight: '700', fontSize: '1.25rem', color: '#10b981' }}>
-                    {formatCurrency(mxCostsTotal, 'MXN')}
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                  Import + Customs + Regulatory + Other + Transport
-                </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
+                  Vendor (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={newCost.vendor}
+                  onChange={(e) => setNewCost({ ...newCost, vendor: e.target.value })}
+                  placeholder="Vendor name"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '0.5rem',
+                    fontSize: '1rem'
+                  }}
+                />
               </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
+                  Invoice # (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={newCost.invoice_number}
+                  onChange={(e) => setNewCost({ ...newCost, invoice_number: e.target.value })}
+                  placeholder="INV-12345"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '0.5rem',
+                    fontSize: '1rem'
+                  }}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={saving}
+                style={{
+                  padding: '1rem',
+                  background: saving ? '#9ca3af' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  fontWeight: '700',
+                  fontSize: '1rem'
+                }}
+              >
+                {saving ? '💾 Adding Cost...' : '✅ Add Cost'}
+              </button>
+            </form>
+          )}
+
+          {/* Cost List Tab */}
+          {activeTab === 'cost-list' && (
+            <div>
+              {loading ? (
+                <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+                  Loading costs...
+                </div>
+              ) : costs.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+                  <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>💰</div>
+                  <div>No additional costs yet</div>
+                  <button
+                    onClick={() => setActiveTab('add-cost')}
+                    style={{
+                      marginTop: '1rem',
+                      padding: '0.75rem 1.5rem',
+                      background: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
+                      fontWeight: '600'
+                    }}
+                  >
+                    ➕ Add First Cost
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: '1.5rem' }}>
+                  {Object.entries(costsByCategory).map(([category, categoryCosts]) => (
+                    <div key={category} style={{
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '0.5rem',
+                      overflow: 'hidden'
+                    }}>
+                      <div style={{
+                        padding: '0.75rem 1rem',
+                        background: '#f9fafb',
+                        fontWeight: '600',
+                        borderBottom: '1px solid #e5e7eb'
+                      }}>
+                        {category} ({categoryCosts.length})
+                      </div>
+                      {categoryCosts.map((cost) => (
+                        <div key={cost.cost_id} style={{
+                          padding: '1rem',
+                          borderBottom: '1px solid #f3f4f6',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'start'
+                        }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: '600', marginBottom: '0.25rem' }}>
+                              {cost.description}
+                            </div>
+                            <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                              {cost.vendor && <span>Vendor: {cost.vendor} • </span>}
+                              {cost.invoice_number && <span>Invoice: {cost.invoice_number} • </span>}
+                              {formatDate(cost.date_incurred)}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <div style={{
+                              fontWeight: '700',
+                              fontSize: '1.125rem',
+                              color: '#10b981',
+                              textAlign: 'right'
+                            }}>
+                              {formatCurrency(cost.amount, cost.currency)}
+                            </div>
+                            <button
+                              onClick={() => handleDeleteCost(cost.cost_id)}
+                              style={{
+                                padding: '0.5rem',
+                                background: '#fee2e2',
+                                color: '#dc2626',
+                                border: 'none',
+                                borderRadius: '0.375rem',
+                                cursor: 'pointer',
+                                fontSize: '0.875rem'
+                              }}
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
           {/* Summary Tab */}
           {activeTab === 'summary' && (
-            <div style={{ display: 'grid', gap: '1rem' }}>
+            <div style={{ display: 'grid', gap: '1.5rem', maxWidth: '800px', margin: '0 auto' }}>
+              {/* GRAND TOTAL - BIG AND BOLD */}
               <div style={{
-                padding: '1.5rem',
+                padding: '2rem',
                 background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
-                borderRadius: '0.75rem',
-                border: '2px solid #86efac'
+                borderRadius: '1rem',
+                border: '3px solid #10b981',
+                textAlign: 'center'
               }}>
-                <div style={{ fontSize: '0.875rem', color: '#166534', fontWeight: '600', marginBottom: '0.5rem' }}>
-                  GRAND TOTAL
+                <div style={{ fontSize: '0.875rem', color: '#166534', fontWeight: '600', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Grand Total
                 </div>
-                <div style={{ fontSize: '2.5rem', fontWeight: '700', color: '#10b981', marginBottom: '0.5rem' }}>
+                <div style={{ fontSize: '3.5rem', fontWeight: '900', color: '#10b981', marginBottom: '0.5rem', lineHeight: 1 }}>
                   {formatCurrency(grandTotal, grandTotalCurrency)}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#166534' }}>
+                <div style={{ fontSize: '0.875rem', color: '#166534' }}>
                   {hasMXNCosts ? '(All costs converted to MXN)' : '(USD costs only)'}
                 </div>
               </div>
 
+              {/* Cost Breakdown */}
               <div style={{
-                padding: '1rem',
+                padding: '1.5rem',
                 background: '#f9fafb',
-                borderRadius: '0.5rem',
+                borderRadius: '0.75rem',
                 border: '1px solid #e5e7eb'
               }}>
-                <div style={{ fontWeight: '600', marginBottom: '1rem', fontSize: '1.125rem' }}>Cost Breakdown</div>
+                <div style={{ fontWeight: '700', marginBottom: '1.5rem', fontSize: '1.125rem' }}>Cost Breakdown</div>
                 
                 <div style={{ display: 'grid', gap: '0.75rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid #e5e7eb' }}>
-                    <span style={{ color: '#6b7280' }}>Purchase Price:</span>
-                    <span style={{ fontWeight: '600' }}>{formatCurrency(purchasePrice, 'USD')}</span>
-                  </div>
-                  
-                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid #e5e7eb' }}>
-                    <span style={{ color: '#6b7280' }}>Transport to Stock:</span>
-                    <span style={{ fontWeight: '600' }}>{formatCurrency(formData.transport_to_stock_cost_usd, 'USD')}</span>
-                  </div>
-                  
-                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid #e5e7eb' }}>
-                    <span style={{ color: '#6b7280' }}>Initial Reconditioning:</span>
-                    <span style={{ fontWeight: '600' }}>{formatCurrency(formData.initial_reconditioning_cost_usd, 'USD')}</span>
-                  </div>
-                  
-                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid #e5e7eb' }}>
-                    <span style={{ color: '#6b7280' }}>Other Acquisition:</span>
-                    <span style={{ fontWeight: '600' }}>{formatCurrency(formData.other_acquisition_costs_usd, 'USD')}</span>
-                  </div>
-                  
-                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '2px solid #10b981', paddingTop: '0.5rem' }}>
-                    <span style={{ fontWeight: '600' }}>US Operations Total:</span>
-                    <span style={{ fontWeight: '700', color: '#10b981' }}>{formatCurrency(totalCostInUSStock, 'USD')}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.75rem', borderBottom: '2px solid #10b981' }}>
+                    <span style={{ fontWeight: '600' }}>Purchase Price:</span>
+                    <span style={{ fontWeight: '700', color: '#10b981' }}>{formatCurrency(purchasePrice, 'USD')}</span>
                   </div>
 
-                  {hasMXNCosts && (
+                  {costs.length > 0 ? (
                     <>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid #e5e7eb', marginTop: '1rem' }}>
-                        <span style={{ color: '#6b7280' }}>Import Costs:</span>
-                        <span style={{ fontWeight: '600' }}>{formatCurrency(formData.import_cost_mxn, 'MXN')}</span>
+                      <div style={{ marginTop: '1rem', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#6b7280', textTransform: 'uppercase' }}>
+                        Additional Costs
                       </div>
-                      
-                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid #e5e7eb' }}>
-                        <span style={{ color: '#6b7280' }}>Customs Costs:</span>
-                        <span style={{ fontWeight: '600' }}>{formatCurrency(formData.customs_cost_mxn, 'MXN')}</span>
-                      </div>
-                      
-                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid #e5e7eb' }}>
-                        <span style={{ color: '#6b7280' }}>Regulatory Costs:</span>
-                        <span style={{ fontWeight: '600' }}>{formatCurrency(formData.regulatory_cost_mxn, 'MXN')}</span>
-                      </div>
-                      
-                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid #e5e7eb' }}>
-                        <span style={{ color: '#6b7280' }}>Other Import:</span>
-                        <span style={{ fontWeight: '600' }}>{formatCurrency(formData.other_import_costs_mxn, 'MXN')}</span>
-                      </div>
-                      
-                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid #e5e7eb' }}>
-                        <span style={{ color: '#6b7280' }}>Transport to Client:</span>
-                        <span style={{ fontWeight: '600' }}>{formatCurrency(formData.transport_to_client_cost_mxn, 'MXN')}</span>
-                      </div>
-                      
-                      {prevMaintCost > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid #e5e7eb' }}>
-                          <span style={{ color: '#6b7280' }}>Preventive Maintenance:</span>
-                          <span style={{ fontWeight: '600' }}>{formatCurrency(prevMaintCost, prevMaintCurrency)}</span>
-                        </div>
-                      )}
-                      
-                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '2px solid #10b981', paddingTop: '0.5rem' }}>
-                        <span style={{ fontWeight: '600' }}>Mexico Operations Total:</span>
-                        <span style={{ fontWeight: '700', color: '#10b981' }}>{formatCurrency(mxCostsTotal + (prevMaintCurrency === 'MXN' ? prevMaintCost : 0), 'MXN')}</span>
-                      </div>
+                      {Object.entries(costsByCategory).map(([category, categoryCosts]) => {
+                        const categoryTotal = categoryCosts.reduce((sum, c) => {
+                          if (c.currency === 'USD') return sum + parseFloat(c.amount);
+                          return sum;
+                        }, 0);
+                        const categoryTotalMXN = categoryCosts.reduce((sum, c) => {
+                          if (c.currency === 'MXN') return sum + parseFloat(c.amount);
+                          return sum;
+                        }, 0);
 
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        padding: '1rem',
-                        background: '#fef3c7',
-                        borderRadius: '0.5rem',
-                        marginTop: '0.5rem'
-                      }}>
-                        <span style={{ fontSize: '0.875rem', color: '#92400e' }}>Exchange Rate Used:</span>
-                        <span style={{ fontWeight: '600', color: '#92400e' }}>1 USD = {currentExchangeRate || 17.50} MXN</span>
+                        return (
+                          <div key={category}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid #e5e7eb', fontSize: '0.875rem' }}>
+                              <span style={{ color: '#6b7280' }}>{category}:</span>
+                              <span style={{ fontWeight: '600' }}>
+                                {categoryTotal > 0 && formatCurrency(categoryTotal, 'USD')}
+                                {categoryTotal > 0 && categoryTotalMXN > 0 && ' + '}
+                                {categoryTotalMXN > 0 && formatCurrency(categoryTotalMXN, 'MXN')}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '1rem', paddingBottom: '0.75rem', borderTop: '2px solid #e5e7eb', borderBottom: '2px solid #10b981', marginTop: '0.5rem' }}>
+                        <span style={{ fontWeight: '600' }}>Total Additional Costs:</span>
+                        <span style={{ fontWeight: '700', color: '#10b981' }}>
+                          {usdCosts > 0 && formatCurrency(usdCosts, 'USD')}
+                          {usdCosts > 0 && mxnCosts > 0 && ' + '}
+                          {mxnCosts > 0 && formatCurrency(mxnCosts, 'MXN')}
+                        </span>
                       </div>
                     </>
+                  ) : (
+                    <div style={{ padding: '1rem', textAlign: 'center', color: '#6b7280', fontSize: '0.875rem' }}>
+                      No additional costs yet
+                    </div>
+                  )}
+
+                  {hasMXNCosts && (
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      padding: '1rem',
+                      background: '#fef3c7',
+                      borderRadius: '0.5rem',
+                      marginTop: '1rem',
+                      fontSize: '0.875rem'
+                    }}>
+                      <span style={{ color: '#92400e', fontWeight: '600' }}>Exchange Rate Used:</span>
+                      <span style={{ fontWeight: '700', color: '#92400e' }}>1 USD = {currentExchangeRate || 17.50} MXN</span>
+                    </div>
                   )}
                 </div>
               </div>
             </div>
           )}
-        </form>
+        </div>
 
         {/* Footer */}
         <div style={{
@@ -708,8 +681,10 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
           alignItems: 'center',
           background: '#f9fafb'
         }}>
+          <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+            {costs.length} cost {costs.length === 1 ? 'entry' : 'entries'}
+          </div>
           <button
-            type="button"
             onClick={onClose}
             style={{
               padding: '0.75rem 1.5rem',
@@ -721,23 +696,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
               fontSize: '0.875rem'
             }}
           >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={saving}
-            style={{
-              padding: '0.75rem 2rem',
-              background: saving ? '#9ca3af' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.5rem',
-              cursor: saving ? 'not-allowed' : 'pointer',
-              fontWeight: '700',
-              fontSize: '0.875rem'
-            }}
-          >
-            {saving ? '💾 Saving...' : '✅ Save Costs'}
+            Close
           </button>
         </div>
       </div>
