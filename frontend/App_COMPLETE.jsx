@@ -541,10 +541,23 @@ function InventoryApp() {
   const [selectedInspection, setSelectedInspection] = useState(null);
   const [showInspectionReport, setShowInspectionReport] = useState(false);
   const [showCreateInventoryModal, setShowCreateInventoryModal] = useState(false);
+  const [showCostModal, setShowCostModal] = useState(false);
+  const [selectedBusForCosts, setSelectedBusForCosts] = useState(null);
+  const [currentExchangeRate, setCurrentExchangeRate] = useState(17.50);
 
   useEffect(() => {
     loadData();
+    loadExchangeRate();
   }, []);
+
+  const loadExchangeRate = async () => {
+    try {
+      const rate = await api.getCurrentExchangeRate();
+      setCurrentExchangeRate(rate.rate);
+    } catch (error) {
+      console.error('Error loading exchange rate:', error);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -588,6 +601,18 @@ function InventoryApp() {
       alert('Bus deleted successfully');
     } catch (error) {
       alert('Error deleting bus: ' + error.message);
+    }
+  };
+
+  const handleSaveCosts = async (costData) => {
+    try {
+      await api.updateInventory(selectedBusForCosts.inventory_id, costData);
+      await loadData();
+      setShowCostModal(false);
+      setSelectedBusForCosts(null);
+      alert('✅ Costs saved successfully!');
+    } catch (error) {
+      throw new Error(error.message || 'Failed to save costs');
     }
   };
 
@@ -794,9 +819,18 @@ function InventoryApp() {
                             <div style={{fontSize:'1.5rem',fontWeight:'700',color:'#28a745',marginBottom:'0.5rem'}}>
                               {formatCurrency(bus.purchase_price_usd)}
                             </div>
-                            <div style={{display:'flex',gap:'0.5rem'}}>
+                            <div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap'}}>
                               <button onClick={() => {setEditingBus(bus);setShowBusForm(true);}} style={{padding:'0.5rem 1rem',background:'#007bff',color:'white',border:'none',borderRadius:'4px',fontSize:'0.875rem',cursor:'pointer'}}>
                                 ✏️ Edit
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  setSelectedBusForCosts(bus);
+                                  setShowCostModal(true);
+                                }} 
+                                style={{padding:'0.5rem 1rem',background:'#10b981',color:'white',border:'none',borderRadius:'4px',fontSize:'0.875rem',cursor:'pointer',fontWeight:'600'}}
+                              >
+                                💰 Costs
                               </button>
                               {user.role === 'admin' && (
                                 <button onClick={() => handleDeleteBus(bus)} style={{padding:'0.5rem 1rem',background:'#dc3545',color:'white',border:'none',borderRadius:'4px',fontSize:'0.875rem',cursor:'pointer'}}>
@@ -1052,7 +1086,19 @@ function InventoryApp() {
         }
       }}
     />
-  )}  
+  )}
+
+  {showCostModal && selectedBusForCosts && (
+    <CostManagementModal
+      bus={selectedBusForCosts}
+      currentExchangeRate={currentExchangeRate}
+      onClose={() => {
+        setShowCostModal(false);
+        setSelectedBusForCosts(null);
+      }}
+      onSave={handleSaveCosts}
+    />
+  )}
     </div>
   );
 }
