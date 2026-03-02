@@ -1376,6 +1376,49 @@ async def create_inventory_from_inspection(
         )
         RETURNING *
     """
+    
+    # Execute the inventory creation
+    inventory_row = await db.fetchrow(
+        inventory_query,
+        inspection['vin'],
+        additional_data.get('stock_number'),
+        inspection['year'],
+        inspection['make'],
+        inspection['model'],
+        inspection['odometer'],
+        inspection['passenger_capacity'],
+        inspection['wheelchair_capacity'],
+        inspection['engine_make'],
+        inspection['engine_model'],
+        inspection['engine_type'],
+        inspection['transmission'],
+        inspection['fuel_type'],
+        inspection['gvwr'],
+        inspection['length_feet'],
+        inspection['exterior_color'],
+        inspection['interior_color'],
+        inspection['title_status'],
+        condition,
+        inspection['estimated_repair_cost_usd'],
+        inspection['inspection_location'],
+        inspection_id,
+        summary,
+        additional_data.get('purchase_date'),
+        additional_data.get('purchase_price_usd'),
+        additional_data.get('supplier_id'),
+        additional_data.get('current_location', 'United States'),
+        'Available',
+        user['username']
+    )
+    
+    # Mark inspection as purchased
+    await db.execute(
+        "UPDATE pre_purchase_inspections SET purchased = true WHERE inspection_id = $1",
+        inspection_id
+    )
+    
+    return dict(inventory_row)
+    
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
