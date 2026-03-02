@@ -460,7 +460,7 @@ function SupplierForm({ onSave, onCancel }) {
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
               <div>
                 <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Type *</label>
-                <select name="supplier_type" value={formData.supplier_type} onChange={handleChange} required style={{...}}>
+                <select name="supplier_type" value={formData.supplier_type} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}>
                 <option value="Dealer">Dealer</option>
                 <option value="Auction">Auction</option>
                 <option value="Private Seller">Private Seller</option>
