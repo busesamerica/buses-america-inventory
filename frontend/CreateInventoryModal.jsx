@@ -48,30 +48,32 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
         setSaving(false);
         return;
       }
+      
       // Check if supplier already exists
-  const existingSupplier = suppliers.find(s => 
-    s.company_name.toLowerCase() === newSupplier.company_name.toLowerCase()
-  );
-  
-  if (existingSupplier) {
-    supplierIdToUse = existingSupplier.supplier_id;
-  } else {
-    // Create the supplier only if it doesn't exist
-      const createdSupplier = await fetch(`${API_URL}/suppliers`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('session_token')}`
-        },
-        body: JSON.stringify(newSupplier)
-      });
+      const existingSupplier = suppliers.find(s => 
+        s.company_name.toLowerCase() === newSupplier.company_name.toLowerCase()
+      );
       
-      if (!createdSupplier.ok) {
-        throw new Error('Failed to create supplier');
+      if (existingSupplier) {
+        supplierIdToUse = existingSupplier.supplier_id;
+      } else {
+        // Create the supplier only if it doesn't exist
+        const createdSupplier = await fetch(`${API_URL}/suppliers`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+          },
+          body: JSON.stringify(newSupplier)
+        });
+        
+        if (!createdSupplier.ok) {
+          throw new Error('Failed to create supplier');
+        }
+        
+        const supplierData = await createdSupplier.json();
+        supplierIdToUse = supplierData.supplier_id;
       }
-      
-      const supplierData = await createdSupplier.json();
-      supplierIdToUse = supplierData.supplier_id;
     }
     
     // Now create inventory with the supplier ID
