@@ -1366,7 +1366,7 @@ async def create_inventory_from_inspection(
             passenger_capacity, wheelchair_capacity,
             engine_make, engine_model, engine_type, transmission, fuel_type,
             gvwr, length_feet, exterior_color, interior_color, title_status,
-            condition, acquisition_location, pre_inspection_id, internal_notes,
+            condition, purchase_location, pre_inspection_id, internal_notes,
             purchase_date, purchase_price_usd, supplier_id,
             current_location, status, created_by
         ) VALUES (
