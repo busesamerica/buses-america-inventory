@@ -585,100 +585,162 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
           {/* Summary Tab */}
           {activeTab === 'summary' && (
             <div style={{ display: 'grid', gap: '1.5rem', maxWidth: '800px', margin: '0 auto' }}>
-              {/* GRAND TOTAL - BIG AND BOLD */}
-              <div style={{
-                padding: '2rem',
-                background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
-                borderRadius: '1rem',
-                border: '3px solid #10b981',
-                textAlign: 'center'
-              }}>
-                <div style={{ fontSize: '0.875rem', color: '#166534', fontWeight: '600', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Grand Total
-                </div>
-                <div style={{ fontSize: '3.5rem', fontWeight: '900', color: '#10b981', marginBottom: '0.5rem', lineHeight: 1 }}>
-                  {formatCurrency(grandTotal, grandTotalCurrency)}
-                </div>
-                <div style={{ fontSize: '0.875rem', color: '#166534' }}>
-                  {hasMXNCosts ? '(All costs converted to MXN)' : '(USD costs only)'}
-                </div>
-              </div>
-
-              {/* Cost Breakdown */}
+              
+              {/* USD COSTS SECTION */}
               <div style={{
                 padding: '1.5rem',
-                background: '#f9fafb',
+                background: 'white',
                 borderRadius: '0.75rem',
-                border: '1px solid #e5e7eb'
+                border: '2px solid #3b82f6'
               }}>
-                <div style={{ fontWeight: '700', marginBottom: '1.5rem', fontSize: '1.125rem' }}>Cost Breakdown</div>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '0.5rem',
+                  marginBottom: '1rem',
+                  paddingBottom: '0.75rem',
+                  borderBottom: '2px solid #3b82f6'
+                }}>
+                  <span style={{ fontSize: '1.5rem' }}>🇺🇸</span>
+                  <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '700', color: '#1e40af' }}>
+                    US Costs (USD)
+                  </h3>
+                </div>
                 
                 <div style={{ display: 'grid', gap: '0.75rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.75rem', borderBottom: '2px solid #10b981' }}>
-                    <span style={{ fontWeight: '600' }}>Purchase Price:</span>
-                    <span style={{ fontWeight: '700', color: '#10b981' }}>{formatCurrency(purchasePrice, 'USD')}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem' }}>
+                    <span style={{ color: '#6b7280' }}>Purchase Price:</span>
+                    <span style={{ fontWeight: '700', color: '#1e40af' }}>{formatCurrency(purchasePrice, 'USD')}</span>
                   </div>
 
-                  {costs.length > 0 ? (
+                  {costs.filter(c => c.currency === 'USD').length > 0 ? (
                     <>
-                      <div style={{ marginTop: '1rem', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#6b7280', textTransform: 'uppercase' }}>
-                        Additional Costs
+                      <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.5rem', marginBottom: '0.25rem', textTransform: 'uppercase', fontWeight: '600' }}>
+                        Additional USD Costs:
                       </div>
                       {Object.entries(costsByCategory).map(([category, categoryCosts]) => {
-                        const categoryTotal = categoryCosts.reduce((sum, c) => {
-                          if (c.currency === 'USD') return sum + parseFloat(c.amount);
-                          return sum;
-                        }, 0);
-                        const categoryTotalMXN = categoryCosts.reduce((sum, c) => {
-                          if (c.currency === 'MXN') return sum + parseFloat(c.amount);
-                          return sum;
-                        }, 0);
-
+                        const categoryUSD = categoryCosts.filter(c => c.currency === 'USD');
+                        if (categoryUSD.length === 0) return null;
+                        const categoryTotal = categoryUSD.reduce((sum, c) => sum + parseFloat(c.amount), 0);
+                        
                         return (
-                          <div key={category}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid #e5e7eb', fontSize: '0.875rem' }}>
-                              <span style={{ color: '#6b7280' }}>{category}:</span>
-                              <span style={{ fontWeight: '600' }}>
-                                {categoryTotal > 0 && formatCurrency(categoryTotal, 'USD')}
-                                {categoryTotal > 0 && categoryTotalMXN > 0 && ' + '}
-                                {categoryTotalMXN > 0 && formatCurrency(categoryTotalMXN, 'MXN')}
-                              </span>
-                            </div>
+                          <div key={category} style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', fontSize: '0.875rem' }}>
+                            <span style={{ color: '#6b7280' }}>{category}:</span>
+                            <span style={{ fontWeight: '600', color: '#1e40af' }}>{formatCurrency(categoryTotal, 'USD')}</span>
                           </div>
                         );
                       })}
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '1rem', paddingBottom: '0.75rem', borderTop: '2px solid #e5e7eb', borderBottom: '2px solid #10b981', marginTop: '0.5rem' }}>
-                        <span style={{ fontWeight: '600' }}>Total Additional Costs:</span>
-                        <span style={{ fontWeight: '700', color: '#10b981' }}>
-                          {usdCosts > 0 && formatCurrency(usdCosts, 'USD')}
-                          {usdCosts > 0 && mxnCosts > 0 && ' + '}
-                          {mxnCosts > 0 && formatCurrency(mxnCosts, 'MXN')}
-                        </span>
-                      </div>
                     </>
-                  ) : (
-                    <div style={{ padding: '1rem', textAlign: 'center', color: '#6b7280', fontSize: '0.875rem' }}>
-                      No additional costs yet
-                    </div>
-                  )}
+                  ) : null}
 
-                  {hasMXNCosts && (
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    paddingTop: '0.75rem',
+                    marginTop: '0.5rem',
+                    borderTop: '2px solid #3b82f6',
+                    fontSize: '1.125rem'
+                  }}>
+                    <span style={{ fontWeight: '700', color: '#1e3a8a' }}>Total US Costs:</span>
+                    <span style={{ fontWeight: '900', color: '#1e40af' }}>{formatCurrency(totalUSD, 'USD')}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* MXN COSTS SECTION */}
+              {hasMXNCosts && (
+                <div style={{
+                  padding: '1.5rem',
+                  background: 'white',
+                  borderRadius: '0.75rem',
+                  border: '2px solid #10b981'
+                }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '0.5rem',
+                    marginBottom: '1rem',
+                    paddingBottom: '0.75rem',
+                    borderBottom: '2px solid #10b981'
+                  }}>
+                    <span style={{ fontSize: '1.5rem' }}>🇲🇽</span>
+                    <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '700', color: '#047857' }}>
+                      Mexico Costs (MXN)
+                    </h3>
+                  </div>
+                  
+                  <div style={{ display: 'grid', gap: '0.75rem' }}>
+                    {Object.entries(costsByCategory).map(([category, categoryCosts]) => {
+                      const categoryMXN = categoryCosts.filter(c => c.currency === 'MXN');
+                      if (categoryMXN.length === 0) return null;
+                      const categoryTotal = categoryMXN.reduce((sum, c) => sum + parseFloat(c.amount), 0);
+                      
+                      return (
+                        <div key={category} style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', fontSize: '0.875rem' }}>
+                          <span style={{ color: '#6b7280' }}>{category}:</span>
+                          <span style={{ fontWeight: '600', color: '#047857' }}>{formatCurrency(categoryTotal, 'MXN')}</span>
+                        </div>
+                      );
+                    })}
+
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      paddingTop: '0.75rem',
+                      marginTop: '0.5rem',
+                      borderTop: '2px solid #10b981',
+                      fontSize: '1.125rem'
+                    }}>
+                      <span style={{ fontWeight: '700', color: '#065f46' }}>Total Mexico Costs:</span>
+                      <span style={{ fontWeight: '900', color: '#10b981' }}>{formatCurrency(mxnCosts, 'MXN')}</span>
+                    </div>
+
                     <div style={{
                       display: 'flex',
                       justifyContent: 'space-between',
-                      padding: '1rem',
+                      padding: '0.75rem',
                       background: '#fef3c7',
                       borderRadius: '0.5rem',
-                      marginTop: '1rem',
+                      marginTop: '0.5rem',
                       fontSize: '0.875rem'
                     }}>
                       <span style={{ color: '#92400e', fontWeight: '600' }}>Exchange Rate Used:</span>
                       <span style={{ fontWeight: '700', color: '#92400e' }}>1 USD = {currentExchangeRate || 17.50} MXN</span>
                     </div>
-                  )}
+                  </div>
+                </div>
+              )}
+
+              {/* GRAND TOTAL - Clean and Clear */}
+              <div style={{
+                padding: '1.5rem',
+                background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+                borderRadius: '0.75rem',
+                border: '2px solid #10b981'
+              }}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <span style={{ fontSize: '1.25rem', fontWeight: '700', color: '#166534' }}>
+                    GRAND TOTAL:
+                  </span>
+                  <span style={{ fontSize: '2rem', fontWeight: '900', color: '#10b981' }}>
+                    {formatCurrency(grandTotal, grandTotalCurrency)}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#166534', marginTop: '0.5rem', textAlign: 'right' }}>
+                  {hasMXNCosts ? 'All costs converted to MXN' : 'USD costs only'}
                 </div>
               </div>
+
+              {costs.length === 0 && (
+                <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280', background: '#f9fafb', borderRadius: '0.5rem' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>💰</div>
+                  <div>No additional costs yet. Purchase price only.</div>
+                </div>
+              )}
             </div>
           )}
         </div>
