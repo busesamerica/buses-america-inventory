@@ -1039,6 +1039,95 @@ async def delete_inventory(
     
     return {"message": "Inventory item deleted successfully"}
 
+# ==================== COST ITEMS ENDPOINTS ====================
+
+@app.get("/api/inventory/{inventory_id}/costs")
+async def get_inventory_costs(
+    inventory_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Get all cost items for an inventory unit"""
+    query = """
+        SELECT cost_id, inventory_id, cost_category, description, amount, currency,
+               vendor, invoice_number, date_incurred, created_at, created_by
+        FROM cost_items
+        WHERE inventory_id = $1
+        ORDER BY date_incurred DESC, created_at DESC
+    """
+    rows = await db.fetch(query, inventory_id)
+    return [dict(row) for row in rows]
+
+@app.post("/api/inventory/{inventory_id}/costs")
+async def add_inventory_cost(
+    inventory_id: int,
+    cost_data: dict,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Add a cost item to an inventory unit"""
+    # Verify inventory exists
+    inv_check = await db.fetchval(
+        "SELECT inventory_id FROM inventory WHERE inventory_id = $1",
+        inventory_id
+    )
+    if not inv_check:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    
+    query = """
+        INSERT INTO cost_items (
+            inventory_id, cost_category, description, amount, currency,
+            vendor, invoice_number, date_incurred, created_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING *
+    """
+    row = await db.fetchrow(
+        query,
+        inventory_id,
+        cost_data.get('cost_category'),
+        cost_data.get('description'),
+        cost_data.get('amount'),
+        cost_data.get('currency', 'USD'),
+        cost_data.get('vendor'),
+        cost_data.get('invoice_number'),
+        cost_data.get('date_incurred'),
+        user['username']
+    )
+    
+    await log_audit(
+        db, user['user_id'], user['username'],
+        'create', 'cost_items', row['cost_id'],
+        description=f"Added cost: {cost_data.get('description')} - {cost_data.get('amount')} {cost_data.get('currency')}"
+    )
+    
+    return dict(row)
+
+@app.delete("/api/inventory/{inventory_id}/costs/{cost_id}")
+async def delete_inventory_cost(
+    inventory_id: int,
+    cost_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Delete a cost item"""
+    # Verify cost belongs to this inventory
+    cost = await db.fetchrow(
+        "SELECT * FROM cost_items WHERE cost_id = $1 AND inventory_id = $2",
+        cost_id, inventory_id
+    )
+    if not cost:
+        raise HTTPException(status_code=404, detail="Cost item not found")
+    
+    await db.execute("DELETE FROM cost_items WHERE cost_id = $1", cost_id)
+    
+    await log_audit(
+        db, user['user_id'], user['username'],
+        'delete', 'cost_items', cost_id,
+        description=f"Deleted cost: {cost['description']}"
+    )
+    
+    return {"message": "Cost deleted successfully"}
+
 # ==================== WORK PLAN ENDPOINTS ====================
 
 @app.post("/api/inventory/{inventory_id}/work-plan", response_model=WorkPlan)
