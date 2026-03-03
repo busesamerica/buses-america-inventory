@@ -1074,6 +1074,12 @@ async def add_inventory_cost(
     if not inv_check:
         raise HTTPException(status_code=404, detail="Inventory item not found")
     
+    # Convert date string to date object if needed
+    from datetime import datetime
+    date_incurred = cost_data.get('date_incurred')
+    if isinstance(date_incurred, str):
+        date_incurred = datetime.strptime(date_incurred, '%Y-%m-%d').date()
+    
     query = """
         INSERT INTO cost_items (
             inventory_id, cost_category, description, amount, currency,
@@ -1090,7 +1096,7 @@ async def add_inventory_cost(
         cost_data.get('currency', 'USD'),
         cost_data.get('vendor'),
         cost_data.get('invoice_number'),
-        cost_data.get('date_incurred'),
+        date_incurred,
         user['username']
     )
     
