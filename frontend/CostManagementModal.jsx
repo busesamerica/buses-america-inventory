@@ -644,6 +644,21 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                     <span style={{ fontWeight: '700', color: '#1e3a8a' }}>Total US Costs:</span>
                     <span style={{ fontWeight: '900', color: '#1e40af' }}>{formatCurrency(totalUSD, 'USD')}</span>
                   </div>
+
+                  {hasMXNCosts && (
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      padding: '0.75rem',
+                      background: '#fef3c7',
+                      borderRadius: '0.5rem',
+                      marginTop: '0.75rem',
+                      fontSize: '0.875rem'
+                    }}>
+                      <span style={{ color: '#92400e', fontWeight: '600' }}>Exchange Rate Used:</span>
+                      <span style={{ fontWeight: '700', color: '#92400e' }}>1 USD = {currentExchangeRate || 17.50} MXN</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -693,19 +708,6 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                     }}>
                       <span style={{ fontWeight: '700', color: '#065f46' }}>Total Mexico Costs:</span>
                       <span style={{ fontWeight: '900', color: '#10b981' }}>{formatCurrency(mxnCosts, 'MXN')}</span>
-                    </div>
-
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      padding: '0.75rem',
-                      background: '#fef3c7',
-                      borderRadius: '0.5rem',
-                      marginTop: '0.5rem',
-                      fontSize: '0.875rem'
-                    }}>
-                      <span style={{ color: '#92400e', fontWeight: '600' }}>Exchange Rate Used:</span>
-                      <span style={{ fontWeight: '700', color: '#92400e' }}>1 USD = {currentExchangeRate || 17.50} MXN</span>
                     </div>
                   </div>
                 </div>
