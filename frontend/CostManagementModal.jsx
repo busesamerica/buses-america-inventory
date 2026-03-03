@@ -57,6 +57,10 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
     setError('');
     
     try {
+      // Parse amount and ensure 2 decimal places
+      const amountValue = parseFloat(newCost.amount);
+      const formattedAmount = parseFloat(amountValue.toFixed(2));
+      
       const token = localStorage.getItem('session_token');
       const response = await fetch(`${API_URL}/inventory/${bus.inventory_id}/costs`, {
         method: 'POST',
@@ -66,7 +70,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
         },
         body: JSON.stringify({
           ...newCost,
-          amount: parseFloat(newCost.amount)
+          amount: formattedAmount
         })
       });
 
@@ -389,6 +393,13 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                     min="0"
                     value={newCost.amount}
                     onChange={(e) => setNewCost({ ...newCost, amount: e.target.value })}
+                    onBlur={(e) => {
+                      // Format to 2 decimals when user leaves the field
+                      if (e.target.value) {
+                        const formatted = parseFloat(e.target.value).toFixed(2);
+                        setNewCost({ ...newCost, amount: formatted });
+                      }
+                    }}
                     placeholder="0.00"
                     required
                     style={{
