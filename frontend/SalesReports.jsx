@@ -63,7 +63,7 @@ const SalesReports = () => {
     return (
       <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
         <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📊</div>
-        <div style={{ fontSize: '1.25rem' }}>Loading analytics...</div>
+        <div style={{ fontSize: '1rem' }}>Loading analytics...</div>
       </div>
     );
   }
@@ -72,7 +72,7 @@ const SalesReports = () => {
     return (
       <div style={{ padding: '3rem', textAlign: 'center', color: '#dc2626' }}>
         <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>⚠️</div>
-        <div style={{ fontSize: '1.25rem' }}>Failed to load analytics</div>
+        <div style={{ fontSize: '1rem' }}>Failed to load analytics</div>
       </div>
     );
   }
@@ -80,31 +80,31 @@ const SalesReports = () => {
   const { overview, client_analytics, financial_analysis, trends } = analytics;
 
   return (
-    <div>
+    <div style={{ background: '#f9fafb' }}>
       {/* Header */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.5rem', fontWeight: '700', color: '#FFD700' }}>
-          💰 Sales Reports & Analytics
-        </h2>
-        <p style={{ margin: 0, color: '#d1d5db', fontSize: '0.875rem' }}>
+        <h1 style={{ margin: '0 0 0.25rem 0', fontSize: '1.5rem', fontWeight: '700', color: '#111827' }}>
+          📊 Sales Reports & Analytics
+        </h1>
+        <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>
           Comprehensive insights into your sales performance
         </p>
       </div>
 
       {/* Filters */}
       <div style={{
-        padding: '1rem',
-        background: 'rgba(255,255,255,0.05)',
-        borderRadius: '8px',
-        border: '1px solid rgba(255,215,0,0.2)',
+        padding: '1.5rem',
+        background: 'white',
+        borderRadius: '0.75rem',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         marginBottom: '1.5rem',
         display: 'flex',
         gap: '1rem',
         flexWrap: 'wrap',
         alignItems: 'end'
       }}>
-        <div style={{ flex: '1 1 180px' }}>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.75rem', color: '#d1d5db' }}>
+        <div style={{ flex: '1 1 200px' }}>
+          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
             Start Date
           </label>
           <input
@@ -113,18 +113,16 @@ const SalesReports = () => {
             onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
             style={{
               width: '100%',
-              padding: '0.5rem',
-              border: '1px solid rgba(255,215,0,0.3)',
-              borderRadius: '4px',
-              fontSize: '0.875rem',
-              background: 'rgba(0,0,0,0.2)',
-              color: 'white'
+              padding: '0.75rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.5rem',
+              fontSize: '1rem'
             }}
           />
         </div>
 
-        <div style={{ flex: '1 1 180px' }}>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.75rem', color: '#d1d5db' }}>
+        <div style={{ flex: '1 1 200px' }}>
+          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
             End Date
           </label>
           <input
@@ -133,18 +131,16 @@ const SalesReports = () => {
             onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
             style={{
               width: '100%',
-              padding: '0.5rem',
-              border: '1px solid rgba(255,215,0,0.3)',
-              borderRadius: '4px',
-              fontSize: '0.875rem',
-              background: 'rgba(0,0,0,0.2)',
-              color: 'white'
+              padding: '0.75rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.5rem',
+              fontSize: '1rem'
             }}
           />
         </div>
 
-        <div style={{ flex: '1 1 180px' }}>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.75rem', color: '#d1d5db' }}>
+        <div style={{ flex: '1 1 200px' }}>
+          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
             Currency
           </label>
           <select
@@ -152,12 +148,10 @@ const SalesReports = () => {
             onChange={(e) => setFilters({ ...filters, currency: e.target.value })}
             style={{
               width: '100%',
-              padding: '0.5rem',
-              border: '1px solid rgba(255,215,0,0.3)',
-              borderRadius: '4px',
-              fontSize: '0.875rem',
-              background: 'rgba(0,0,0,0.2)',
-              color: 'white'
+              padding: '0.75rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.5rem',
+              fontSize: '1rem'
             }}
           >
             <option value="ALL">All Currencies</option>
@@ -178,12 +172,12 @@ const SalesReports = () => {
         <div style={{
           padding: '1rem',
           background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-          borderRadius: '8px',
+          borderRadius: '0.5rem',
           boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
           color: 'white'
         }}>
           <div style={{ fontSize: '0.75rem', opacity: 0.9, marginBottom: '0.25rem' }}>Total Sales</div>
-          <div style={{ fontSize: '2rem', fontWeight: '800' }}>{overview.total_sales}</div>
+          <div style={{ fontSize: '1.75rem', fontWeight: '700' }}>{overview.total_sales}</div>
           <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '0.25rem' }}>
             {overview.unique_clients} unique clients
           </div>
@@ -193,12 +187,12 @@ const SalesReports = () => {
         <div style={{
           padding: '1rem',
           background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-          borderRadius: '8px',
+          borderRadius: '0.5rem',
           boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
           color: 'white'
         }}>
           <div style={{ fontSize: '0.75rem', opacity: 0.9, marginBottom: '0.25rem' }}>Revenue (USD)</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: '800' }}>{formatCurrency(overview.revenue_usd, 'USD')}</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: '700' }}>{formatCurrency(overview.revenue_usd, 'USD')}</div>
           <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '0.25rem' }}>
             Profit: {formatCurrency(overview.total_profit_usd, 'USD')}
           </div>
@@ -208,12 +202,12 @@ const SalesReports = () => {
         <div style={{
           padding: '1rem',
           background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-          borderRadius: '8px',
+          borderRadius: '0.5rem',
           boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
           color: 'white'
         }}>
           <div style={{ fontSize: '0.75rem', opacity: 0.9, marginBottom: '0.25rem' }}>Revenue (MXN)</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: '800' }}>{formatCurrency(overview.revenue_mxn, 'MXN')}</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: '700' }}>{formatCurrency(overview.revenue_mxn, 'MXN')}</div>
           <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '0.25rem' }}>
             Profit: {formatCurrency(overview.total_profit_mxn, 'MXN')}
           </div>
@@ -223,12 +217,12 @@ const SalesReports = () => {
         <div style={{
           padding: '1rem',
           background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-          borderRadius: '8px',
+          borderRadius: '0.5rem',
           boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
           color: 'white'
         }}>
           <div style={{ fontSize: '0.75rem', opacity: 0.9, marginBottom: '0.25rem' }}>Avg Profit Margin</div>
-          <div style={{ fontSize: '2rem', fontWeight: '800' }}>{overview.avg_profit_margin.toFixed(1)}%</div>
+          <div style={{ fontSize: '1.75rem', fontWeight: '700' }}>{overview.avg_profit_margin.toFixed(1)}%</div>
           <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '0.25rem' }}>
             Across all sales
           </div>
@@ -240,12 +234,12 @@ const SalesReports = () => {
           background: overview.pending_balance > 0 
             ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
             : 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)',
-          borderRadius: '8px',
+          borderRadius: '0.5rem',
           boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
           color: 'white'
         }}>
           <div style={{ fontSize: '0.75rem', opacity: 0.9, marginBottom: '0.25rem' }}>Pending Balance</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: '800' }}>
+          <div style={{ fontSize: '1.5rem', fontWeight: '700' }}>
             {formatCurrency(overview.pending_balance, filters.currency !== 'ALL' ? filters.currency : 'USD')}
           </div>
           <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '0.25rem' }}>
@@ -255,29 +249,29 @@ const SalesReports = () => {
       </div>
 
       {/* Two Column Layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
         
         {/* Payment Status Breakdown */}
         <div style={{
-          padding: '1rem',
-          background: 'rgba(255,255,255,0.05)',
-          borderRadius: '8px',
-          border: '1px solid rgba(255,215,0,0.2)'
+          padding: '1.5rem',
+          background: 'white',
+          borderRadius: '0.75rem',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
         }}>
-          <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem', fontWeight: '700', color: '#FFD700' }}>
+          <h3 style={{ margin: '0 0 1.5rem 0', fontSize: '1rem', fontWeight: '700', color: '#111827' }}>
             💳 Payment Status
           </h3>
-          <div style={{ display: 'grid', gap: '0.75rem' }}>
+          <div style={{ display: 'grid', gap: '1rem' }}>
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              padding: '0.75rem',
+              padding: '1rem',
               background: '#d1fae5',
-              borderRadius: '6px'
+              borderRadius: '0.5rem'
             }}>
-              <span style={{ fontWeight: '600', color: '#065f46', fontSize: '0.875rem' }}>Paid in Full</span>
-              <span style={{ fontSize: '1.25rem', fontWeight: '800', color: '#065f46' }}>
+              <span style={{ fontWeight: '600', color: '#065f46' }}>Paid in Full</span>
+              <span style={{ fontSize: '1.5rem', fontWeight: '800', color: '#065f46' }}>
                 {overview.payment_status_breakdown.paid_in_full}
               </span>
             </div>
@@ -285,12 +279,12 @@ const SalesReports = () => {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              padding: '0.75rem',
+              padding: '1rem',
               background: '#fef3c7',
-              borderRadius: '6px'
+              borderRadius: '0.5rem'
             }}>
-              <span style={{ fontWeight: '600', color: '#92400e', fontSize: '0.875rem' }}>Partial Payment</span>
-              <span style={{ fontSize: '1.25rem', fontWeight: '800', color: '#92400e' }}>
+              <span style={{ fontWeight: '600', color: '#92400e' }}>Partial Payment</span>
+              <span style={{ fontSize: '1.5rem', fontWeight: '800', color: '#92400e' }}>
                 {overview.payment_status_breakdown.partial_payment}
               </span>
             </div>
@@ -298,12 +292,12 @@ const SalesReports = () => {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              padding: '0.75rem',
+              padding: '1rem',
               background: '#fee2e2',
-              borderRadius: '6px'
+              borderRadius: '0.5rem'
             }}>
-              <span style={{ fontWeight: '600', color: '#991b1b', fontSize: '0.875rem' }}>Pending Deposit</span>
-              <span style={{ fontSize: '1.25rem', fontWeight: '800', color: '#991b1b' }}>
+              <span style={{ fontWeight: '600', color: '#991b1b' }}>Pending Deposit</span>
+              <span style={{ fontSize: '1.5rem', fontWeight: '800', color: '#991b1b' }}>
                 {overview.payment_status_breakdown.pending_deposit}
               </span>
             </div>
@@ -312,30 +306,30 @@ const SalesReports = () => {
 
         {/* Top Clients */}
         <div style={{
-          padding: '1rem',
-          background: 'rgba(255,255,255,0.05)',
-          borderRadius: '8px',
-          border: '1px solid rgba(255,215,0,0.2)'
+          padding: '1.5rem',
+          background: 'white',
+          borderRadius: '0.75rem',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
         }}>
-          <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem', fontWeight: '700', color: '#FFD700' }}>
+          <h3 style={{ margin: '0 0 1.5rem 0', fontSize: '1rem', fontWeight: '700', color: '#111827' }}>
             👥 Top Clients
           </h3>
-          <div style={{ display: 'grid', gap: '0.5rem' }}>
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
             {client_analytics.top_clients.slice(0, 5).map((client, idx) => (
               <div key={idx} style={{
-                padding: '0.75rem',
-                background: 'rgba(255,255,255,0.03)',
-                borderRadius: '6px',
-                borderLeft: '3px solid #3b82f6'
+                padding: '1rem',
+                background: '#f9fafb',
+                borderRadius: '0.5rem',
+                borderLeft: '4px solid #3b82f6'
               }}>
-                <div style={{ fontWeight: '700', color: 'white', marginBottom: '0.25rem', fontSize: '0.875rem' }}>
+                <div style={{ fontWeight: '700', color: '#111827', marginBottom: '0.25rem' }}>
                   {client.client_name}
-                  {client.client_company && <span style={{ color: '#9ca3af', fontWeight: '400' }}> • {client.client_company}</span>}
+                  {client.client_company && <span style={{ color: '#6b7280', fontWeight: '400' }}> • {client.client_company}</span>}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+                <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
                   {client.total_purchases} purchase{client.total_purchases !== 1 ? 's' : ''} • {client.client_location || 'Location N/A'}
                 </div>
-                <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#10b981', marginTop: '0.25rem' }}>
+                <div style={{ fontSize: '0.875rem', fontWeight: '600', color: '#10b981', marginTop: '0.25rem' }}>
                   {client.total_spent_usd > 0 && formatCurrency(client.total_spent_usd, 'USD')}
                   {client.total_spent_usd > 0 && client.total_spent_mxn > 0 && ' + '}
                   {client.total_spent_mxn > 0 && formatCurrency(client.total_spent_mxn, 'MXN')}
@@ -348,27 +342,27 @@ const SalesReports = () => {
 
       {/* Use Case Breakdown */}
       <div style={{
-        padding: '1rem',
-        background: 'rgba(255,255,255,0.05)',
-        borderRadius: '8px',
-        border: '1px solid rgba(255,215,0,0.2)',
+        padding: '1.5rem',
+        background: 'white',
+        borderRadius: '0.75rem',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         marginBottom: '1.5rem'
       }}>
-        <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem', fontWeight: '700', color: '#FFD700' }}>
+        <h3 style={{ margin: '0 0 1.5rem 0', fontSize: '1rem', fontWeight: '700', color: '#111827' }}>
           🚌 Sales by Use Case
         </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1rem' }}>
           {client_analytics.use_case_breakdown.map((useCase, idx) => (
             <div key={idx} style={{
-              padding: '0.75rem',
-              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.2) 100%)',
-              borderRadius: '6px',
-              border: '1px solid rgba(59, 130, 246, 0.3)'
+              padding: '1rem',
+              background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+              borderRadius: '0.5rem',
+              border: '1px solid #bae6fd'
             }}>
-              <div style={{ fontWeight: '700', color: 'white', marginBottom: '0.25rem', fontSize: '0.875rem' }}>
+              <div style={{ fontWeight: '700', color: '#0c4a6e', marginBottom: '0.5rem' }}>
                 {useCase.use_case || 'Not Specified'}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+              <div style={{ fontSize: '0.875rem', color: '#075985' }}>
                 {useCase.count} sale{useCase.count !== 1 ? 's' : ''}
               </div>
             </div>
@@ -378,53 +372,53 @@ const SalesReports = () => {
 
       {/* Detailed Sales Table */}
       <div style={{
-        padding: '1rem',
-        background: 'rgba(255,255,255,0.05)',
-        borderRadius: '8px',
-        border: '1px solid rgba(255,215,0,0.2)'
+        padding: '1.5rem',
+        background: 'white',
+        borderRadius: '0.75rem',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
       }}>
-        <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem', fontWeight: '700', color: '#FFD700' }}>
+        <h3 style={{ margin: '0 0 1.5rem 0', fontSize: '1rem', fontWeight: '700', color: '#111827' }}>
           📋 Detailed Sales Report
         </h3>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
             <thead>
-              <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '2px solid rgba(255,215,0,0.2)' }}>
-                <th style={{ padding: '0.5rem', textAlign: 'left', fontWeight: '600', color: '#FFD700' }}>Date</th>
-                <th style={{ padding: '0.5rem', textAlign: 'left', fontWeight: '600', color: '#FFD700' }}>Vehicle</th>
-                <th style={{ padding: '0.5rem', textAlign: 'left', fontWeight: '600', color: '#FFD700' }}>Client</th>
-                <th style={{ padding: '0.5rem', textAlign: 'right', fontWeight: '600', color: '#FFD700' }}>Sale Price</th>
-                <th style={{ padding: '0.5rem', textAlign: 'right', fontWeight: '600', color: '#FFD700' }}>Total Cost</th>
-                <th style={{ padding: '0.5rem', textAlign: 'right', fontWeight: '600', color: '#FFD700' }}>Profit</th>
-                <th style={{ padding: '0.5rem', textAlign: 'right', fontWeight: '600', color: '#FFD700' }}>Margin</th>
-                <th style={{ padding: '0.5rem', textAlign: 'center', fontWeight: '600', color: '#FFD700' }}>Status</th>
+              <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+                <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: '600', color: '#374151' }}>Date</th>
+                <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: '600', color: '#374151' }}>Vehicle</th>
+                <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: '600', color: '#374151' }}>Client</th>
+                <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: '#374151' }}>Sale Price</th>
+                <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: '#374151' }}>Total Cost</th>
+                <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: '#374151' }}>Profit</th>
+                <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: '#374151' }}>Margin</th>
+                <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: '600', color: '#374151' }}>Status</th>
               </tr>
             </thead>
             <tbody>
               {financial_analysis.detailed_sales.map((sale, idx) => (
                 <tr key={sale.inventory_id} style={{
-                  borderBottom: '1px solid rgba(255,255,255,0.05)',
-                  background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)'
+                  borderBottom: '1px solid #e5e7eb',
+                  background: idx % 2 === 0 ? 'white' : '#f9fafb'
                 }}>
-                  <td style={{ padding: '0.5rem', color: 'white' }}>{formatDate(sale.sale_date)}</td>
-                  <td style={{ padding: '0.5rem' }}>
-                    <div style={{ fontWeight: '600', color: 'white', fontSize: '0.8rem' }}>{sale.stock_number}</div>
-                    <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{sale.vehicle}</div>
+                  <td style={{ padding: '0.75rem' }}>{formatDate(sale.sale_date)}</td>
+                  <td style={{ padding: '0.75rem' }}>
+                    <div style={{ fontWeight: '600', color: '#111827' }}>{sale.stock_number}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{sale.vehicle}</div>
                   </td>
-                  <td style={{ padding: '0.5rem' }}>
-                    <div style={{ fontWeight: '500', color: 'white', fontSize: '0.8rem' }}>{sale.client_name}</div>
+                  <td style={{ padding: '0.75rem' }}>
+                    <div style={{ fontWeight: '500', color: '#111827' }}>{sale.client_name}</div>
                     {sale.client_company && (
-                      <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{sale.client_company}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{sale.client_company}</div>
                     )}
                   </td>
-                  <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: '600', color: '#10b981' }}>
+                  <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: '#10b981' }}>
                     {formatCurrency(sale.sale_price, sale.sale_currency)}
                   </td>
-                  <td style={{ padding: '0.5rem', textAlign: 'right', color: '#9ca3af' }}>
+                  <td style={{ padding: '0.75rem', textAlign: 'right', color: '#6b7280' }}>
                     {formatCurrency(sale.total_cost, sale.sale_currency)}
                   </td>
                   <td style={{
-                    padding: '0.5rem',
+                    padding: '0.75rem',
                     textAlign: 'right',
                     fontWeight: '700',
                     color: sale.profit >= 0 ? '#10b981' : '#dc2626'
@@ -432,18 +426,18 @@ const SalesReports = () => {
                     {formatCurrency(sale.profit, sale.sale_currency)}
                   </td>
                   <td style={{
-                    padding: '0.5rem',
+                    padding: '0.75rem',
                     textAlign: 'right',
                     fontWeight: '600',
                     color: sale.profit_margin >= 10 ? '#10b981' : (sale.profit_margin >= 5 ? '#f59e0b' : '#dc2626')
                   }}>
                     {sale.profit_margin.toFixed(1)}%
                   </td>
-                  <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                  <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                     <span style={{
-                      padding: '0.25rem 0.5rem',
-                      borderRadius: '4px',
-                      fontSize: '0.7rem',
+                      padding: '0.25rem 0.75rem',
+                      borderRadius: '0.375rem',
+                      fontSize: '0.75rem',
                       fontWeight: '600',
                       background: sale.payment_status === 'Paid in Full' ? '#d1fae5' : 
                                   sale.payment_status === 'Partial Payment' ? '#fef3c7' : '#fee2e2',
