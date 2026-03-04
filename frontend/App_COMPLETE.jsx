@@ -547,6 +547,8 @@ function InventoryApp() {
   const [showCreateInventoryModal, setShowCreateInventoryModal] = useState(false);
   const [showCostModal, setShowCostModal] = useState(false);
   const [selectedBusForCosts, setSelectedBusForCosts] = useState(null);
+  const [showSalesModal, setShowSalesModal] = useState(false);
+  const [selectedBusForSale, setSelectedBusForSale] = useState(null);
   const [currentExchangeRate, setCurrentExchangeRate] = useState(17.50);
 
   useEffect(() => {
@@ -617,6 +619,18 @@ function InventoryApp() {
       alert('✅ Costs saved successfully!');
     } catch (error) {
       throw new Error(error.message || 'Failed to save costs');
+    }
+  };
+
+  const handleRecordSale = async (saleData) => {
+    try {
+      await api.updateInventory(selectedBusForSale.inventory_id, saleData);
+      await loadData();
+      setShowSalesModal(false);
+      setSelectedBusForSale(null);
+      alert('✅ Sale recorded successfully!');
+    } catch (error) {
+      throw new Error(error.message || 'Failed to record sale');
     }
   };
 
@@ -835,6 +849,15 @@ function InventoryApp() {
                                 style={{padding:'0.5rem 1rem',background:'#10b981',color:'white',border:'none',borderRadius:'4px',fontSize:'0.875rem',cursor:'pointer',fontWeight:'600'}}
                               >
                                 💰 Costs
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  setSelectedBusForSale(bus);
+                                  setShowSalesModal(true);
+                                }} 
+                                style={{padding:'0.5rem 1rem',background:'#3b82f6',color:'white',border:'none',borderRadius:'4px',fontSize:'0.875rem',cursor:'pointer',fontWeight:'600'}}
+                              >
+                                💵 Record Sale
                               </button>
                               {user.role === 'admin' && (
                                 <button onClick={() => handleDeleteBus(bus)} style={{padding:'0.5rem 1rem',background:'#dc3545',color:'white',border:'none',borderRadius:'4px',fontSize:'0.875rem',cursor:'pointer'}}>
@@ -1103,6 +1126,18 @@ function InventoryApp() {
       onSave={handleSaveCosts}
     />
   )}
+
+  {showSalesModal && selectedBusForSale && (
+    <SalesModal
+      bus={selectedBusForSale}
+      currentExchangeRate={currentExchangeRate}
+      onClose={() => {
+        setShowSalesModal(false);
+        setSelectedBusForSale(null);
+      }}
+      onSave={handleRecordSale}
+    />
+  )}
     </div>
   );
 }
@@ -1131,3 +1166,4 @@ function App() {
 }
 
 window.App = App;
+
