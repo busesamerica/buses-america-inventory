@@ -677,10 +677,10 @@ function InventoryApp() {
         <nav style={{flex:1,padding:'1rem'}}>
           {[
             {id:'dashboard',label:'Dashboard',icon:'📊'},
-            {id:'inventory',label:'Inventory',icon:'🚌'},
-            {id:'sales-reports',label:'Sales Reports',icon:'💰'},  
+            {id:'inventory',label:'Inventory',icon:'🚌'},  
             {id:'suppliers',label:'Suppliers',icon:'🏢'},
-            {id:'pre-inspections',label:'Pre-Inspections',icon:'🔍'}
+            {id:'pre-inspections',label:'Pre-Inspections',icon:'🔍'},
+            {id:'sales-reports',label:'Sales Reports',icon:'💰'}
           ].map(item => (
             <button
               key={item.id}
@@ -723,8 +723,8 @@ function InventoryApp() {
             {view === 'dashboard' && 'Dashboard'}
             {view === 'inventory' && 'Inventory Management'}
             {view === 'sales-reports' && <SalesReports />}
-            {view === 'suppliers' && 'Suppliers'}
             {view === 'pre-inspections' && 'Pre-Inspections'}
+            {view === 'suppliers' && 'Suppliers'}
           </h1>
           <UserDropdown />
         </div>
