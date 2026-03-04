@@ -216,12 +216,18 @@ class InventoryUpdate(BaseModel):
     client_contact: Optional[str] = None
     client_email: Optional[str] = None
     client_phone: Optional[str] = None
+    client_use_case: Optional[str] = None
+    sale_date: Optional[date] = None
     sale_price: Optional[Decimal] = None
+    sale_price_usd: Optional[Decimal] = None
+    sale_price_mxn: Optional[Decimal] = None
     sale_currency: Optional[str] = None
     deposit_amount: Optional[Decimal] = None
     deposit_currency: Optional[str] = None
     deposit_date: Optional[date] = None
+    balance_due: Optional[Decimal] = None
     payment_status: Optional[str] = None
+    is_sold: Optional[bool] = None
     
     # Import
     border_crossing: Optional[str] = None
