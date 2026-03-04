@@ -1288,7 +1288,257 @@ async def update_payment_status(db, inventory_id: int):
         """,
         payment_status, balance_due, inventory_id
     )
+# ==================== SALES ANALYTICS ENDPOINT ====================
 
+@app.get("/api/reports/sales-analytics")
+async def get_sales_analytics(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    currency: Optional[str] = None,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Get comprehensive sales analytics
+    Returns: overview metrics, client analytics, financial breakdown, and detailed sales
+    """
+    from datetime import datetime, timedelta
+    
+    # Default to last 12 months if no dates provided
+    if not end_date:
+        end_date = datetime.now().date()
+    else:
+        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+    
+    if not start_date:
+        start_date = end_date - timedelta(days=365)
+    else:
+        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+    
+    # Build base query with filters
+    where_clauses = ["is_sold = TRUE", "is_deleted = FALSE"]
+    params = []
+    param_count = 1
+    
+    # Date filter
+    where_clauses.append(f"sale_date >= ${param_count}")
+    params.append(start_date)
+    param_count += 1
+    
+    where_clauses.append(f"sale_date <= ${param_count}")
+    params.append(end_date)
+    param_count += 1
+    
+    # Currency filter (optional)
+    if currency and currency != 'ALL':
+        where_clauses.append(f"sale_currency = ${param_count}")
+        params.append(currency)
+        param_count += 1
+    
+    where_clause = " AND ".join(where_clauses)
+    
+    # ========== OVERVIEW METRICS ==========
+    overview_query = f"""
+        SELECT 
+            COUNT(*) as total_sales,
+            COUNT(DISTINCT client_name) as unique_clients,
+            SUM(CASE WHEN sale_currency = 'USD' THEN sale_price ELSE 0 END) as revenue_usd,
+            SUM(CASE WHEN sale_currency = 'MXN' THEN sale_price ELSE 0 END) as revenue_mxn,
+            SUM(CASE WHEN payment_status = 'Paid in Full' THEN 0 ELSE COALESCE(balance_due, 0) END) as pending_balance_total,
+            COUNT(CASE WHEN payment_status = 'Paid in Full' THEN 1 END) as paid_in_full_count,
+            COUNT(CASE WHEN payment_status = 'Partial Payment' THEN 1 END) as partial_payment_count,
+            COUNT(CASE WHEN payment_status = 'Pending Deposit' THEN 1 END) as pending_deposit_count
+        FROM inventory
+        WHERE {where_clause}
+    """
+    overview = await db.fetchrow(overview_query, *params)
+    
+    # ========== DETAILED SALES WITH PROFIT CALCULATION ==========
+    # Get all sold inventory with costs
+    sales_query = f"""
+        SELECT 
+            i.inventory_id,
+            i.stock_number,
+            i.year,
+            i.make,
+            i.model,
+            i.vin,
+            i.sale_date,
+            i.client_name,
+            i.client_company,
+            i.client_location,
+            i.client_use_case,
+            i.sale_price,
+            i.sale_currency,
+            i.purchase_price_usd,
+            i.payment_status,
+            i.balance_due,
+            COALESCE(i.total_cost_usd, i.purchase_price_usd) as total_cost_usd,
+            COALESCE(i.total_cost_mxn, 0) as total_cost_mxn
+        FROM inventory i
+        WHERE {where_clause}
+        ORDER BY i.sale_date DESC
+    """
+    sales_rows = await db.fetch(sales_query, *params)
+    
+    # Get costs for each sale
+    detailed_sales = []
+    total_profit_usd = 0
+    total_profit_mxn = 0
+    
+    for sale in sales_rows:
+        # Get additional costs from cost_items
+        costs_query = """
+            SELECT 
+                SUM(CASE WHEN currency = 'USD' THEN amount ELSE 0 END) as usd_costs,
+                SUM(CASE WHEN currency = 'MXN' THEN amount ELSE 0 END) as mxn_costs
+            FROM cost_items
+            WHERE inventory_id = $1
+        """
+        costs = await db.fetchrow(costs_query, sale['inventory_id'])
+        
+        usd_costs = float(costs['usd_costs'] or 0)
+        mxn_costs = float(costs['mxn_costs'] or 0)
+        purchase_price = float(sale['purchase_price_usd'] or 0)
+        
+        # Calculate total costs
+        total_cost_usd = purchase_price + usd_costs
+        
+        # Get current exchange rate for conversion
+        exchange_rate_row = await db.fetchrow(
+            "SELECT rate FROM exchange_rates ORDER BY created_at DESC LIMIT 1"
+        )
+        exchange_rate = float(exchange_rate_row['rate']) if exchange_rate_row else 17.50
+        
+        # Calculate profit based on sale currency
+        sale_price = float(sale['sale_price'] or 0)
+        if sale['sale_currency'] == 'USD':
+            cost_in_sale_currency = total_cost_usd
+            profit = sale_price - cost_in_sale_currency
+            total_profit_usd += profit
+        else:  # MXN
+            cost_in_sale_currency = (total_cost_usd * exchange_rate) + mxn_costs
+            profit = sale_price - cost_in_sale_currency
+            total_profit_mxn += profit
+        
+        profit_margin = (profit / sale_price * 100) if sale_price > 0 else 0
+        
+        detailed_sales.append({
+            'inventory_id': sale['inventory_id'],
+            'stock_number': sale['stock_number'],
+            'vehicle': f"{sale['year']} {sale['make']} {sale['model']}",
+            'vin': sale['vin'],
+            'sale_date': sale['sale_date'].isoformat() if sale['sale_date'] else None,
+            'client_name': sale['client_name'],
+            'client_company': sale['client_company'],
+            'client_location': sale['client_location'],
+            'client_use_case': sale['client_use_case'],
+            'sale_price': sale_price,
+            'sale_currency': sale['sale_currency'],
+            'purchase_price_usd': purchase_price,
+            'additional_costs_usd': usd_costs,
+            'additional_costs_mxn': mxn_costs,
+            'total_cost': cost_in_sale_currency,
+            'profit': profit,
+            'profit_margin': profit_margin,
+            'payment_status': sale['payment_status'],
+            'balance_due': float(sale['balance_due'] or 0)
+        })
+    
+    # ========== CLIENT ANALYTICS ==========
+    client_analytics_query = f"""
+        SELECT 
+            client_name,
+            client_company,
+            client_location,
+            COUNT(*) as total_purchases,
+            SUM(CASE WHEN sale_currency = 'USD' THEN sale_price ELSE 0 END) as total_spent_usd,
+            SUM(CASE WHEN sale_currency = 'MXN' THEN sale_price ELSE 0 END) as total_spent_mxn,
+            MAX(sale_date) as last_purchase_date,
+            STRING_AGG(DISTINCT client_use_case, ', ') as use_cases
+        FROM inventory
+        WHERE {where_clause} AND client_name IS NOT NULL
+        GROUP BY client_name, client_company, client_location
+        ORDER BY total_purchases DESC, total_spent_usd DESC
+        LIMIT 10
+    """
+    top_clients = await db.fetch(client_analytics_query, *params)
+    
+    # Use case breakdown
+    use_case_query = f"""
+        SELECT 
+            COALESCE(client_use_case, 'Not Specified') as use_case,
+            COUNT(*) as count,
+            SUM(CASE WHEN sale_currency = 'USD' THEN sale_price ELSE 0 END) as revenue_usd,
+            SUM(CASE WHEN sale_currency = 'MXN' THEN sale_price ELSE 0 END) as revenue_mxn
+        FROM inventory
+        WHERE {where_clause}
+        GROUP BY client_use_case
+        ORDER BY count DESC
+    """
+    use_case_breakdown = await db.fetch(use_case_query, *params)
+    
+    # ========== MONTHLY TRENDS ==========
+    monthly_query = f"""
+        SELECT 
+            DATE_TRUNC('month', sale_date) as month,
+            COUNT(*) as sales_count,
+            SUM(CASE WHEN sale_currency = 'USD' THEN sale_price ELSE 0 END) as revenue_usd,
+            SUM(CASE WHEN sale_currency = 'MXN' THEN sale_price ELSE 0 END) as revenue_mxn
+        FROM inventory
+        WHERE {where_clause}
+        GROUP BY DATE_TRUNC('month', sale_date)
+        ORDER BY month
+    """
+    monthly_trends = await db.fetch(monthly_query, *params)
+    
+    # Calculate average profit margin
+    total_sales_count = len(detailed_sales)
+    avg_profit_margin = sum(s['profit_margin'] for s in detailed_sales) / total_sales_count if total_sales_count > 0 else 0
+    
+    return {
+        'overview': {
+            'total_sales': overview['total_sales'],
+            'unique_clients': overview['unique_clients'],
+            'revenue_usd': float(overview['revenue_usd'] or 0),
+            'revenue_mxn': float(overview['revenue_mxn'] or 0),
+            'total_profit_usd': total_profit_usd,
+            'total_profit_mxn': total_profit_mxn,
+            'avg_profit_margin': avg_profit_margin,
+            'pending_balance': float(overview['pending_balance_total'] or 0),
+            'payment_status_breakdown': {
+                'paid_in_full': overview['paid_in_full_count'],
+                'partial_payment': overview['partial_payment_count'],
+                'pending_deposit': overview['pending_deposit_count']
+            }
+        },
+        'client_analytics': {
+            'top_clients': [dict(row) for row in top_clients],
+            'use_case_breakdown': [dict(row) for row in use_case_breakdown]
+        },
+        'financial_analysis': {
+            'detailed_sales': detailed_sales,
+            'total_profit_usd': total_profit_usd,
+            'total_profit_mxn': total_profit_mxn,
+            'avg_profit_margin': avg_profit_margin
+        },
+        'trends': {
+            'monthly': [
+                {
+                    'month': row['month'].isoformat() if row['month'] else None,
+                    'sales_count': row['sales_count'],
+                    'revenue_usd': float(row['revenue_usd'] or 0),
+                    'revenue_mxn': float(row['revenue_mxn'] or 0)
+                }
+                for row in monthly_trends
+            ]
+        },
+        'filters': {
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'currency': currency or 'ALL'
+        }
+    }
 # ==================== WORK PLAN ENDPOINTS ====================
 
 @app.post("/api/inventory/{inventory_id}/work-plan", response_model=WorkPlan)
