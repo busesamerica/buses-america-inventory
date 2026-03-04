@@ -1013,9 +1013,22 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                   borderRadius: '0.75rem',
                   border: '2px solid #86efac'
                 }}>
-                  <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.125rem', fontWeight: '700', color: '#166534' }}>
+                  <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.125rem', fontWeight: '700', color: '#166534' }}>
                     📈 Profit Analysis
                   </h3>
+                  {formData.sale_currency === 'MXN' && (usdCosts > 0 || purchasePrice > 0) && (
+                    <div style={{
+                      padding: '0.5rem 0.75rem',
+                      background: '#fef3c7',
+                      borderRadius: '0.375rem',
+                      fontSize: '0.75rem',
+                      color: '#92400e',
+                      marginBottom: '1rem',
+                      fontWeight: '600'
+                    }}>
+                      💱 Exchange Rate: 1 USD = {exchangeRate} MXN
+                    </div>
+                  )}
                   <div style={{ display: 'grid', gap: '0.5rem', fontSize: '0.875rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span>Purchase Price (USD):</span>
@@ -1031,18 +1044,6 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span>Additional Costs (MXN):</span>
                         <span>{formatCurrency(mxnCosts, 'MXN')}</span>
-                      </div>
-                    )}
-                    {formData.sale_currency === 'MXN' && (usdCosts > 0 || purchasePrice > 0) && (
-                      <div style={{
-                        padding: '0.5rem',
-                        background: '#fef3c7',
-                        borderRadius: '0.375rem',
-                        fontSize: '0.75rem',
-                        color: '#92400e',
-                        marginTop: '0.25rem'
-                      }}>
-                        Exchange Rate: 1 USD = {exchangeRate} MXN
                       </div>
                     )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.5rem', borderTop: '1px solid #86efac' }}>
