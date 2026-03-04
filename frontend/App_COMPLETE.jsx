@@ -242,9 +242,9 @@ function UserDropdown() {
 
   return (
     <div style={{position:'relative'}}>
-      <button onClick={()=>setIsOpen(!isOpen)} style={{display:'flex',alignItems:'center',gap:'0.5rem',padding:'0.5rem 1rem',background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:'6px',color:'white',cursor:'pointer',fontSize:'0.9rem'}}>
+      <button onClick={()=>setIsOpen(!isOpen)} style={{display:'flex',alignItems:'center',gap:'0.5rem',padding:'0.5rem 1rem',background:'#1a1a1a',border:'1px solid #444',borderRadius:'6px',color:'white',cursor:'pointer',fontSize:'0.9rem'}}>
         <span>👤</span>
-        <span>{user.full_name}</span>
+        <span style={{fontWeight:'600'}}>{user.full_name}</span>
         <span style={{fontSize:'0.7rem'}}>▼</span>
       </button>
       {isOpen && (
@@ -550,6 +550,7 @@ function InventoryApp() {
   const [showSalesModal, setShowSalesModal] = useState(false);
   const [selectedBusForSale, setSelectedBusForSale] = useState(null);
   const [currentExchangeRate, setCurrentExchangeRate] = useState(17.50);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -722,7 +723,7 @@ function InventoryApp() {
           <h1 style={{margin:0,fontSize:'1.5rem'}}>
             {view === 'dashboard' && 'Dashboard'}
             {view === 'inventory' && 'Inventory Management'}
-            {view === 'sales-reports' && <SalesReports />}
+            {view === 'sales-reports' && 'Sales Reports & Analytics'}
             {view === 'pre-inspections' && 'Pre-Inspections'}
             {view === 'suppliers' && 'Suppliers'}
           </h1>
@@ -876,6 +877,9 @@ function InventoryApp() {
               </div>
             </div>
           )}
+
+          {/* SALES REPORTS VIEW */}
+          {view === 'sales-reports' && <SalesReports />}
 
           {/* SUPPLIERS VIEW */}
           {view === 'suppliers' && (
