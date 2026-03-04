@@ -952,7 +952,7 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                       <div style={{ fontSize: '0.875rem', fontWeight: '600', color: '#6b7280', marginTop: '0.5rem' }}>
                         Payments Received:
                       </div>
-                      {payments.map((payment) => (
+                      {[...payments].reverse().map((payment) => (
                         <div key={payment.payment_id} style={{
                           display: 'flex',
                           justifyContent: 'space-between',
@@ -1018,7 +1018,7 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                   </h3>
                   <div style={{ display: 'grid', gap: '0.5rem', fontSize: '0.875rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Purchase Price:</span>
+                      <span>Purchase Price (USD):</span>
                       <span>{formatCurrency(purchasePrice, 'USD')}</span>
                     </div>
                     {usdCosts > 0 && (
@@ -1033,8 +1033,20 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                         <span>{formatCurrency(mxnCosts, 'MXN')}</span>
                       </div>
                     )}
+                    {formData.sale_currency === 'MXN' && (usdCosts > 0 || purchasePrice > 0) && (
+                      <div style={{
+                        padding: '0.5rem',
+                        background: '#fef3c7',
+                        borderRadius: '0.375rem',
+                        fontSize: '0.75rem',
+                        color: '#92400e',
+                        marginTop: '0.25rem'
+                      }}>
+                        Exchange Rate: 1 USD = {exchangeRate} MXN
+                      </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.5rem', borderTop: '1px solid #86efac' }}>
-                      <span style={{ fontWeight: '600' }}>Total Costs:</span>
+                      <span style={{ fontWeight: '600' }}>Total Costs ({formData.sale_currency}):</span>
                       <span style={{ fontWeight: '700' }}>{formatCurrency(costForProfit, formData.sale_currency)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem' }}>
