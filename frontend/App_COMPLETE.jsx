@@ -678,6 +678,7 @@ function InventoryApp() {
           {[
             {id:'dashboard',label:'Dashboard',icon:'📊'},
             {id:'inventory',label:'Inventory',icon:'🚌'},
+            {id:'sales-reports',label:'Sales Reports',icon:'💰'},  
             {id:'suppliers',label:'Suppliers',icon:'🏢'},
             {id:'pre-inspections',label:'Pre-Inspections',icon:'🔍'}
           ].map(item => (
@@ -721,6 +722,7 @@ function InventoryApp() {
           <h1 style={{margin:0,fontSize:'1.5rem'}}>
             {view === 'dashboard' && 'Dashboard'}
             {view === 'inventory' && 'Inventory Management'}
+            {view === 'sales-reports' && <SalesReports />}
             {view === 'suppliers' && 'Suppliers'}
             {view === 'pre-inspections' && 'Pre-Inspections'}
           </h1>
