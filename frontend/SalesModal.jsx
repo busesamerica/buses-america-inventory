@@ -22,6 +22,8 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
     sale_currency: bus.sale_currency || 'USD',
     deposit_amount: bus.deposit_amount || '',
     deposit_date: bus.deposit_date || new Date().toISOString().split('T')[0],
+    balance_payment_amount: bus.balance_payment_amount || '',
+    balance_payment_date: bus.balance_payment_date || '',
     payment_status: bus.payment_status || 'Deposit Paid'
   });
 
@@ -45,12 +47,28 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
   // Calculate balance due
   const salePrice = parseFloat(formData.sale_price) || 0;
   const depositAmount = parseFloat(formData.deposit_amount) || 0;
-  const balanceDue = salePrice - depositAmount;
+  const balancePaymentAmount = parseFloat(formData.balance_payment_amount) || 0;
+  const totalPaid = depositAmount + balancePaymentAmount;
+  const balanceDue = salePrice - totalPaid;
 
-  // Calculate profit if costs are available
+  // Calculate profit with TOTAL costs (purchase + all additional costs)
   const purchasePrice = parseFloat(bus.purchase_price_usd) || 0;
-  const totalCosts = purchasePrice; // Could be enhanced with total costs from cost_items
-  const profit = salePrice - totalCosts;
+  
+  // Use total_cost_usd or total_cost_mxn if available, otherwise fall back to purchase price
+  const totalCostUSD = parseFloat(bus.total_cost_usd) || purchasePrice;
+  const totalCostMXN = parseFloat(bus.total_cost_mxn) || 0;
+  
+  // Determine which total cost to use based on sale currency
+  let costForProfit = totalCostUSD;
+  if (formData.sale_currency === 'MXN' && totalCostMXN > 0) {
+    costForProfit = totalCostMXN;
+  } else if (formData.sale_currency === 'MXN' && totalCostMXN === 0) {
+    // Convert USD cost to MXN
+    const exchangeRate = currentExchangeRate || 17.50;
+    costForProfit = totalCostUSD * exchangeRate;
+  }
+  
+  const profit = salePrice - costForProfit;
 
   const formatCurrency = (amount, currency = 'USD') => {
     if (!amount && amount !== 0) return currency === 'USD' ? '$0.00' : 'MXN $0.00';
@@ -514,20 +532,93 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                 />
               </div>
 
+              {/* Balance Payment Section */}
+              <div style={{
+                padding: '1rem',
+                background: '#fef3c7',
+                borderRadius: '0.5rem',
+                marginTop: '0.5rem'
+              }}>
+                <div style={{ fontWeight: '600', fontSize: '0.875rem', marginBottom: '1rem', color: '#92400e' }}>
+                  💳 Balance Payment (Optional)
+                </div>
+                
+                <div style={{ display: 'grid', gap: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
+                      Balance Payment Amount
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      name="balance_payment_amount"
+                      value={formData.balance_payment_amount}
+                      onChange={handleNumberChange}
+                      onBlur={handleBlurAmount('balance_payment_amount')}
+                      placeholder="0.00"
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.5rem',
+                        fontSize: '1rem'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
+                      Balance Payment Date
+                    </label>
+                    <input
+                      type="date"
+                      name="balance_payment_date"
+                      value={formData.balance_payment_date}
+                      onChange={handleChange}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.5rem',
+                        fontSize: '1rem'
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div style={{
                 padding: '1rem',
                 background: '#f0fdf4',
                 borderRadius: '0.5rem',
                 border: '1px solid #86efac'
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                  <span style={{ fontWeight: '600' }}>Balance Due:</span>
-                  <span style={{ fontWeight: '700', fontSize: '1.25rem', color: balanceDue > 0 ? '#dc2626' : '#10b981' }}>
+                <div style={{ display: 'grid', gap: '0.5rem', fontSize: '0.875rem', marginBottom: '0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Sale Price:</span>
+                    <span style={{ fontWeight: '600' }}>{formatCurrency(salePrice, formData.sale_currency)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Deposit:</span>
+                    <span style={{ fontWeight: '600' }}>{formatCurrency(depositAmount, formData.sale_currency)}</span>
+                  </div>
+                  {balancePaymentAmount > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Balance Payment:</span>
+                      <span style={{ fontWeight: '600' }}>{formatCurrency(balancePaymentAmount, formData.sale_currency)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.5rem', borderTop: '1px solid #86efac' }}>
+                    <span>Total Paid:</span>
+                    <span style={{ fontWeight: '700' }}>{formatCurrency(totalPaid, formData.sale_currency)}</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.75rem', borderTop: '2px solid #10b981' }}>
+                  <span style={{ fontWeight: '700', fontSize: '1rem' }}>Balance Due:</span>
+                  <span style={{ fontWeight: '900', fontSize: '1.25rem', color: balanceDue > 0 ? '#dc2626' : '#10b981' }}>
                     {formatCurrency(balanceDue, formData.sale_currency)}
                   </span>
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                  Sale Price - Deposit = Balance
                 </div>
               </div>
 
@@ -597,8 +688,18 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                     <span style={{ fontWeight: '700', color: '#047857' }}>{formatCurrency(salePrice, formData.sale_currency)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid #e5e7eb' }}>
-                    <span>Deposit:</span>
+                    <span>Deposit ({formData.deposit_date}):</span>
                     <span style={{ fontWeight: '600' }}>{formatCurrency(depositAmount, formData.sale_currency)}</span>
+                  </div>
+                  {balancePaymentAmount > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid #e5e7eb' }}>
+                      <span>Balance Payment ({formData.balance_payment_date}):</span>
+                      <span style={{ fontWeight: '600' }}>{formatCurrency(balancePaymentAmount, formData.sale_currency)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid #e5e7eb', background: '#f9fafb', padding: '0.5rem', borderRadius: '0.25rem' }}>
+                    <span style={{ fontWeight: '600' }}>Total Paid:</span>
+                    <span style={{ fontWeight: '700', color: '#047857' }}>{formatCurrency(totalPaid, formData.sale_currency)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.5rem', fontSize: '1.125rem' }}>
                     <span style={{ fontWeight: '700' }}>Balance Due:</span>
@@ -621,8 +722,8 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                 </div>
               </div>
 
-              {/* Profit Preview (if purchase price available) */}
-              {purchasePrice > 0 && salePrice > 0 && (
+              {/* Profit Preview (if costs available) */}
+              {salePrice > 0 && costForProfit > 0 && (
                 <div style={{
                   padding: '1.5rem',
                   background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
@@ -630,26 +731,32 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                   border: '2px solid #86efac'
                 }}>
                   <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.125rem', fontWeight: '700', color: '#166534' }}>
-                    📈 Estimated Profit
+                    📈 Profit Analysis
                   </h3>
                   <div style={{ display: 'grid', gap: '0.5rem', fontSize: '0.875rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Purchase Price:</span>
-                      <span>{formatCurrency(purchasePrice, 'USD')}</span>
+                      <span>Total Costs:</span>
+                      <span>{formatCurrency(costForProfit, formData.sale_currency)}</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', marginLeft: '1rem' }}>
+                      (Purchase + All Additional Costs)
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem' }}>
                       <span>Sale Price:</span>
-                      <span>{formatCurrency(salePrice, formData.sale_currency)}</span>
+                      <span style={{ fontWeight: '600' }}>{formatCurrency(salePrice, formData.sale_currency)}</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.5rem', borderTop: '2px solid #10b981', fontSize: '1.125rem' }}>
-                      <span style={{ fontWeight: '700' }}>Gross Profit:</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.75rem', borderTop: '2px solid #10b981', fontSize: '1.125rem' }}>
+                      <span style={{ fontWeight: '700' }}>Net Profit:</span>
                       <span style={{ fontWeight: '900', color: profit >= 0 ? '#10b981' : '#dc2626' }}>
                         {formatCurrency(Math.abs(profit), formData.sale_currency)} {profit < 0 ? '(Loss)' : ''}
                       </span>
                     </div>
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.75rem', fontStyle: 'italic' }}>
-                    * Does not include additional costs. View cost breakdown for detailed profitability.
+                    {profit > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', color: '#166534' }}>
+                        <span>Profit Margin:</span>
+                        <span style={{ fontWeight: '600' }}>{((profit / salePrice) * 100).toFixed(1)}%</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
