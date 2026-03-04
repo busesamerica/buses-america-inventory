@@ -1139,6 +1139,150 @@ async def delete_inventory_cost(
     
     return {"message": "Cost deleted successfully"}
 
+# ==================== PAYMENT ENDPOINTS ====================
+
+@app.get("/api/inventory/{inventory_id}/payments")
+async def get_inventory_payments(
+    inventory_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Get all payments for an inventory unit"""
+    query = """
+        SELECT payment_id, inventory_id, payment_amount, payment_currency, 
+               payment_date, payment_method, payment_type, reference_number,
+               payment_notes, created_at, created_by
+        FROM payments
+        WHERE inventory_id = $1
+        ORDER BY payment_date DESC, created_at DESC
+    """
+    rows = await db.fetch(query, inventory_id)
+    return [dict(row) for row in rows]
+
+@app.post("/api/inventory/{inventory_id}/payments")
+async def add_payment(
+    inventory_id: int,
+    payment_data: dict,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Add a payment for an inventory unit"""
+    # Verify inventory exists
+    inv_check = await db.fetchval(
+        "SELECT inventory_id FROM inventory WHERE inventory_id = $1",
+        inventory_id
+    )
+    if not inv_check:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    
+    # Convert date string to date object if needed
+    from datetime import datetime
+    payment_date = payment_data.get('payment_date')
+    if isinstance(payment_date, str):
+        payment_date = datetime.strptime(payment_date, '%Y-%m-%d').date()
+    
+    query = """
+        INSERT INTO payments (
+            inventory_id, payment_amount, payment_currency, payment_date,
+            payment_method, payment_type, reference_number, payment_notes, created_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING *
+    """
+    row = await db.fetchrow(
+        query,
+        inventory_id,
+        payment_data.get('payment_amount'),
+        payment_data.get('payment_currency', 'USD'),
+        payment_date,
+        payment_data.get('payment_method'),
+        payment_data.get('payment_type', 'Deposit'),
+        payment_data.get('reference_number'),
+        payment_data.get('payment_notes'),
+        user['username']
+    )
+    
+    # Update inventory payment status based on total paid
+    await update_payment_status(db, inventory_id)
+    
+    await log_audit(
+        db, user['user_id'], user['username'],
+        'create', 'payments', row['payment_id'],
+        description=f"Added payment: {payment_data.get('payment_amount')} {payment_data.get('payment_currency')}"
+    )
+    
+    return dict(row)
+
+@app.delete("/api/inventory/{inventory_id}/payments/{payment_id}")
+async def delete_payment(
+    inventory_id: int,
+    payment_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Delete a payment"""
+    # Verify payment belongs to this inventory
+    payment = await db.fetchrow(
+        "SELECT * FROM payments WHERE payment_id = $1 AND inventory_id = $2",
+        payment_id, inventory_id
+    )
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    
+    await db.execute("DELETE FROM payments WHERE payment_id = $1", payment_id)
+    
+    # Update inventory payment status
+    await update_payment_status(db, inventory_id)
+    
+    await log_audit(
+        db, user['user_id'], user['username'],
+        'delete', 'payments', payment_id,
+        description=f"Deleted payment: {payment['payment_amount']} {payment['payment_currency']}"
+    )
+    
+    return {"message": "Payment deleted successfully"}
+
+async def update_payment_status(db, inventory_id: int):
+    """Helper function to update payment status based on total payments"""
+    # Get sale price
+    sale_info = await db.fetchrow(
+        "SELECT sale_price, sale_currency FROM inventory WHERE inventory_id = $1",
+        inventory_id
+    )
+    if not sale_info or not sale_info['sale_price']:
+        return
+    
+    # Get total payments
+    total_paid = await db.fetchval(
+        """
+        SELECT COALESCE(SUM(payment_amount), 0) 
+        FROM payments 
+        WHERE inventory_id = $1 AND payment_currency = $2
+        """,
+        inventory_id,
+        sale_info['sale_currency']
+    )
+    
+    sale_price = float(sale_info['sale_price'])
+    balance_due = sale_price - float(total_paid or 0)
+    
+    # Determine payment status
+    if balance_due <= 0:
+        payment_status = 'Paid in Full'
+    elif total_paid > 0:
+        payment_status = 'Partial Payment'
+    else:
+        payment_status = 'Pending Deposit'
+    
+    # Update inventory
+    await db.execute(
+        """
+        UPDATE inventory 
+        SET payment_status = $1, balance_due = $2
+        WHERE inventory_id = $3
+        """,
+        payment_status, balance_due, inventory_id
+    )
+
 # ==================== WORK PLAN ENDPOINTS ====================
 
 @app.post("/api/inventory/{inventory_id}/work-plan", response_model=WorkPlan)
