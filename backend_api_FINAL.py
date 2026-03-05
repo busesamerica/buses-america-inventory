@@ -1539,6 +1539,583 @@ async def get_sales_analytics(
             'currency': currency or 'ALL'
         }
     }
+    # ==================== ACCOUNTING MODULE BACKEND ENDPOINTS ====================
+
+from decimal import Decimal
+from typing import Optional, List
+
+# ==================== PYDANTIC MODELS ====================
+
+class AccountCreate(BaseModel):
+    account_code: str
+    account_name: str
+    account_type: str  # Asset, Liability, Equity, Income, Expense
+    account_subtype: Optional[str] = None
+    currency: str = 'USD'
+    parent_account_id: Optional[int] = None
+    description: Optional[str] = None
+
+class TransactionLineCreate(BaseModel):
+    account_id: int
+    debit_amount: Decimal = 0
+    credit_amount: Decimal = 0
+    currency: str = 'USD'
+    notes: Optional[str] = None
+
+class TransactionCreate(BaseModel):
+    transaction_date: date
+    description: str
+    reference_type: Optional[str] = None
+    reference_id: Optional[int] = None
+    currency: str = 'USD'
+    exchange_rate: Optional[Decimal] = None
+    notes: Optional[str] = None
+    lines: List[TransactionLineCreate]
+
+class ProfitDistributionCreate(BaseModel):
+    distribution_date: date
+    inventory_id: Optional[int] = None
+    total_profit: Decimal
+    currency: str = 'USD'
+    erick_percentage: Decimal = 60.00
+    omar_percentage: Decimal = 40.00
+    notes: Optional[str] = None
+
+# ==================== CHART OF ACCOUNTS ====================
+
+@app.get("/api/accounting/accounts")
+async def get_accounts(
+    account_type: Optional[str] = None,
+    is_active: bool = True,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Get all accounts, optionally filtered by type"""
+    where_clauses = []
+    params = []
+    param_count = 1
+    
+    if is_active is not None:
+        where_clauses.append(f"is_active = ${param_count}")
+        params.append(is_active)
+        param_count += 1
+    
+    if account_type:
+        where_clauses.append(f"account_type = ${param_count}")
+        params.append(account_type)
+        param_count += 1
+    
+    where_clause = " AND ".join(where_clauses) if where_clauses else "TRUE"
+    
+    query = f"""
+        SELECT * FROM accounts 
+        WHERE {where_clause}
+        ORDER BY account_code
+    """
+    
+    rows = await db.fetch(query, *params)
+    return [dict(row) for row in rows]
+
+@app.post("/api/accounting/accounts")
+async def create_account(
+    account: AccountCreate,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Create a new account"""
+    query = """
+        INSERT INTO accounts (
+            account_code, account_name, account_type, account_subtype,
+            currency, parent_account_id, description
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *
+    """
+    
+    row = await db.fetchrow(
+        query,
+        account.account_code,
+        account.account_name,
+        account.account_type,
+        account.account_subtype,
+        account.currency,
+        account.parent_account_id,
+        account.description
+    )
+    
+    return dict(row)
+
+# ==================== TRANSACTIONS ====================
+
+@app.get("/api/accounting/transactions")
+async def get_transactions(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    reference_type: Optional[str] = None,
+    limit: int = 100,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Get transactions with optional filters"""
+    where_clauses = []
+    params = []
+    param_count = 1
+    
+    if start_date:
+        where_clauses.append(f"transaction_date >= ${param_count}")
+        params.append(start_date)
+        param_count += 1
+    
+    if end_date:
+        where_clauses.append(f"transaction_date <= ${param_count}")
+        params.append(end_date)
+        param_count += 1
+    
+    if reference_type:
+        where_clauses.append(f"reference_type = ${param_count}")
+        params.append(reference_type)
+        param_count += 1
+    
+    where_clause = " AND ".join(where_clauses) if where_clauses else "TRUE"
+    
+    query = f"""
+        SELECT 
+            t.*,
+            json_agg(
+                json_build_object(
+                    'line_id', tl.line_id,
+                    'account_id', tl.account_id,
+                    'account_name', a.account_name,
+                    'account_code', a.account_code,
+                    'debit_amount', tl.debit_amount,
+                    'credit_amount', tl.credit_amount,
+                    'currency', tl.currency,
+                    'notes', tl.notes
+                )
+            ) as lines
+        FROM transactions t
+        LEFT JOIN transaction_lines tl ON t.transaction_id = tl.transaction_id
+        LEFT JOIN accounts a ON tl.account_id = a.account_id
+        WHERE {where_clause}
+        GROUP BY t.transaction_id
+        ORDER BY t.transaction_date DESC, t.transaction_id DESC
+        LIMIT ${param_count}
+    """
+    params.append(limit)
+    
+    rows = await db.fetch(query, *params)
+    return [dict(row) for row in rows]
+
+@app.post("/api/accounting/transactions")
+async def create_transaction(
+    transaction: TransactionCreate,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Create a new transaction with lines (journal entry)"""
+    
+    # Validate: Debits must equal credits
+    total_debits = sum(float(line.debit_amount) for line in transaction.lines)
+    total_credits = sum(float(line.credit_amount) for line in transaction.lines)
+    
+    if abs(total_debits - total_credits) > 0.01:  # Allow for rounding
+        raise HTTPException(
+            status_code=400,
+            detail=f"Debits ({total_debits}) must equal credits ({total_credits})"
+        )
+    
+    async with db.transaction():
+        # Create transaction header
+        trans_query = """
+            INSERT INTO transactions (
+                transaction_date, description, reference_type, reference_id,
+                currency, exchange_rate, notes, created_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING *
+        """
+        
+        trans_row = await db.fetchrow(
+            trans_query,
+            transaction.transaction_date,
+            transaction.description,
+            transaction.reference_type,
+            transaction.reference_id,
+            transaction.currency,
+            transaction.exchange_rate,
+            transaction.notes,
+            user['username']
+        )
+        
+        transaction_id = trans_row['transaction_id']
+        
+        # Create transaction lines
+        lines = []
+        for line in transaction.lines:
+            line_query = """
+                INSERT INTO transaction_lines (
+                    transaction_id, account_id, debit_amount, credit_amount,
+                    currency, notes
+                ) VALUES ($1, $2, $3, $4, $5, $6)
+                RETURNING *
+            """
+            
+            line_row = await db.fetchrow(
+                line_query,
+                transaction_id,
+                line.account_id,
+                line.debit_amount,
+                line.credit_amount,
+                line.currency,
+                line.notes
+            )
+            lines.append(dict(line_row))
+        
+        # Update account balances
+        await update_account_balances(db, transaction_id)
+    
+    return {
+        "transaction": dict(trans_row),
+        "lines": lines
+    }
+
+async def update_account_balances(db, transaction_id: int):
+    """Update cached account balances after a transaction"""
+    # Get transaction date
+    trans = await db.fetchrow(
+        "SELECT transaction_date FROM transactions WHERE transaction_id = $1",
+        transaction_id
+    )
+    trans_date = trans['transaction_date']
+    
+    # Get all affected accounts
+    lines = await db.fetch(
+        """
+        SELECT account_id, currency, 
+               SUM(debit_amount) as total_debit,
+               SUM(credit_amount) as total_credit
+        FROM transaction_lines
+        WHERE transaction_id = $1
+        GROUP BY account_id, currency
+        """,
+        transaction_id
+    )
+    
+    for line in lines:
+        account_id = line['account_id']
+        currency = line['currency']
+        
+        # Get account type to determine normal balance
+        account = await db.fetchrow(
+            "SELECT account_type FROM accounts WHERE account_id = $1",
+            account_id
+        )
+        account_type = account['account_type']
+        
+        # Calculate balance change
+        # Assets & Expenses: Debit increases, Credit decreases
+        # Liabilities, Equity, Income: Credit increases, Debit decreases
+        if account_type in ['Asset', 'Expense']:
+            balance_change = float(line['total_debit']) - float(line['total_credit'])
+        else:
+            balance_change = float(line['total_credit']) - float(line['total_debit'])
+        
+        # Update or insert balance
+        await db.execute(
+            """
+            INSERT INTO account_balances (account_id, currency, balance, as_of_date)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (account_id, currency, as_of_date)
+            DO UPDATE SET balance = account_balances.balance + $3
+            """,
+            account_id, currency, balance_change, trans_date
+        )
+
+# ==================== CASH POSITION ====================
+
+@app.get("/api/accounting/cash-position")
+async def get_cash_position(
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Get current cash position across all bank accounts and cash"""
+    
+    # Get all bank and cash accounts with current balances
+    query = """
+        SELECT 
+            a.account_id,
+            a.account_code,
+            a.account_name,
+            a.account_subtype,
+            a.currency,
+            COALESCE(b.balance, 0) as balance
+        FROM accounts a
+        LEFT JOIN LATERAL (
+            SELECT balance 
+            FROM account_balances 
+            WHERE account_id = a.account_id 
+                AND currency = a.currency
+                AND as_of_date <= CURRENT_DATE
+            ORDER BY as_of_date DESC
+            LIMIT 1
+        ) b ON TRUE
+        WHERE a.account_type = 'Asset'
+            AND a.account_subtype IN ('Bank', 'Cash')
+            AND a.is_active = TRUE
+        ORDER BY a.currency, a.account_code
+    """
+    
+    rows = await db.fetch(query)
+    accounts = [dict(row) for row in rows]
+    
+    # Calculate totals by currency
+    usd_total = sum(float(acc['balance']) for acc in accounts if acc['currency'] == 'USD')
+    mxn_total = sum(float(acc['balance']) for acc in accounts if acc['currency'] == 'MXN')
+    
+    # Get current exchange rate
+    rate_row = await db.fetchrow(
+        "SELECT rate FROM exchange_rates ORDER BY created_at DESC LIMIT 1"
+    )
+    exchange_rate = float(rate_row['rate']) if rate_row else 17.50
+    
+    return {
+        'accounts': accounts,
+        'totals': {
+            'usd': usd_total,
+            'mxn': mxn_total,
+            'usd_equivalent': usd_total + (mxn_total / exchange_rate)
+        },
+        'exchange_rate': exchange_rate
+    }
+
+# ==================== PROFIT DISTRIBUTION ====================
+
+@app.post("/api/accounting/profit-distribution/calculate")
+async def calculate_profit_distribution(
+    inventory_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Calculate profit for a sale and distribution amounts"""
+    
+    # Get sale information
+    sale = await db.fetchrow(
+        """
+        SELECT 
+            inventory_id, stock_number, sale_price, sale_currency,
+            purchase_price_usd
+        FROM inventory
+        WHERE inventory_id = $1 AND is_sold = TRUE
+        """,
+        inventory_id
+    )
+    
+    if not sale:
+        raise HTTPException(status_code=404, detail="Sale not found")
+    
+    # Get all costs
+    costs = await db.fetch(
+        """
+        SELECT currency, SUM(amount) as total
+        FROM cost_items
+        WHERE inventory_id = $1
+        GROUP BY currency
+        """,
+        inventory_id
+    )
+    
+    usd_costs = sum(float(c['total']) for c in costs if c['currency'] == 'USD')
+    mxn_costs = sum(float(c['total']) for c in costs if c['currency'] == 'MXN')
+    
+    purchase_price = float(sale['purchase_price_usd'])
+    total_cost_usd = purchase_price + usd_costs
+    
+    # Get exchange rate
+    rate_row = await db.fetchrow(
+        "SELECT rate FROM exchange_rates ORDER BY created_at DESC LIMIT 1"
+    )
+    exchange_rate = float(rate_row['rate']) if rate_row else 17.50
+    
+    # Calculate profit in sale currency
+    sale_price = float(sale['sale_price'])
+    currency = sale['sale_currency']
+    
+    if currency == 'USD':
+        total_cost = total_cost_usd
+    else:  # MXN
+        total_cost = (total_cost_usd * exchange_rate) + mxn_costs
+    
+    profit = sale_price - total_cost
+    
+    # Calculate distributions
+    erick_amount = profit * 0.60
+    omar_amount = profit * 0.40
+    
+    return {
+        'inventory_id': inventory_id,
+        'stock_number': sale['stock_number'],
+        'sale_price': sale_price,
+        'total_cost': total_cost,
+        'profit': profit,
+        'currency': currency,
+        'distributions': {
+            'erick': {
+                'percentage': 60,
+                'amount': erick_amount
+            },
+            'omar': {
+                'percentage': 40,
+                'amount': omar_amount
+            }
+        },
+        'exchange_rate': exchange_rate
+    }
+
+@app.post("/api/accounting/profit-distribution")
+async def record_profit_distribution(
+    distribution: ProfitDistributionCreate,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Record a profit distribution"""
+    
+    erick_amount = float(distribution.total_profit) * float(distribution.erick_percentage) / 100
+    omar_amount = float(distribution.total_profit) * float(distribution.omar_percentage) / 100
+    
+    async with db.transaction():
+        # Create distribution record
+        dist_query = """
+            INSERT INTO profit_distributions (
+                distribution_date, inventory_id, total_profit, currency,
+                erick_percentage, erick_amount, omar_percentage, omar_amount,
+                notes, created_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING *
+        """
+        
+        dist_row = await db.fetchrow(
+            dist_query,
+            distribution.distribution_date,
+            distribution.inventory_id,
+            distribution.total_profit,
+            distribution.currency,
+            distribution.erick_percentage,
+            erick_amount,
+            distribution.omar_percentage,
+            omar_amount,
+            distribution.notes,
+            user['username']
+        )
+        
+        # Create accounting transaction
+        # Get account IDs
+        retained_earnings = await db.fetchval(
+            "SELECT account_id FROM accounts WHERE account_code = '3100'"
+        )
+        erick_dist = await db.fetchval(
+            "SELECT account_id FROM accounts WHERE account_code = '3200'"
+        )
+        omar_dist = await db.fetchval(
+            "SELECT account_id FROM accounts WHERE account_code = '3201'"
+        )
+        
+        # Create transaction
+        trans_query = """
+            INSERT INTO transactions (
+                transaction_date, description, reference_type, reference_id,
+                currency, created_by
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING transaction_id
+        """
+        
+        trans_id = await db.fetchval(
+            trans_query,
+            distribution.distribution_date,
+            f"Profit Distribution - {distribution.notes or ''}",
+            'distribution',
+            dist_row['distribution_id'],
+            distribution.currency,
+            user['username']
+        )
+        
+        # Create lines
+        # Debit: Retained Earnings (reduce equity)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, account_id, debit_amount, currency
+            ) VALUES ($1, $2, $3, $4)
+            """,
+            trans_id, retained_earnings, distribution.total_profit, distribution.currency
+        )
+        
+        # Credit: Erick Distribution
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, account_id, credit_amount, currency
+            ) VALUES ($1, $2, $3, $4)
+            """,
+            trans_id, erick_dist, erick_amount, distribution.currency
+        )
+        
+        # Credit: Omar Distribution
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, account_id, credit_amount, currency
+            ) VALUES ($1, $2, $3, $4)
+            """,
+            trans_id, omar_dist, omar_amount, distribution.currency
+        )
+        
+        # Update balances
+        await update_account_balances(db, trans_id)
+        
+        # Update distribution with transaction_id
+        await db.execute(
+            "UPDATE profit_distributions SET transaction_id = $1 WHERE distribution_id = $2",
+            trans_id, dist_row['distribution_id']
+        )
+    
+    return dict(dist_row)
+
+@app.get("/api/accounting/profit-distributions")
+async def get_profit_distributions(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Get profit distribution history"""
+    where_clauses = []
+    params = []
+    param_count = 1
+    
+    if start_date:
+        where_clauses.append(f"distribution_date >= ${param_count}")
+        params.append(start_date)
+        param_count += 1
+    
+    if end_date:
+        where_clauses.append(f"distribution_date <= ${param_count}")
+        params.append(end_date)
+        param_count += 1
+    
+    where_clause = " AND ".join(where_clauses) if where_clauses else "TRUE"
+    
+    query = f"""
+        SELECT 
+            pd.*,
+            i.stock_number,
+            i.sale_price as sale_amount
+        FROM profit_distributions pd
+        LEFT JOIN inventory i ON pd.inventory_id = i.inventory_id
+        WHERE {where_clause}
+        ORDER BY pd.distribution_date DESC
+    """
+    
+    rows = await db.fetch(query, *params)
+    return [dict(row) for row in rows]
+
 # ==================== WORK PLAN ENDPOINTS ====================
 
 @app.post("/api/inventory/{inventory_id}/work-plan", response_model=WorkPlan)
