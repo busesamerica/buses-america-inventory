@@ -681,7 +681,8 @@ function InventoryApp() {
             {id:'inventory',label:'Inventory',icon:'🚌'},  
             {id:'suppliers',label:'Suppliers',icon:'🏢'},
             {id:'pre-inspections',label:'Pre-Inspections',icon:'🔍'},
-            {id:'sales-reports',label:'Sales Reports',icon:'💰'}
+            {id:'sales-reports',label:'Sales Reports',icon:'💰'},
+            {id:'accounting',label:'Accounting',icon:'💼'}
           ].map(item => (
             <button
               key={item.id}
@@ -726,6 +727,7 @@ function InventoryApp() {
             {view === 'sales-reports' && 'Sales Reports & Analytics'}
             {view === 'pre-inspections' && 'Pre-Inspections'}
             {view === 'suppliers' && 'Suppliers'}
+            {view === 'accounting' && 'Accounting Dashboard'}
           </h1>
           <UserDropdown />
         </div>
@@ -876,10 +878,7 @@ function InventoryApp() {
                 )}
               </div>
             </div>
-          )}
-
-          {/* SALES REPORTS VIEW */}
-          {view === 'sales-reports' && <SalesReports />}
+          )} 
 
           {/* SUPPLIERS VIEW */}
           {view === 'suppliers' && (
@@ -1030,6 +1029,12 @@ function InventoryApp() {
               </div>
             </div>
           )}
+
+          {/* SALES REPORTS VIEW */}
+          {view === 'sales-reports' && <SalesReports />}
+
+          {/* ACCOUNTING VIEW */}
+          {view === 'accounting' && <AccountingDashboard />} 
         </div>
       </div>
 
