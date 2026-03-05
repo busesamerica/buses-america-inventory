@@ -32,6 +32,7 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
   // New payment form data
   const [newPayment, setNewPayment] = React.useState({
     payment_amount: '',
+    payment_currency: formData.sale_currency || 'USD',
     payment_date: new Date().toISOString().split('T')[0],
     payment_method: 'Wire Transfer',
     payment_type: 'Deposit',
@@ -102,8 +103,8 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
         },
         body: JSON.stringify({
           ...newPayment,
-          payment_amount: parseFloat(newPayment.payment_amount).toFixed(2),
-          payment_currency: formData.sale_currency
+          payment_amount: parseFloat(newPayment.payment_amount).toFixed(2)
+          // payment_currency is already in newPayment - don't override!
         })
       });
 
@@ -112,6 +113,7 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
       // Reset form
       setNewPayment({
         payment_amount: '',
+        payment_currency: formData.sale_currency || 'USD',
         payment_date: new Date().toISOString().split('T')[0],
         payment_method: 'Wire Transfer',
         payment_type: 'Partial Payment',
