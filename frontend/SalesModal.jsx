@@ -202,9 +202,13 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
     costForProfit = (totalCostUSD * exchangeRate) + mxnCosts;
   }
 
-  // Calculate payments
+  // Calculate payments (use converted_amount for multi-currency accuracy)
   const salePrice = parseFloat(formData.sale_price) || 0;
-  const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.payment_amount), 0);
+  const totalPaid = payments.reduce((sum, p) => {
+    // Use converted_amount if available (multi-currency), otherwise use payment_amount
+    const amount = p.converted_amount !== undefined ? p.converted_amount : parseFloat(p.payment_amount);
+    return sum + amount;
+  }, 0);
   const balanceDue = salePrice - totalPaid;
   const profit = salePrice - costForProfit;
 
