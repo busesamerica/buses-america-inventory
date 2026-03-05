@@ -59,7 +59,8 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
       });
       if (response.ok) {
         const data = await response.json();
-        setPayments(data);
+        // Backend now returns {payments: [...], sale_currency: ..., exchange_rate: ...}
+        setPayments(data.payments || data); // Handle both old and new format
       }
     } catch (err) {
       console.error('Error loading payments:', err);
