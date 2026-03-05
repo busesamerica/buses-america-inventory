@@ -1165,119 +1165,115 @@ async def get_inventory_payments(
     rows = await db.fetch(query, inventory_id)
     return [dict(row) for row in rows]
 
+# UPDATED PAYMENT ENDPOINTS - MULTI-CURRENCY SUPPORT
+# Replace the existing payment endpoints in backend_api_FINAL.py
+
+# ==================== PAYMENT TRACKING (MULTI-CURRENCY) ====================
+
 @app.post("/api/inventory/{inventory_id}/payments")
 async def add_payment(
     inventory_id: int,
-    payment_data: dict,
+    payment: PaymentCreate,
     db=Depends(get_db),
     user=Depends(get_current_user)
 ):
-    """Add a payment for an inventory unit"""
-    # Verify inventory exists
-    inv_check = await db.fetchval(
-        "SELECT inventory_id FROM inventory WHERE inventory_id = $1",
+    """Add a payment to an inventory item (supports multi-currency)"""
+    
+    # Verify inventory exists and is sold
+    inventory = await db.fetchrow(
+        "SELECT inventory_id, sale_currency, sale_price FROM inventory WHERE inventory_id = $1 AND is_sold = TRUE",
         inventory_id
     )
-    if not inv_check:
-        raise HTTPException(status_code=404, detail="Inventory item not found")
     
-    # Convert date string to date object if needed
-    from datetime import datetime
-    payment_date = payment_data.get('payment_date')
-    if isinstance(payment_date, str):
-        payment_date = datetime.strptime(payment_date, '%Y-%m-%d').date()
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Sold inventory not found")
     
+    sale_currency = inventory['sale_currency']
+    sale_price = float(inventory['sale_price'])
+    
+    # Get current exchange rate
+    rate_row = await db.fetchrow(
+        "SELECT rate FROM exchange_rates ORDER BY created_at DESC LIMIT 1"
+    )
+    exchange_rate = float(rate_row['rate']) if rate_row else 17.50
+    
+    # Insert payment
     query = """
         INSERT INTO payments (
-            inventory_id, payment_amount, payment_currency, payment_date,
+            inventory_id, payment_amount, payment_currency, payment_date, 
             payment_method, payment_type, reference_number, payment_notes, created_by
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING *
     """
+    
     row = await db.fetchrow(
         query,
         inventory_id,
-        payment_data.get('payment_amount'),
-        payment_data.get('payment_currency', 'USD'),
-        payment_date,
-        payment_data.get('payment_method'),
-        payment_data.get('payment_type', 'Deposit'),
-        payment_data.get('reference_number'),
-        payment_data.get('payment_notes'),
+        payment.payment_amount,
+        payment.payment_currency,  # Can be different from sale_currency!
+        payment.payment_date,
+        payment.payment_method,
+        payment.payment_type,
+        payment.reference_number,
+        payment.payment_notes,
         user['username']
     )
     
-    # Update inventory payment status based on total paid
-    await update_payment_status(db, inventory_id)
-    
-    await log_audit(
-        db, user['user_id'], user['username'],
-        'create', 'payments', row['payment_id'],
-        description=f"Added payment: {payment_data.get('payment_amount')} {payment_data.get('payment_currency')}"
-    )
+    # Update payment status and balance
+    await update_payment_status(db, inventory_id, sale_currency, sale_price, exchange_rate)
     
     return dict(row)
 
-@app.delete("/api/inventory/{inventory_id}/payments/{payment_id}")
-async def delete_payment(
-    inventory_id: int,
-    payment_id: int,
-    db=Depends(get_db),
-    user=Depends(get_current_user)
-):
-    """Delete a payment"""
-    # Verify payment belongs to this inventory
-    payment = await db.fetchrow(
-        "SELECT * FROM payments WHERE payment_id = $1 AND inventory_id = $2",
-        payment_id, inventory_id
-    )
-    if not payment:
-        raise HTTPException(status_code=404, detail="Payment not found")
+async def update_payment_status(db, inventory_id: int, sale_currency: str, sale_price: float, exchange_rate: float):
+    """
+    Update payment_status and balance_due based on total payments received
+    Handles multi-currency conversion automatically
+    """
     
-    await db.execute("DELETE FROM payments WHERE payment_id = $1", payment_id)
-    
-    # Update inventory payment status
-    await update_payment_status(db, inventory_id)
-    
-    await log_audit(
-        db, user['user_id'], user['username'],
-        'delete', 'payments', payment_id,
-        description=f"Deleted payment: {payment['payment_amount']} {payment['payment_currency']}"
-    )
-    
-    return {"message": "Payment deleted successfully"}
-
-async def update_payment_status(db, inventory_id: int):
-    """Helper function to update payment status based on total payments"""
-    # Get sale price
-    sale_info = await db.fetchrow(
-        "SELECT sale_price, sale_currency FROM inventory WHERE inventory_id = $1",
+    # Get all payments for this inventory
+    payments = await db.fetch(
+        """
+        SELECT payment_amount, payment_currency 
+        FROM payments 
+        WHERE inventory_id = $1
+        ORDER BY payment_date
+        """,
         inventory_id
     )
-    if not sale_info or not sale_info['sale_price']:
-        return
     
-    # Get total payments
-    total_paid = await db.fetchval(
-        """
-        SELECT COALESCE(SUM(payment_amount), 0) 
-        FROM payments 
-        WHERE inventory_id = $1 AND payment_currency = $2
-        """,
-        inventory_id,
-        sale_info['sale_currency']
-    )
+    # Convert all payments to sale currency
+    total_paid_in_sale_currency = 0
     
-    sale_price = float(sale_info['sale_price'])
-    balance_due = sale_price - float(total_paid or 0)
+    for payment in payments:
+        payment_amount = float(payment['payment_amount'])
+        payment_currency = payment['payment_currency']
+        
+        if payment_currency == sale_currency:
+            # Same currency - no conversion needed
+            converted_amount = payment_amount
+        elif sale_currency == 'USD' and payment_currency == 'MXN':
+            # Payment in MXN, Sale in USD: divide by rate
+            converted_amount = payment_amount / exchange_rate
+        elif sale_currency == 'MXN' and payment_currency == 'USD':
+            # Payment in USD, Sale in MXN: multiply by rate
+            converted_amount = payment_amount * exchange_rate
+        else:
+            # Shouldn't happen, but default to no conversion
+            converted_amount = payment_amount
+        
+        total_paid_in_sale_currency += converted_amount
+    
+    # Calculate balance due in sale currency
+    balance_due = sale_price - total_paid_in_sale_currency
     
     # Determine payment status
-    if balance_due <= 0:
-        payment_status = 'Paid in Full'
-    elif total_paid > 0:
-        payment_status = 'Partial Payment'
+    if balance_due <= 0.01:  # Paid in full (allow for rounding)
+        payment_status = "Paid in Full"
+        balance_due = 0
+    elif total_paid_in_sale_currency > 0:
+        payment_status = "Partial Payment"
     else:
-        payment_status = 'Pending Deposit'
+        payment_status = "Pending Deposit"
     
     # Update inventory
     await db.execute(
@@ -1288,6 +1284,108 @@ async def update_payment_status(db, inventory_id: int):
         """,
         payment_status, balance_due, inventory_id
     )
+
+@app.get("/api/inventory/{inventory_id}/payments")
+async def get_payments(
+    inventory_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Get all payments for an inventory item with converted amounts"""
+    
+    # Get sale info for conversion context
+    inventory = await db.fetchrow(
+        "SELECT sale_currency, sale_price FROM inventory WHERE inventory_id = $1",
+        inventory_id
+    )
+    
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Inventory not found")
+    
+    sale_currency = inventory['sale_currency']
+    
+    # Get exchange rate
+    rate_row = await db.fetchrow(
+        "SELECT rate FROM exchange_rates ORDER BY created_at DESC LIMIT 1"
+    )
+    exchange_rate = float(rate_row['rate']) if rate_row else 17.50
+    
+    # Get payments
+    query = """
+        SELECT * FROM payments 
+        WHERE inventory_id = $1 
+        ORDER BY payment_date, created_at
+    """
+    
+    rows = await db.fetch(query, inventory_id)
+    payments = []
+    
+    for row in rows:
+        payment_dict = dict(row)
+        payment_amount = float(payment_dict['payment_amount'])
+        payment_currency = payment_dict['payment_currency']
+        
+        # Calculate converted amount (to sale currency)
+        if payment_currency == sale_currency:
+            converted_amount = payment_amount
+        elif sale_currency == 'USD' and payment_currency == 'MXN':
+            converted_amount = payment_amount / exchange_rate
+        elif sale_currency == 'MXN' and payment_currency == 'USD':
+            converted_amount = payment_amount * exchange_rate
+        else:
+            converted_amount = payment_amount
+        
+        payment_dict['converted_amount'] = converted_amount
+        payment_dict['conversion_rate'] = exchange_rate if payment_currency != sale_currency else None
+        payments.append(payment_dict)
+    
+    return {
+        'payments': payments,
+        'sale_currency': sale_currency,
+        'exchange_rate': exchange_rate
+    }
+
+@app.delete("/api/inventory/{inventory_id}/payments/{payment_id}")
+async def delete_payment(
+    inventory_id: int,
+    payment_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Delete a payment and recalculate balance"""
+    
+    # Get sale info for recalculation
+    inventory = await db.fetchrow(
+        "SELECT sale_currency, sale_price FROM inventory WHERE inventory_id = $1",
+        inventory_id
+    )
+    
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Inventory not found")
+    
+    sale_currency = inventory['sale_currency']
+    sale_price = float(inventory['sale_price'])
+    
+    # Get exchange rate
+    rate_row = await db.fetchrow(
+        "SELECT rate FROM exchange_rates ORDER BY created_at DESC LIMIT 1"
+    )
+    exchange_rate = float(rate_row['rate']) if rate_row else 17.50
+    
+    # Delete payment
+    result = await db.execute(
+        "DELETE FROM payments WHERE payment_id = $1 AND inventory_id = $2",
+        payment_id, inventory_id
+    )
+    
+    if result == "DELETE 0":
+        raise HTTPException(status_code=404, detail="Payment not found")
+    
+    # Recalculate payment status
+    await update_payment_status(db, inventory_id, sale_currency, sale_price, exchange_rate)
+    
+    return {"message": "Payment deleted successfully"}
+
 # ==================== SALES ANALYTICS ENDPOINT ====================
 
 @app.get("/api/reports/sales-analytics")
