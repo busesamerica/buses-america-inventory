@@ -649,7 +649,7 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                     border: '1px solid #86efac'
                   }}>
                     <div style={{ display: 'grid', gap: '1rem' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
                         <div>
                           <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
                             Amount *
@@ -675,6 +675,31 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                               fontSize: '1rem'
                             }}
                           />
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
+                            Currency *
+                          </label>
+                          <select
+                            value={newPayment.payment_currency}
+                            onChange={(e) => setNewPayment({ ...newPayment, payment_currency: e.target.value })}
+                            style={{
+                              width: '100%',
+                              padding: '0.75rem',
+                              border: '1px solid #d1d5db',
+                              borderRadius: '0.5rem',
+                              fontSize: '1rem'
+                            }}
+                          >
+                            <option value="USD">USD</option>
+                            <option value="MXN">MXN</option>
+                          </select>
+                          {newPayment.payment_currency !== formData.sale_currency && (
+                            <div style={{ fontSize: '0.75rem', color: '#059669', marginTop: '0.25rem' }}>
+                              💱 Will convert to {formData.sale_currency}
+                            </div>
+                          )}
                         </div>
 
                         <div>
@@ -849,22 +874,36 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                               {payment.payment_notes}
                             </div>
                           )}
+                          {/* Show conversion if different currency */}
+                          {payment.payment_currency !== formData.sale_currency && payment.converted_amount && (
+                            <div style={{ fontSize: '0.75rem', color: '#059669', marginTop: '0.5rem', fontWeight: '600', background: '#d1fae5', padding: '0.25rem 0.5rem', borderRadius: '0.25rem' }}>
+                              💱 {formatCurrency(payment.payment_amount, payment.payment_currency)} → {formatCurrency(payment.converted_amount, formData.sale_currency)} 
+                              {payment.conversion_rate && <span style={{ opacity: 0.8 }}> (@ {payment.conversion_rate.toFixed(2)})</span>}
+                            </div>
+                          )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleDeletePayment(payment.payment_id)}
-                          style={{
-                            padding: '0.5rem',
-                            background: '#fee2e2',
-                            color: '#dc2626',
-                            border: 'none',
-                            borderRadius: '0.375rem',
-                            cursor: 'pointer',
-                            fontSize: '0.875rem'
-                          }}
-                        >
-                          🗑️
-                        </button>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
+                          {payment.payment_currency !== formData.sale_currency && payment.converted_amount && (
+                            <div style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'right' }}>
+                              = {formatCurrency(payment.converted_amount, formData.sale_currency)}
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePayment(payment.payment_id)}
+                            style={{
+                              padding: '0.5rem',
+                              background: '#fee2e2',
+                              color: '#dc2626',
+                              border: 'none',
+                              borderRadius: '0.375rem',
+                              cursor: 'pointer',
+                              fontSize: '0.875rem'
+                            }}
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -953,17 +992,30 @@ const SalesModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                         Payments Received:
                       </div>
                       {[...payments].reverse().map((payment) => (
-                        <div key={payment.payment_id} style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          paddingBottom: '0.5rem',
-                          borderBottom: '1px solid #f3f4f6',
-                          fontSize: '0.875rem'
-                        }}>
-                          <span>{formatDate(payment.payment_date)} - {payment.payment_type}</span>
-                          <span style={{ fontWeight: '600', color: '#10b981' }}>
-                            {formatCurrency(payment.payment_amount, payment.payment_currency)}
-                          </span>
+                        <div key={payment.payment_id}>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            paddingBottom: '0.5rem',
+                            borderBottom: '1px solid #f3f4f6',
+                            fontSize: '0.875rem'
+                          }}>
+                            <span>{formatDate(payment.payment_date)} - {payment.payment_type}</span>
+                            <span style={{ fontWeight: '600', color: '#10b981' }}>
+                              {formatCurrency(payment.payment_amount, payment.payment_currency)}
+                            </span>
+                          </div>
+                          {payment.payment_currency !== formData.sale_currency && payment.converted_amount && (
+                            <div style={{ 
+                              fontSize: '0.75rem', 
+                              color: '#059669', 
+                              paddingLeft: '0.5rem',
+                              marginTop: '0.25rem',
+                              marginBottom: '0.5rem'
+                            }}>
+                              💱 Converts to {formatCurrency(payment.converted_amount, formData.sale_currency)}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </>
