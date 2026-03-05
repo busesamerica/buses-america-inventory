@@ -9,21 +9,26 @@ const SalesReports = () => {
     end_date: new Date().toISOString().split('T')[0],
     currency: 'ALL'
   });
+  const [appliedFilters, setAppliedFilters] = React.useState({
+    start_date: new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0],
+    end_date: new Date().toISOString().split('T')[0],
+    currency: 'ALL'
+  });
 
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
 
   React.useEffect(() => {
     loadAnalytics();
-  }, [filters]);
+  }, [appliedFilters]);
 
   const loadAnalytics = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('session_token');
       const params = new URLSearchParams({
-        start_date: filters.start_date,
-        end_date: filters.end_date,
-        ...(filters.currency !== 'ALL' && { currency: filters.currency })
+        start_date: appliedFilters.start_date,
+        end_date: appliedFilters.end_date,
+        ...(appliedFilters.currency !== 'ALL' && { currency: appliedFilters.currency })
       });
 
       const response = await fetch(`${API_URL}/reports/sales-analytics?${params}`, {
@@ -159,6 +164,24 @@ const SalesReports = () => {
             <option value="MXN">MXN Only</option>
           </select>
         </div>
+
+        <button
+          onClick={() => setAppliedFilters(filters)}
+          style={{
+            padding: '0.75rem 1.5rem',
+            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.5rem',
+            fontSize: '0.875rem',
+            fontWeight: '600',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+            boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)'
+          }}
+        >
+          🔍 Apply Filters
+        </button>
       </div>
 
       {/* Overview Cards */}
