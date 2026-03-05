@@ -60,6 +60,15 @@ class Supplier(SupplierCreate):
     class Config:
         from_attributes = True
 
+class PaymentCreate(BaseModel):
+    payment_amount: Decimal
+    payment_currency: str = 'USD'
+    payment_date: date
+    payment_method: str
+    payment_type: str
+    reference_number: Optional[str] = None
+    payment_notes: Optional[str] = None
+
 class PrePurchaseInspectionCreate(BaseModel):
     vin: str
     stock_number_temp: Optional[str] = None
