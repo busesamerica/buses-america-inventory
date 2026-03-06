@@ -8,6 +8,7 @@ const AccountingDashboard = () => {
   const [selectedBusForDistribution, setSelectedBusForDistribution] = React.useState(null);
   const [showDistributionModal, setShowDistributionModal] = React.useState(false);
   const [showTransactionForm, setShowTransactionForm] = React.useState(false);
+  const [showDistributionHistory, setShowDistributionHistory] = React.useState(false);
 
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
 
@@ -289,6 +290,22 @@ const AccountingDashboard = () => {
             💸 Distribute Profit
           </button>
           <button
+            onClick={() => setShowDistributionHistory(true)}
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.5rem',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              boxShadow: '0 2px 4px rgba(139, 92, 246, 0.3)'
+            }}
+          >
+            📊 Distribution History
+          </button>
+          <button
             onClick={() => window.location.reload()}
             style={{
               padding: '0.75rem 1.5rem',
@@ -306,8 +323,7 @@ const AccountingDashboard = () => {
         </div>
       </div>
 
-      {/* Placeholder for modals */}
-      {/* Profit Distribution Modal */}
+      {/* Modals */}
       <ProfitDistributionModal
         isOpen={showDistributionModal}
         onClose={() => setShowDistributionModal(false)}
@@ -317,44 +333,19 @@ const AccountingDashboard = () => {
         }}
       />
 
-      {showTransactionForm && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: 'white',
-            padding: '2rem',
-            borderRadius: '0.75rem',
-            maxWidth: '500px',
-            width: '90%'
-          }}>
-            <h3 style={{ margin: '0 0 1rem 0' }}>📝 Record Transaction</h3>
-            <p>Transaction form coming in next component...</p>
-            <button
-              onClick={() => setShowTransactionForm(false)}
-              style={{
-                padding: '0.5rem 1rem',
-                background: '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '0.5rem',
-                cursor: 'pointer'
-              }}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+      <TransactionEntryModal
+        isOpen={showTransactionForm}
+        onClose={() => setShowTransactionForm(false)}
+        onComplete={() => {
+          loadCashPosition();
+          loadAccounts();
+        }}
+      />
+
+      <DistributionHistoryModal
+        isOpen={showDistributionHistory}
+        onClose={() => setShowDistributionHistory(false)}
+      />
     </div>
   );
 };
