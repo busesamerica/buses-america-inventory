@@ -307,44 +307,15 @@ const AccountingDashboard = () => {
       </div>
 
       {/* Placeholder for modals */}
-      {showDistributionModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: 'white',
-            padding: '2rem',
-            borderRadius: '0.75rem',
-            maxWidth: '500px',
-            width: '90%'
-          }}>
-            <h3 style={{ margin: '0 0 1rem 0' }}>💸 Profit Distribution</h3>
-            <p>Distribution calculator coming in next component...</p>
-            <button
-              onClick={() => setShowDistributionModal(false)}
-              style={{
-                padding: '0.5rem 1rem',
-                background: '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '0.5rem',
-                cursor: 'pointer'
-              }}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Profit Distribution Modal */}
+      <ProfitDistributionModal
+        isOpen={showDistributionModal}
+        onClose={() => setShowDistributionModal(false)}
+        onComplete={() => {
+          loadCashPosition();
+          alert('✅ Profit distribution recorded successfully!');
+        }}
+      />
 
       {showTransactionForm && (
         <div style={{
