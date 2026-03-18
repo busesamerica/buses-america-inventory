@@ -474,7 +474,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                   <option value="">Select account...</option>
                   {bankAccounts.map(account => (
                     <option key={account.account_id} value={account.account_id}>
-                      {account.account_name} ({account.currency})
+                      {account.account_name}
                     </option>
                   ))}
                 </select>
