@@ -9,6 +9,7 @@ const AccountingDashboard = () => {
   const [showDistributionModal, setShowDistributionModal] = React.useState(false);
   const [showTransactionForm, setShowTransactionForm] = React.useState(false);
   const [showDistributionHistory, setShowDistributionHistory] = React.useState(false);
+  const [showIncomeStatement, setShowIncomeStatement] = React.useState(false);
 
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
 
@@ -306,6 +307,22 @@ const AccountingDashboard = () => {
             📊 Distribution History
           </button>
           <button
+            onClick={() => setShowIncomeStatement(true)}
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.5rem',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              boxShadow: '0 2px 4px rgba(245, 158, 11, 0.3)'
+            }}
+          >
+            📈 Income Statement
+          </button>
+          <button
             onClick={() => window.location.reload()}
             style={{
               padding: '0.75rem 1.5rem',
@@ -345,6 +362,11 @@ const AccountingDashboard = () => {
       <DistributionHistoryModal
         isOpen={showDistributionHistory}
         onClose={() => setShowDistributionHistory(false)}
+      />
+
+      <IncomeStatementReport
+        isOpen={showIncomeStatement}
+        onClose={() => setShowIncomeStatement(false)}
       />
     </div>
   );
