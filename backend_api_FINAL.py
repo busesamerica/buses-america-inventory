@@ -1131,6 +1131,10 @@ async def add_inventory_cost(
         currency = cost_data.get('currency', 'USD')
         payment_account_id = cost_data.get('payment_account_id')  # Bank/cash account paid from
         
+        # Convert payment_account_id to int if it's a string
+        if payment_account_id:
+            payment_account_id = int(payment_account_id)
+        
         # Map cost categories to expense accounts
         category_to_account = {
             # ASSET ACCOUNTS (adds to bus value)
