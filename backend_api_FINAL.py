@@ -1085,7 +1085,8 @@ async def add_inventory_cost(
     db=Depends(get_db),
     user=Depends(get_current_user)
 ):
-    """Add a cost item to an inventory unit"""
+    """Add a cost item to an inventory unit and create accounting entry"""
+    
     # Verify inventory exists
     inv_check = await db.fetchval(
         "SELECT inventory_id FROM inventory WHERE inventory_id = $1",
@@ -1100,33 +1101,153 @@ async def add_inventory_cost(
     if isinstance(date_incurred, str):
         date_incurred = datetime.strptime(date_incurred, '%Y-%m-%d').date()
     
-    query = """
-        INSERT INTO cost_items (
-            inventory_id, cost_category, description, amount, currency,
-            vendor, invoice_number, date_incurred, created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        RETURNING *
-    """
-    row = await db.fetchrow(
-        query,
-        inventory_id,
-        cost_data.get('cost_category'),
-        cost_data.get('description'),
-        cost_data.get('amount'),
-        cost_data.get('currency', 'USD'),
-        cost_data.get('vendor'),
-        cost_data.get('invoice_number'),
-        date_incurred,
-        user['username']
-    )
+    # Start transaction for both cost entry and accounting entry
+    async with db.transaction():
+        # Insert cost item
+        cost_query = """
+            INSERT INTO cost_items (
+                inventory_id, cost_category, description, amount, currency,
+                vendor, invoice_number, date_incurred, created_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING *
+        """
+        cost_row = await db.fetchrow(
+            cost_query,
+            inventory_id,
+            cost_data.get('cost_category'),
+            cost_data.get('description'),
+            cost_data.get('amount'),
+            cost_data.get('currency', 'USD'),
+            cost_data.get('vendor'),
+            cost_data.get('invoice_number'),
+            date_incurred,
+            user['username']
+        )
+        
+        # Create accounting entry
+        # Determine which accounts to use based on cost category
+        cost_category = cost_data.get('cost_category')
+        amount = float(cost_data.get('amount'))
+        currency = cost_data.get('currency', 'USD')
+        payment_account_id = cost_data.get('payment_account_id')  # Bank/cash account paid from
+        
+        # Map cost categories to expense accounts
+        category_to_account = {
+            # ASSET ACCOUNTS (adds to bus value)
+            'Purchase': '1200',                    # Bus Inventory
+            'Other Acquisition': '1200',           # Bus Inventory
+            'Initial Reconditioning': '1200',      # Bus Inventory
+            
+            # EXPENSE ACCOUNTS
+            'Transport to Stock': '5100',          # Transportation Costs
+            'Import': '5200',                      # Import/Customs Fees
+            'Customs': '5200',                     # Import/Customs Fees
+            'Regulatory': '5530',                  # Vehicle Registration & Permits
+            'Preventive Maintenance': '5520',      # Vehicle Repairs & Maintenance
+            'Transport to Client': '5100',         # Transportation Costs
+            'Repair': '5520',                      # Vehicle Repairs & Maintenance
+            'Other': '5900'                        # Other Expenses
+        }
+        
+        expense_account_code = category_to_account.get(cost_category, '5900')
+        
+        # Get account IDs
+        expense_account_id = await db.fetchval(
+            "SELECT account_id FROM accounts WHERE account_code = $1",
+            expense_account_code
+        )
+        
+        # If no payment account specified, default to first cash account in same currency
+        if not payment_account_id:
+            payment_account_id = await db.fetchval(
+                """
+                SELECT account_id FROM accounts 
+                WHERE account_type = 'Asset' 
+                  AND account_subtype = 'Cash' 
+                  AND currency IN ('BOTH', $1)
+                LIMIT 1
+                """,
+                currency
+            )
+        
+        # Generate reference number
+        reference_number = await generate_transaction_reference(
+            db,
+            'expense',
+            date_incurred
+        )
+        
+        # Create accounting transaction
+        trans_description = f"Cost - {cost_category} - {cost_data.get('description', 'Inventory cost')}"
+        
+        trans_query = """
+            INSERT INTO transactions (
+                transaction_date, description, reference_type, reference_id,
+                currency, created_by, reference_number
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING transaction_id
+        """
+        
+        trans_id = await db.fetchval(
+            trans_query,
+            date_incurred,
+            trans_description,
+            'cost',
+            cost_row['cost_id'],
+            currency,
+            user['username'],
+            reference_number
+        )
+        
+        # Create transaction lines
+        # Debit: Expense/Inventory account (increases expense or asset)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, account_id, debit_amount, credit_amount, currency, notes
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+            """,
+            trans_id,
+            expense_account_id,
+            amount,
+            0,
+            currency,
+            f"{cost_category} - {cost_data.get('vendor', 'N/A')}"
+        )
+        
+        # Credit: Bank/Cash account (decreases cash)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, account_id, debit_amount, credit_amount, currency, notes
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+            """,
+            trans_id,
+            payment_account_id,
+            0,
+            amount,
+            currency,
+            f"Payment for {cost_category}"
+        )
+        
+        # Update account balances
+        await update_account_balances(db, trans_id)
+        
+        # Update cost item with transaction reference
+        await db.execute(
+            "UPDATE cost_items SET notes = $1 WHERE cost_id = $2",
+            f"Accounting Ref: {reference_number}",
+            cost_row['cost_id']
+        )
+        
+        # Audit log
+        await log_audit(
+            db, user['user_id'], user['username'],
+            'create', 'cost_items', cost_row['cost_id'],
+            description=f"Added cost with accounting entry: {cost_data.get('description')} - {amount} {currency}"
+        )
     
-    await log_audit(
-        db, user['user_id'], user['username'],
-        'create', 'cost_items', row['cost_id'],
-        description=f"Added cost: {cost_data.get('description')} - {cost_data.get('amount')} {cost_data.get('currency')}"
-    )
-    
-    return dict(row)
+    return dict(cost_row)
 
 @app.delete("/api/inventory/{inventory_id}/costs/{cost_id}")
 async def delete_inventory_cost(
