@@ -245,7 +245,10 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
                   }}>
                     <span>{account.name}</span>
                     <span style={{ fontFamily: 'monospace' }}>
-                      {formatCurrency(reportData.currency === 'MXN' ? account.amount_mxn : account.amount_usd)}
+                      {reportData.currency === 'BOTH' 
+                        ? `${formatCurrency(account.amount_usd, 'USD')} / ${formatCurrency(account.amount_mxn, 'MXN')}`
+                        : formatCurrency(reportData.currency === 'MXN' ? account.amount_mxn : account.amount_usd, reportData.currency)
+                      }
                     </span>
                   </div>
                 ))}
@@ -258,7 +261,10 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
                 }}>
                   <span>Total Revenue</span>
                   <span style={{ fontFamily: 'monospace' }}>
-                    {formatCurrency(reportData.revenue.total)}
+                    {reportData.currency === 'BOTH'
+                      ? `${formatCurrency(reportData.revenue.total_usd, 'USD')} / ${formatCurrency(reportData.revenue.total_mxn, 'MXN')}`
+                      : formatCurrency(reportData.revenue.total, reportData.currency)
+                    }
                   </span>
                 </div>
               </div>
@@ -284,7 +290,10 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
                   }}>
                     <span>{account.name}</span>
                     <span style={{ fontFamily: 'monospace' }}>
-                      {formatCurrency(reportData.currency === 'MXN' ? account.amount_mxn : account.amount_usd)}
+                      {reportData.currency === 'BOTH'
+                        ? `${formatCurrency(account.amount_usd, 'USD')} / ${formatCurrency(account.amount_mxn, 'MXN')}`
+                        : formatCurrency(reportData.currency === 'MXN' ? account.amount_mxn : account.amount_usd, reportData.currency)
+                      }
                     </span>
                   </div>
                 ))}
@@ -297,7 +306,10 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
                 }}>
                   <span>Total COGS</span>
                   <span style={{ fontFamily: 'monospace' }}>
-                    {formatCurrency(reportData.cogs.total)}
+                    {reportData.currency === 'BOTH'
+                      ? `${formatCurrency(reportData.cogs.total_usd, 'USD')} / ${formatCurrency(reportData.cogs.total_mxn, 'MXN')}`
+                      : formatCurrency(reportData.cogs.total, reportData.currency)
+                    }
                   </span>
                 </div>
               </div>
@@ -318,7 +330,10 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
                 }}>
                   <span>GROSS PROFIT</span>
                   <span style={{ fontFamily: 'monospace' }}>
-                    {formatCurrency(reportData.gross_profit)}
+                    {reportData.currency === 'BOTH'
+                      ? `${formatCurrency(reportData.gross_profit_usd, 'USD')} / ${formatCurrency(reportData.gross_profit_mxn, 'MXN')}`
+                      : formatCurrency(reportData.gross_profit, reportData.currency)
+                    }
                   </span>
                 </div>
               </div>
@@ -344,7 +359,10 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
                   }}>
                     <span>{account.name}</span>
                     <span style={{ fontFamily: 'monospace' }}>
-                      {formatCurrency(reportData.currency === 'MXN' ? account.amount_mxn : account.amount_usd)}
+                      {reportData.currency === 'BOTH'
+                        ? `${formatCurrency(account.amount_usd, 'USD')} / ${formatCurrency(account.amount_mxn, 'MXN')}`
+                        : formatCurrency(reportData.currency === 'MXN' ? account.amount_mxn : account.amount_usd, reportData.currency)
+                      }
                     </span>
                   </div>
                 ))}
@@ -357,7 +375,10 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
                 }}>
                   <span>Total Operating Expenses</span>
                   <span style={{ fontFamily: 'monospace' }}>
-                    {formatCurrency(reportData.operating_expenses.total)}
+                    {reportData.currency === 'BOTH'
+                      ? `${formatCurrency(reportData.operating_expenses.total_usd, 'USD')} / ${formatCurrency(reportData.operating_expenses.total_mxn, 'MXN')}`
+                      : formatCurrency(reportData.operating_expenses.total, reportData.currency)
+                    }
                   </span>
                 </div>
               </div>
@@ -365,20 +386,29 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
               {/* Net Income */}
               <div style={{ 
                 padding: '1.5rem',
-                background: reportData.net_income >= 0 ? '#f0fdf4' : '#fee2e2',
+                background: reportData.currency === 'BOTH' 
+                  ? (reportData.net_income_usd >= 0 && reportData.net_income_mxn >= 0 ? '#f0fdf4' : '#fee2e2')
+                  : (reportData.net_income >= 0 ? '#f0fdf4' : '#fee2e2'),
                 borderRadius: '0.5rem',
-                border: `2px solid ${reportData.net_income >= 0 ? '#10b981' : '#ef4444'}`
+                border: reportData.currency === 'BOTH'
+                  ? (reportData.net_income_usd >= 0 && reportData.net_income_mxn >= 0 ? '2px solid #10b981' : '2px solid #ef4444')
+                  : (reportData.net_income >= 0 ? '2px solid #10b981' : '2px solid #ef4444')
               }}>
                 <div style={{ 
                   display: 'flex', 
                   justifyContent: 'space-between',
                   fontSize: '1.5rem',
                   fontWeight: '700',
-                  color: reportData.net_income >= 0 ? '#166534' : '#991b1b'
+                  color: reportData.currency === 'BOTH'
+                    ? (reportData.net_income_usd >= 0 && reportData.net_income_mxn >= 0 ? '#166534' : '#991b1b')
+                    : (reportData.net_income >= 0 ? '#166534' : '#991b1b')
                 }}>
                   <span>NET INCOME</span>
                   <span style={{ fontFamily: 'monospace' }}>
-                    {formatCurrency(reportData.net_income)}
+                    {reportData.currency === 'BOTH'
+                      ? `${formatCurrency(reportData.net_income_usd, 'USD')} / ${formatCurrency(reportData.net_income_mxn, 'MXN')}`
+                      : formatCurrency(reportData.net_income, reportData.currency)
+                    }
                   </span>
                 </div>
               </div>
