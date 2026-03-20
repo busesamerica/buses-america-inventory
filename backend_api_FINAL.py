@@ -1129,16 +1129,29 @@ async def record_sale(
         # Sale is in USD, purchase price is already in USD
         purchase_price_in_sale_currency = purchase_price_usd
     
-    # Add cost items in the same currency
-    cost_items_query = """
-        SELECT COALESCE(SUM(amount), 0) as total_cost_items
-        FROM cost_items
-        WHERE inventory_id = $1 AND currency = $2
-    """
-    cost_items_row = await db.fetchrow(cost_items_query, inventory_id, sale_currency)
-    total_cost_items = float(cost_items_row['total_cost_items'])
+    # Add cost items - need to convert to sale currency
+    # Get all cost items (both USD and MXN)
+    all_cost_items = await db.fetch(
+        "SELECT amount, currency FROM cost_items WHERE inventory_id = $1",
+        inventory_id
+    )
     
-    # Total COGS = Purchase Price (converted if needed) + Cost Items
+    total_cost_items = 0.0
+    for item in all_cost_items:
+        item_amount = float(item['amount'])
+        item_currency = item['currency']
+        
+        if item_currency == sale_currency:
+            # Already in the right currency
+            total_cost_items += item_amount
+        elif item_currency == 'USD' and sale_currency == 'MXN':
+            # Convert USD to MXN
+            total_cost_items += item_amount * usd_to_mxn_rate
+        elif item_currency == 'MXN' and sale_currency == 'USD':
+            # Convert MXN to USD (divide by rate)
+            total_cost_items += item_amount / usd_to_mxn_rate
+    
+    # Total COGS = Purchase Price (converted if needed) + Cost Items (all converted)
     total_cogs = purchase_price_in_sale_currency + total_cost_items
     
     # Get account IDs
@@ -1521,21 +1534,32 @@ async def get_sale_summary(
         usd_to_mxn_rate = float(exchange_rate_row['rate']) if exchange_rate_row else 17.50
         purchase_price_in_sale_currency = purchase_price_usd * usd_to_mxn_rate
     else:
+        usd_to_mxn_rate = 17.50  # Default rate for conversions
         purchase_price_in_sale_currency = purchase_price_usd
     
-    # Add cost items
-    cost_items_total = await db.fetchval(
-        """
-        SELECT COALESCE(SUM(amount), 0)
-        FROM cost_items
-        WHERE inventory_id = $1 AND currency = $2
-        """,
-        inventory_id, sale_currency
+    # Add cost items - need to convert ALL costs to sale currency
+    all_cost_items = await db.fetch(
+        "SELECT amount, currency FROM cost_items WHERE inventory_id = $1",
+        inventory_id
     )
-    cost_items_amount = float(cost_items_total or 0)
     
-    # Total COGS = Purchase Price + Cost Items
-    total_cogs = purchase_price_in_sale_currency + cost_items_amount
+    total_cost_items = 0.0
+    for item in all_cost_items:
+        item_amount = float(item['amount'])
+        item_currency = item['currency']
+        
+        if item_currency == sale_currency:
+            # Already in the right currency
+            total_cost_items += item_amount
+        elif item_currency == 'USD' and sale_currency == 'MXN':
+            # Convert USD to MXN
+            total_cost_items += item_amount * usd_to_mxn_rate
+        elif item_currency == 'MXN' and sale_currency == 'USD':
+            # Convert MXN to USD (divide by rate)
+            total_cost_items += item_amount / usd_to_mxn_rate
+    
+    # Total COGS = Purchase Price + Cost Items (all converted to sale currency)
+    total_cogs = purchase_price_in_sale_currency + total_cost_items
     
     # Check if sale recorded in accounting
     sale_transaction = await db.fetchrow(
