@@ -2806,20 +2806,26 @@ async def get_income_statement(
     exchange_rate = 1.0
     if currency == "USD":
         # Converting MXN to USD: need MXN→USD rate
-        exchange_rate = await db.fetchval(
+        rate = await db.fetchval(
             "SELECT rate FROM exchange_rates WHERE from_currency = 'MXN' AND to_currency = 'USD' ORDER BY created_at DESC LIMIT 1"
-        ) or 0.057  # Default ~1/17.5
+        )
+        exchange_rate = float(rate) if rate else 0.057  # Default ~1/17.5
     elif currency == "MXN":
         # Converting USD to MXN: need USD→MXN rate
-        exchange_rate = await db.fetchval(
+        rate = await db.fetchval(
             "SELECT rate FROM exchange_rates WHERE from_currency = 'USD' AND to_currency = 'MXN' ORDER BY created_at DESC LIMIT 1"
         )
         # If no USD→MXN rate exists, calculate from MXN→USD rate
-        if not exchange_rate:
+        if rate:
+            exchange_rate = float(rate)
+        else:
             mxn_to_usd = await db.fetchval(
                 "SELECT rate FROM exchange_rates WHERE from_currency = 'MXN' AND to_currency = 'USD' ORDER BY created_at DESC LIMIT 1"
-            ) or 0.057
-            exchange_rate = 1 / mxn_to_usd  # Invert the rate
+            )
+            if mxn_to_usd:
+                exchange_rate = 1 / float(mxn_to_usd)  # Invert the rate
+            else:
+                exchange_rate = 17.50  # Default USD→MXN rate
     
     # Query account activity for the period
     query = """
@@ -2905,14 +2911,14 @@ async def get_income_statement(
     
     # Convert if needed
     if currency == "USD":
-        revenue['USD'] += revenue['MXN'] / exchange_rate
-        cogs['USD'] += cogs['MXN'] / exchange_rate
-        operating_expenses['USD'] += operating_expenses['MXN'] / exchange_rate
-        gross_profit = gross_profit_usd + (gross_profit_mxn / exchange_rate)
-        net_income = net_income_usd + (net_income_mxn / exchange_rate)
+        revenue['USD'] += revenue['MXN'] / float(exchange_rate)
+        cogs['USD'] += cogs['MXN'] / float(exchange_rate)
+        operating_expenses['USD'] += operating_expenses['MXN'] / float(exchange_rate)
+        gross_profit = gross_profit_usd + (gross_profit_mxn / float(exchange_rate))
+        net_income = net_income_usd + (net_income_mxn / float(exchange_rate))
         
         for account in revenue['accounts'] + cogs['accounts'] + operating_expenses['accounts']:
-            account['amount_usd'] += account['amount_mxn'] / exchange_rate
+            account['amount_usd'] += account['amount_mxn'] / float(exchange_rate)
             account['amount_mxn'] = 0
         
         return {
@@ -2928,14 +2934,14 @@ async def get_income_statement(
         }
     
     elif currency == "MXN":
-        revenue['MXN'] += revenue['USD'] * exchange_rate
-        cogs['MXN'] += cogs['USD'] * exchange_rate
-        operating_expenses['MXN'] += operating_expenses['USD'] * exchange_rate
-        gross_profit = gross_profit_mxn + (gross_profit_usd * exchange_rate)
-        net_income = net_income_mxn + (net_income_usd * exchange_rate)
+        revenue['MXN'] += revenue['USD'] * float(exchange_rate)
+        cogs['MXN'] += cogs['USD'] * float(exchange_rate)
+        operating_expenses['MXN'] += operating_expenses['USD'] * float(exchange_rate)
+        gross_profit = gross_profit_mxn + (gross_profit_usd * float(exchange_rate))
+        net_income = net_income_mxn + (net_income_usd * float(exchange_rate))
         
         for account in revenue['accounts'] + cogs['accounts'] + operating_expenses['accounts']:
-            account['amount_mxn'] += account['amount_usd'] * exchange_rate
+            account['amount_mxn'] += account['amount_usd'] * float(exchange_rate)
             account['amount_usd'] = 0
         
         return {
