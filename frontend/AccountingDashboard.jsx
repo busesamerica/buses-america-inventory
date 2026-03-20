@@ -10,6 +10,7 @@ const AccountingDashboard = () => {
   const [showTransactionForm, setShowTransactionForm] = React.useState(false);
   const [showDistributionHistory, setShowDistributionHistory] = React.useState(false);
   const [showIncomeStatement, setShowIncomeStatement] = React.useState(false);
+  const [showBalanceSheet, setShowBalanceSheet] = React.useState(false);
 
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
 
@@ -323,6 +324,22 @@ const AccountingDashboard = () => {
             📈 Income Statement
           </button>
           <button
+            onClick={() => setShowBalanceSheet(true)}
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.5rem',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              boxShadow: '0 2px 4px rgba(6, 182, 212, 0.3)'
+            }}
+          >
+            📊 Balance Sheet
+          </button>
+          <button
             onClick={() => window.location.reload()}
             style={{
               padding: '0.75rem 1.5rem',
@@ -367,6 +384,11 @@ const AccountingDashboard = () => {
       <IncomeStatementReport
         isOpen={showIncomeStatement}
         onClose={() => setShowIncomeStatement(false)}
+      />
+
+      <BalanceSheetReport
+        isOpen={showBalanceSheet}
+        onClose={() => setShowBalanceSheet(false)}
       />
     </div>
   );
