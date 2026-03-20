@@ -1226,12 +1226,12 @@ async def record_sale(
         await db.execute(
             """
             INSERT INTO transaction_lines (
-                transaction_id, line_number, account_id, debit_amount, credit_amount, 
-                currency, description
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6)
             """,
-            transaction_id, 1, ar_account['account_id'],
+            transaction_id, ar_account['account_id'],
             sale_price, 0,
             sale_currency,
             f"Sale of {stock_number} - Receivable"
@@ -1241,12 +1241,12 @@ async def record_sale(
         await db.execute(
             """
             INSERT INTO transaction_lines (
-                transaction_id, line_number, account_id, debit_amount, credit_amount, 
-                currency, description
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6)
             """,
-            transaction_id, 2, revenue_account['account_id'],
+            transaction_id, revenue_account['account_id'],
             0, sale_price,
             sale_currency,
             f"Sale of {stock_number} - Revenue"
@@ -1258,12 +1258,12 @@ async def record_sale(
             await db.execute(
                 """
                 INSERT INTO transaction_lines (
-                    transaction_id, line_number, account_id, debit_amount, credit_amount, 
-                    currency, description
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
+            )
+                VALUES ($1, $2, $3, $4, $5, $6)
                 """,
-                transaction_id, 3, cogs_account['account_id'],
+                transaction_id, cogs_account['account_id'],
                 total_cogs, 0,
                 sale_currency,
                 f"COGS for {stock_number}"
@@ -1273,12 +1273,12 @@ async def record_sale(
             await db.execute(
                 """
                 INSERT INTO transaction_lines (
-                    transaction_id, line_number, account_id, debit_amount, credit_amount, 
-                    currency, description
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
+            )
+                VALUES ($1, $2, $3, $4, $5, $6)
                 """,
-                transaction_id, 4, inventory_account['account_id'],
+                transaction_id, inventory_account['account_id'],
                 0, total_cogs,
                 sale_currency,
                 f"Remove {stock_number} from inventory"
@@ -1427,12 +1427,12 @@ async def record_sale_payment(
         await db.execute(
             """
             INSERT INTO transaction_lines (
-                transaction_id, line_number, account_id, debit_amount, credit_amount,
-                currency, description
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6)
             """,
-            transaction_id, 1, payment_account['account_id'],
+            transaction_id, payment_account['account_id'],
             payment_amount, 0,
             payment_currency,
             f"Received payment for {stock_number}"
@@ -1442,12 +1442,12 @@ async def record_sale_payment(
         await db.execute(
             """
             INSERT INTO transaction_lines (
-                transaction_id, line_number, account_id, debit_amount, credit_amount,
-                currency, description
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6)
             """,
-            transaction_id, 2, ar_account['account_id'],
+            transaction_id, ar_account['account_id'],
             0, payment_amount,
             payment_currency,
             f"Payment reduces AR for {stock_number}"
@@ -1731,7 +1731,7 @@ async def import_existing_sale_payments(
                 """
                 INSERT INTO transaction_lines (
                     transaction_id, account_id, debit_amount, credit_amount,
-                    currency, description
+                    currency, notes
                 )
                 VALUES ($1, $2, $3, $4, $5, $6)
                 """,
@@ -1745,7 +1745,7 @@ async def import_existing_sale_payments(
                 """
                 INSERT INTO transaction_lines (
                     transaction_id, account_id, debit_amount, credit_amount,
-                    currency, description
+                    currency, notes
                 )
                 VALUES ($1, $2, $3, $4, $5, $6)
                 """,
@@ -1908,12 +1908,12 @@ async def record_inventory_sale(
         await db.execute(
             """
             INSERT INTO transaction_lines (
-                transaction_id, line_number, account_id, debit_amount, credit_amount, 
-                currency, description
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6)
             """,
-            transaction_id, 1, ar_account['account_id'],
+            transaction_id, ar_account['account_id'],
             sale_price, 0,
             sale_currency,
             f"Sale of {stock_number} - Receivable"
@@ -1923,12 +1923,12 @@ async def record_inventory_sale(
         await db.execute(
             """
             INSERT INTO transaction_lines (
-                transaction_id, line_number, account_id, debit_amount, credit_amount, 
-                currency, description
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6)
             """,
-            transaction_id, 2, revenue_account['account_id'],
+            transaction_id, revenue_account['account_id'],
             0, sale_price,
             sale_currency,
             f"Sale of {stock_number} - Revenue"
@@ -1939,12 +1939,12 @@ async def record_inventory_sale(
             await db.execute(
                 """
                 INSERT INTO transaction_lines (
-                    transaction_id, line_number, account_id, debit_amount, credit_amount, 
-                    currency, description
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
+            )
+                VALUES ($1, $2, $3, $4, $5, $6)
                 """,
-                transaction_id, 3, cogs_account['account_id'],
+                transaction_id, cogs_account['account_id'],
                 total_cogs, 0,
                 sale_currency,
                 f"COGS for {stock_number}"
@@ -1954,12 +1954,12 @@ async def record_inventory_sale(
             await db.execute(
                 """
                 INSERT INTO transaction_lines (
-                    transaction_id, line_number, account_id, debit_amount, credit_amount, 
-                    currency, description
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
+            )
+                VALUES ($1, $2, $3, $4, $5, $6)
                 """,
-                transaction_id, 4, inventory_account['account_id'],
+                transaction_id, inventory_account['account_id'],
                 0, total_cogs,
                 sale_currency,
                 f"Remove {stock_number} from inventory"
@@ -2102,12 +2102,12 @@ async def record_inventory_payment(
         await db.execute(
             """
             INSERT INTO transaction_lines (
-                transaction_id, line_number, account_id, debit_amount, credit_amount,
-                currency, description
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6)
             """,
-            transaction_id, 1, payment_account['account_id'],
+            transaction_id, payment_account['account_id'],
             payment_amount, 0,
             payment_currency,
             f"Received payment for {stock_number}"
@@ -2117,12 +2117,12 @@ async def record_inventory_payment(
         await db.execute(
             """
             INSERT INTO transaction_lines (
-                transaction_id, line_number, account_id, debit_amount, credit_amount,
-                currency, description
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6)
             """,
-            transaction_id, 2, ar_account['account_id'],
+            transaction_id, ar_account['account_id'],
             0, payment_amount,
             payment_currency,
             f"Payment reduces AR for {stock_number}"
@@ -2345,12 +2345,12 @@ async def import_existing_payments(
             await db.execute(
                 """
                 INSERT INTO transaction_lines (
-                    transaction_id, line_number, account_id, debit_amount, credit_amount,
-                    currency, description
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
+            )
+                VALUES ($1, $2, $3, $4, $5, $6)
                 """,
-                transaction_id, 1, default_cash_account['account_id'],
+                transaction_id, default_cash_account['account_id'],
                 payment_amount, 0,
                 payment_currency,
                 f"Received payment for {stock_number} (imported)"
@@ -2360,12 +2360,12 @@ async def import_existing_payments(
             await db.execute(
                 """
                 INSERT INTO transaction_lines (
-                    transaction_id, line_number, account_id, debit_amount, credit_amount,
-                    currency, description
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
+            )
+                VALUES ($1, $2, $3, $4, $5, $6)
                 """,
-                transaction_id, 2, ar_account['account_id'],
+                transaction_id, ar_account['account_id'],
                 0, payment_amount,
                 payment_currency,
                 f"Payment reduces AR for {stock_number} (imported)"
@@ -2516,7 +2516,7 @@ async def add_inventory_cost(
             INSERT INTO transactions (
                 transaction_date, description, reference_type, reference_id,
                 currency, created_by, reference_number
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ) VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING transaction_id
         """
         
@@ -3169,7 +3169,7 @@ async def create_account(
         INSERT INTO accounts (
             account_code, account_name, account_type, account_subtype,
             currency, parent_account_id, description
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ) VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING *
     """
     
@@ -3628,7 +3628,7 @@ async def record_profit_distribution(
             INSERT INTO transactions (
                 transaction_date, description, reference_type, reference_id,
                 currency, created_by, reference_number
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ) VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING transaction_id
         """
         
@@ -4683,7 +4683,6 @@ async def close_accounting_period(
     )
     
     # Create closing entries for each revenue and expense account
-    line_number = 1
     
     # Close Revenue accounts (debit revenue, credit retained earnings)
     for account in accounts_to_close:
@@ -4692,35 +4691,31 @@ async def close_accounting_period(
             if account['net_usd'] != 0:
                 await db.execute(
                     """
-                    INSERT INTO transaction_lines (transaction_id, line_number, account_id, debit_amount, credit_amount, currency, description)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                    VALUES ($1, $2, $3, $4, $5, $6)
                     """,
                     transaction_id,
-                    line_number,
                     account['account_id'],
                     abs(account['net_usd']),  # Debit revenue to zero it out
                     0,
                     'USD',
                     f"Close {account['account_name']} to Retained Earnings"
                 )
-                line_number += 1
             
             # Close MXN revenue
             if account['net_mxn'] != 0:
                 await db.execute(
                     """
-                    INSERT INTO transaction_lines (transaction_id, line_number, account_id, debit_amount, credit_amount, currency, description)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                    VALUES ($1, $2, $3, $4, $5, $6)
                     """,
                     transaction_id,
-                    line_number,
                     account['account_id'],
                     abs(account['net_mxn']),  # Debit revenue to zero it out
                     0,
                     'MXN',
                     f"Close {account['account_name']} to Retained Earnings"
                 )
-                line_number += 1
     
     # Close Expense accounts (credit expense, debit retained earnings)
     for account in accounts_to_close:
@@ -4729,35 +4724,31 @@ async def close_accounting_period(
             if account['net_usd'] != 0:
                 await db.execute(
                     """
-                    INSERT INTO transaction_lines (transaction_id, line_number, account_id, debit_amount, credit_amount, currency, description)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                    VALUES ($1, $2, $3, $4, $5, $6)
                     """,
                     transaction_id,
-                    line_number,
                     account['account_id'],
                     0,
                     abs(account['net_usd']),  # Credit expense to zero it out
                     'USD',
                     f"Close {account['account_name']} to Retained Earnings"
                 )
-                line_number += 1
             
             # Close MXN expenses
             if account['net_mxn'] != 0:
                 await db.execute(
                     """
-                    INSERT INTO transaction_lines (transaction_id, line_number, account_id, debit_amount, credit_amount, currency, description)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                    VALUES ($1, $2, $3, $4, $5, $6)
                     """,
                     transaction_id,
-                    line_number,
                     account['account_id'],
                     0,
                     abs(account['net_mxn']),  # Credit expense to zero it out
                     'MXN',
                     f"Close {account['account_name']} to Retained Earnings"
                 )
-                line_number += 1
     
     # Transfer Net Income to Retained Earnings
     # If Net Income is positive (profit): Credit Retained Earnings
@@ -4768,11 +4759,10 @@ async def close_accounting_period(
             # Profit: Credit Retained Earnings
             await db.execute(
                 """
-                INSERT INTO transaction_lines (transaction_id, line_number, account_id, debit_amount, credit_amount, currency, description)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 """,
                 transaction_id,
-                line_number,
                 retained_earnings['account_id'],
                 0,
                 abs(net_income_usd),
@@ -4783,29 +4773,26 @@ async def close_accounting_period(
             # Loss: Debit Retained Earnings
             await db.execute(
                 """
-                INSERT INTO transaction_lines (transaction_id, line_number, account_id, debit_amount, credit_amount, currency, description)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 """,
                 transaction_id,
-                line_number,
                 retained_earnings['account_id'],
                 abs(net_income_usd),
                 0,
                 'USD',
                 f"Net Loss for {period_name}"
             )
-        line_number += 1
     
     if net_income_mxn != 0:
         if net_income_mxn > 0:
             # Profit: Credit Retained Earnings
             await db.execute(
                 """
-                INSERT INTO transaction_lines (transaction_id, line_number, account_id, debit_amount, credit_amount, currency, description)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 """,
                 transaction_id,
-                line_number,
                 retained_earnings['account_id'],
                 0,
                 abs(net_income_mxn),
@@ -4816,18 +4803,16 @@ async def close_accounting_period(
             # Loss: Debit Retained Earnings
             await db.execute(
                 """
-                INSERT INTO transaction_lines (transaction_id, line_number, account_id, debit_amount, credit_amount, currency, description)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 """,
                 transaction_id,
-                line_number,
                 retained_earnings['account_id'],
                 abs(net_income_mxn),
                 0,
                 'MXN',
                 f"Net Loss for {period_name}"
             )
-        line_number += 1
     
     return {
         'success': True,
