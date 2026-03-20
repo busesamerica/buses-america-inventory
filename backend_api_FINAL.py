@@ -1730,12 +1730,12 @@ async def import_existing_sale_payments(
             await db.execute(
                 """
                 INSERT INTO transaction_lines (
-                    transaction_id, line_number, account_id, debit_amount, credit_amount,
+                    transaction_id, account_id, debit_amount, credit_amount,
                     currency, description
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 """,
-                transaction_id, 1, default_cash_account['account_id'],
+                transaction_id, default_cash_account['account_id'],
                 payment_amount, 0,
                 payment_currency,
                 f"Received payment for {stock_number} (imported)"
@@ -1744,12 +1744,12 @@ async def import_existing_sale_payments(
             await db.execute(
                 """
                 INSERT INTO transaction_lines (
-                    transaction_id, line_number, account_id, debit_amount, credit_amount,
+                    transaction_id, account_id, debit_amount, credit_amount,
                     currency, description
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 """,
-                transaction_id, 2, ar_account['account_id'],
+                transaction_id, ar_account['account_id'],
                 0, payment_amount,
                 payment_currency,
                 f"Payment reduces AR for {stock_number} (imported)"
