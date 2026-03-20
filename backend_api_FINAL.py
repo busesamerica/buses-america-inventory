@@ -1059,6 +1059,1264 @@ async def delete_inventory(
     
     return {"message": "Inventory item deleted successfully"}
 
+# ==================== UNIFIED SALES MANAGEMENT ====================
+
+@app.post("/api/sales/record")
+async def record_sale(
+    sale_data: dict,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    UNIFIED SALE RECORDING
+    
+    Records a complete sale transaction:
+    1. Updates inventory (marks as sold, sets price/date/currency)
+    2. Creates Revenue accounting entry
+    3. Creates COGS accounting entry (from cost_items)
+    4. Creates AR entry
+    5. Links to client (if provided)
+    
+    This is the ONLY way to record a sale - ensures consistency
+    """
+    from datetime import datetime
+    
+    # Extract sale data
+    inventory_id = sale_data.get('inventory_id')
+    sale_price = float(sale_data.get('sale_price'))
+    sale_currency = sale_data.get('sale_currency')
+    sale_date_str = sale_data.get('sale_date')
+    client_id = sale_data.get('client_id')  # Optional
+    sale_notes = sale_data.get('sale_notes', '')
+    
+    # Convert date
+    if isinstance(sale_date_str, str):
+        sale_date = datetime.strptime(sale_date_str, '%Y-%m-%d').date()
+    else:
+        sale_date = datetime.now().date()
+    
+    # Verify inventory exists and is NOT already sold
+    inventory = await db.fetchrow(
+        """
+        SELECT inventory_id, stock_number, is_sold, is_deleted
+        FROM inventory 
+        WHERE inventory_id = $1
+        """,
+        inventory_id
+    )
+    
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    
+    if inventory['is_deleted']:
+        raise HTTPException(status_code=400, detail="Cannot sell deleted inventory")
+    
+    if inventory['is_sold']:
+        raise HTTPException(status_code=400, detail="Inventory already marked as sold")
+    
+    stock_number = inventory['stock_number']
+    
+    # Check if sale already recorded in accounting
+    existing_sale = await db.fetchval(
+        "SELECT transaction_id FROM transactions WHERE reference_type = 'sale' AND reference_id = $1",
+        inventory_id
+    )
+    
+    if existing_sale:
+        raise HTTPException(status_code=400, detail="Sale already recorded in accounting system")
+    
+    # Calculate COGS from cost_items
+    cogs_query = """
+        SELECT COALESCE(SUM(amount), 0) as total_cogs
+        FROM cost_items
+        WHERE inventory_id = $1 AND currency = $2
+    """
+    cogs_row = await db.fetchrow(cogs_query, inventory_id, sale_currency)
+    total_cogs = float(cogs_row['total_cogs'])
+    
+    # Get account IDs
+    revenue_account = await db.fetchrow(
+        "SELECT account_id FROM accounts WHERE account_name LIKE '%Bus Sales%' AND account_type = 'Income' LIMIT 1"
+    )
+    
+    ar_account = await db.fetchrow(
+        f"SELECT account_id FROM accounts WHERE account_name = 'Accounts Receivable - {sale_currency}'"
+    )
+    
+    cogs_account = await db.fetchrow(
+        "SELECT account_id FROM accounts WHERE account_name LIKE '%Cost of Goods Sold%' AND account_code = '5000'"
+    )
+    
+    inventory_account = await db.fetchrow(
+        "SELECT account_id FROM accounts WHERE account_name = 'Bus Inventory'"
+    )
+    
+    if not revenue_account:
+        raise HTTPException(status_code=500, detail="Bus Sales Revenue account not found")
+    if not ar_account:
+        raise HTTPException(status_code=500, detail=f"Accounts Receivable - {sale_currency} account not found")
+    if not cogs_account:
+        raise HTTPException(status_code=500, detail="COGS account not found")
+    if not inventory_account:
+        raise HTTPException(status_code=500, detail="Bus Inventory account not found")
+    
+    # Generate reference number
+    reference_number = f"SALE-{sale_date.strftime('%Y%m%d')}-{stock_number}"
+    
+    # START UNIFIED TRANSACTION
+    async with db.transaction():
+        # STEP 1: Update inventory (mark as sold)
+        await db.execute(
+            """
+            UPDATE inventory 
+            SET is_sold = TRUE,
+                sale_price = $1,
+                sale_currency = $2,
+                sale_date = $3,
+                sale_price_usd = CASE WHEN $2 = 'USD' THEN $1 ELSE NULL END,
+                sale_price_mxn = CASE WHEN $2 = 'MXN' THEN $1 ELSE NULL END,
+                client_id = $4
+            WHERE inventory_id = $5
+            """,
+            sale_price, sale_currency, sale_date, client_id, inventory_id
+        )
+        
+        # STEP 2: Create accounting transaction
+        transaction_id = await db.fetchval(
+            """
+            INSERT INTO transactions (
+                transaction_date, description, reference_type, reference_id, 
+                reference_number, currency, created_by, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING transaction_id
+            """,
+            sale_date,
+            f"Sale of {stock_number}" + (f" - {sale_notes}" if sale_notes else ""),
+            "sale",
+            inventory_id,
+            reference_number,
+            sale_currency,
+            user['username']
+        )
+        
+        # STEP 3: Create accounting entries
+        
+        # Line 1: Debit AR (increase receivable)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, line_number, account_id, debit_amount, credit_amount, 
+                currency, description
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """,
+            transaction_id, 1, ar_account['account_id'],
+            sale_price, 0,
+            sale_currency,
+            f"Sale of {stock_number} - Receivable"
+        )
+        
+        # Line 2: Credit Revenue (increase revenue)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, line_number, account_id, debit_amount, credit_amount, 
+                currency, description
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """,
+            transaction_id, 2, revenue_account['account_id'],
+            0, sale_price,
+            sale_currency,
+            f"Sale of {stock_number} - Revenue"
+        )
+        
+        # Line 3 & 4: COGS entries (if there are costs)
+        if total_cogs > 0:
+            # Debit COGS (record expense)
+            await db.execute(
+                """
+                INSERT INTO transaction_lines (
+                    transaction_id, line_number, account_id, debit_amount, credit_amount, 
+                    currency, description
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                transaction_id, 3, cogs_account['account_id'],
+                total_cogs, 0,
+                sale_currency,
+                f"COGS for {stock_number}"
+            )
+            
+            # Credit Inventory (reduce asset)
+            await db.execute(
+                """
+                INSERT INTO transaction_lines (
+                    transaction_id, line_number, account_id, debit_amount, credit_amount, 
+                    currency, description
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                transaction_id, 4, inventory_account['account_id'],
+                0, total_cogs,
+                sale_currency,
+                f"Remove {stock_number} from inventory"
+            )
+    
+    gross_profit = sale_price - total_cogs
+    gross_profit_margin = (gross_profit / sale_price * 100) if sale_price > 0 else 0
+    
+    return {
+        'success': True,
+        'inventory_id': inventory_id,
+        'stock_number': stock_number,
+        'transaction_id': transaction_id,
+        'reference_number': reference_number,
+        'sale_price': sale_price,
+        'currency': sale_currency,
+        'cogs': total_cogs,
+        'gross_profit': gross_profit,
+        'gross_profit_margin': round(gross_profit_margin, 2),
+        'ar_balance': sale_price,
+        'message': f"Sale recorded successfully! {stock_number} sold for {sale_currency} ${sale_price:,.2f}. Gross Profit: {sale_currency} ${gross_profit:,.2f} ({gross_profit_margin:.1f}%)"
+    }
+
+@app.post("/api/sales/{inventory_id}/payment")
+async def record_sale_payment(
+    inventory_id: int,
+    payment_data: dict,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Record a payment for a sold bus
+    
+    Creates:
+    1. Payment record in payments table
+    2. Accounting entry (Debit Cash/Bank, Credit AR)
+    
+    Part of unified sales management
+    """
+    from datetime import datetime
+    
+    # Verify inventory exists and is sold
+    inventory = await db.fetchrow(
+        """
+        SELECT inventory_id, stock_number, is_sold, sale_currency
+        FROM inventory 
+        WHERE inventory_id = $1 AND is_deleted = FALSE
+        """,
+        inventory_id
+    )
+    
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    
+    if not inventory['is_sold']:
+        raise HTTPException(status_code=400, detail="Cannot record payment for unsold inventory. Record the sale first.")
+    
+    # Extract payment info
+    payment_amount = float(payment_data.get('payment_amount'))
+    payment_currency = payment_data.get('payment_currency', inventory['sale_currency'])
+    payment_date_str = payment_data.get('payment_date')
+    payment_method = payment_data.get('payment_method', 'Cash')
+    payment_type = payment_data.get('payment_type', 'Payment')
+    payment_account_id = payment_data.get('payment_account_id')  # Bank account receiving payment
+    payment_notes = payment_data.get('payment_notes', '')
+    
+    # Convert date
+    if isinstance(payment_date_str, str):
+        payment_date = datetime.strptime(payment_date_str, '%Y-%m-%d').date()
+    else:
+        payment_date = datetime.now().date()
+    
+    stock_number = inventory['stock_number']
+    
+    # Get AR account
+    ar_account = await db.fetchrow(
+        f"SELECT account_id FROM accounts WHERE account_name = 'Accounts Receivable - {payment_currency}'"
+    )
+    
+    if not ar_account:
+        raise HTTPException(status_code=500, detail=f"AR account for {payment_currency} not found")
+    
+    # Get payment destination account (bank/cash)
+    if not payment_account_id:
+        raise HTTPException(status_code=400, detail="payment_account_id required (bank account receiving payment)")
+    
+    payment_account = await db.fetchrow(
+        "SELECT account_id, account_name FROM accounts WHERE account_id = $1",
+        int(payment_account_id)
+    )
+    
+    if not payment_account:
+        raise HTTPException(status_code=404, detail="Payment account not found")
+    
+    # Start transaction
+    async with db.transaction():
+        # Insert into payments table
+        payment_id = await db.fetchval(
+            """
+            INSERT INTO payments (
+                inventory_id, payment_amount, payment_currency, payment_date,
+                payment_method, payment_type, payment_notes, created_by
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING payment_id
+            """,
+            inventory_id, payment_amount, payment_currency, payment_date,
+            payment_method, payment_type, payment_notes, user['username']
+        )
+        
+        # Count existing payments to generate sequence number
+        payment_count = await db.fetchval(
+            "SELECT COUNT(*) FROM payments WHERE inventory_id = $1",
+            inventory_id
+        )
+        
+        # Generate reference number
+        reference_number = f"PYMT-{payment_date.strftime('%Y%m%d')}-{stock_number}-{payment_count:03d}"
+        
+        # Update payment with reference number
+        await db.execute(
+            "UPDATE payments SET reference_number = $1 WHERE payment_id = $2",
+            reference_number, payment_id
+        )
+        
+        # Create accounting transaction
+        transaction_id = await db.fetchval(
+            """
+            INSERT INTO transactions (
+                transaction_date, description, reference_type, reference_id,
+                reference_number, currency, created_by, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING transaction_id
+            """,
+            payment_date,
+            f"Payment for {stock_number} - {payment_type}",
+            "payment",
+            payment_id,
+            reference_number,
+            payment_currency,
+            user['username']
+        )
+        
+        # Transaction Line 1: Debit Cash/Bank (increase cash)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, line_number, account_id, debit_amount, credit_amount,
+                currency, description
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """,
+            transaction_id, 1, payment_account['account_id'],
+            payment_amount, 0,
+            payment_currency,
+            f"Received payment for {stock_number}"
+        )
+        
+        # Transaction Line 2: Credit AR (reduce receivable)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, line_number, account_id, debit_amount, credit_amount,
+                currency, description
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """,
+            transaction_id, 2, ar_account['account_id'],
+            0, payment_amount,
+            payment_currency,
+            f"Payment reduces AR for {stock_number}"
+        )
+    
+    # Get updated AR balance
+    ar_balance_row = await db.fetchrow(
+        """
+        SELECT 
+            i.sale_price,
+            COALESCE(SUM(p.payment_amount), 0) as total_paid
+        FROM inventory i
+        LEFT JOIN payments p ON p.inventory_id = i.inventory_id AND p.payment_currency = i.sale_currency
+        WHERE i.inventory_id = $1
+        GROUP BY i.sale_price
+        """,
+        inventory_id
+    )
+    
+    ar_balance = float(ar_balance_row['sale_price'] or 0) - float(ar_balance_row['total_paid'] or 0)
+    
+    return {
+        'success': True,
+        'payment_id': payment_id,
+        'transaction_id': transaction_id,
+        'reference_number': reference_number,
+        'payment_amount': payment_amount,
+        'currency': payment_currency,
+        'ar_balance': ar_balance,
+        'paid_in_full': ar_balance <= 0.01,  # Account for floating point
+        'message': f"Payment recorded: {payment_currency} ${payment_amount:,.2f}. Remaining balance: {payment_currency} ${ar_balance:,.2f}"
+    }
+
+@app.get("/api/sales/{inventory_id}/summary")
+async def get_sale_summary(
+    inventory_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Get complete financial summary for a sale
+    
+    Returns:
+    - Sale details (price, date, currency)
+    - COGS and Gross Profit
+    - Payment history
+    - AR balance
+    - Sale status
+    """
+    
+    # Get inventory and sale info
+    inventory = await db.fetchrow(
+        """
+        SELECT inventory_id, stock_number, is_sold, sale_price, sale_currency, 
+               sale_date, client_id, status
+        FROM inventory
+        WHERE inventory_id = $1 AND is_deleted = FALSE
+        """,
+        inventory_id
+    )
+    
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    
+    if not inventory['is_sold']:
+        return {
+            'is_sold': False,
+            'stock_number': inventory['stock_number'],
+            'status': inventory['status'],
+            'message': 'Bus not yet sold. Use POST /api/sales/record to record the sale.'
+        }
+    
+    sale_price = float(inventory['sale_price'] or 0)
+    sale_currency = inventory['sale_currency']
+    
+    # Calculate COGS
+    cogs = await db.fetchval(
+        """
+        SELECT COALESCE(SUM(amount), 0)
+        FROM cost_items
+        WHERE inventory_id = $1 AND currency = $2
+        """,
+        inventory_id, sale_currency
+    )
+    total_cogs = float(cogs or 0)
+    
+    # Check if sale recorded in accounting
+    sale_transaction = await db.fetchrow(
+        """
+        SELECT transaction_id, reference_number, transaction_date
+        FROM transactions 
+        WHERE reference_type = 'sale' AND reference_id = $1
+        """,
+        inventory_id
+    )
+    
+    # Get payments
+    payments = await db.fetch(
+        """
+        SELECT payment_id, payment_amount, payment_currency, payment_date,
+               payment_method, payment_type, reference_number, payment_notes
+        FROM payments
+        WHERE inventory_id = $1
+        ORDER BY payment_date ASC
+        """,
+        inventory_id
+    )
+    
+    total_paid = sum(float(p['payment_amount']) for p in payments if p['payment_currency'] == sale_currency)
+    ar_balance = sale_price - total_paid
+    
+    # Determine sale status
+    if ar_balance <= 0.01:
+        payment_status = 'Paid in Full'
+    elif total_paid > 0:
+        payment_status = 'Partially Paid'
+    else:
+        payment_status = 'Unpaid'
+    
+    # Get client info if available
+    client = None
+    if inventory['client_id']:
+        client = await db.fetchrow(
+            "SELECT client_id, client_name, client_email, client_phone FROM clients WHERE client_id = $1",
+            inventory['client_id']
+        )
+    
+    return {
+        'is_sold': True,
+        'stock_number': inventory['stock_number'],
+        'sale_date': str(inventory['sale_date']) if inventory['sale_date'] else None,
+        'sale_price': sale_price,
+        'currency': sale_currency,
+        'cogs': total_cogs,
+        'gross_profit': sale_price - total_cogs,
+        'gross_profit_margin': ((sale_price - total_cogs) / sale_price * 100) if sale_price > 0 else 0,
+        'sale_recorded_in_accounting': bool(sale_transaction),
+        'sale_reference_number': sale_transaction['reference_number'] if sale_transaction else None,
+        'total_payments_received': total_paid,
+        'ar_balance': ar_balance,
+        'payment_status': payment_status,
+        'payment_count': len(payments),
+        'payments': [dict(p) for p in payments],
+        'client': dict(client) if client else None
+    }
+
+@app.post("/api/sales/{inventory_id}/import-payments")
+async def import_existing_sale_payments(
+    inventory_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    ONE-TIME MIGRATION: Import existing payments into accounting system
+    
+    For payments that were recorded before the unified sales system.
+    Creates accounting entries for payments that don't have them yet.
+    """
+    from datetime import datetime
+    
+    # Verify inventory exists and is sold
+    inventory = await db.fetchrow(
+        """
+        SELECT inventory_id, stock_number, is_sold, sale_currency
+        FROM inventory 
+        WHERE inventory_id = $1 AND is_deleted = FALSE
+        """,
+        inventory_id
+    )
+    
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    
+    if not inventory['is_sold']:
+        raise HTTPException(status_code=400, detail="Cannot import payments for unsold inventory")
+    
+    stock_number = inventory['stock_number']
+    sale_currency = inventory['sale_currency']
+    
+    # Get AR account
+    ar_account = await db.fetchrow(
+        f"SELECT account_id FROM accounts WHERE account_name = 'Accounts Receivable - {sale_currency}'"
+    )
+    
+    if not ar_account:
+        raise HTTPException(status_code=500, detail=f"AR account for {sale_currency} not found")
+    
+    # Find payments without accounting entries
+    payments_to_import = await db.fetch(
+        """
+        SELECT p.payment_id, p.payment_amount, p.payment_currency, p.payment_date,
+               p.payment_method, p.payment_type, p.payment_notes
+        FROM payments p
+        LEFT JOIN transactions t ON t.reference_type = 'payment' AND t.reference_id = p.payment_id
+        WHERE p.inventory_id = $1 AND t.transaction_id IS NULL
+        ORDER BY p.payment_date, p.payment_id
+        """,
+        inventory_id
+    )
+    
+    if not payments_to_import:
+        return {
+            'success': True,
+            'imported_count': 0,
+            'message': 'No payments need importing. All payments already have accounting entries.'
+        }
+    
+    # Use default cash account
+    default_cash_account = await db.fetchrow(
+        f"SELECT account_id FROM accounts WHERE account_name = 'Cash on Hand - {sale_currency}'"
+    )
+    
+    if not default_cash_account:
+        raise HTTPException(status_code=500, detail=f"Default cash account not found")
+    
+    imported_count = 0
+    imported_transactions = []
+    
+    # Process each payment
+    for idx, payment in enumerate(payments_to_import, start=1):
+        payment_id = payment['payment_id']
+        payment_amount = float(payment['payment_amount'])
+        payment_currency = payment['payment_currency']
+        payment_date = payment['payment_date']
+        payment_type = payment['payment_type']
+        
+        reference_number = f"PYMT-{payment_date.strftime('%Y%m%d')}-{stock_number}-{idx:03d}"
+        
+        async with db.transaction():
+            await db.execute(
+                "UPDATE payments SET reference_number = $1 WHERE payment_id = $2",
+                reference_number, payment_id
+            )
+            
+            transaction_id = await db.fetchval(
+                """
+                INSERT INTO transactions (
+                    transaction_date, description, reference_type, reference_id,
+                    reference_number, currency, created_by, created_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+                RETURNING transaction_id
+                """,
+                payment_date,
+                f"Payment for {stock_number} - {payment_type} (imported)",
+                "payment",
+                payment_id,
+                reference_number,
+                payment_currency,
+                user['username']
+            )
+            
+            await db.execute(
+                """
+                INSERT INTO transaction_lines (
+                    transaction_id, line_number, account_id, debit_amount, credit_amount,
+                    currency, description
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                transaction_id, 1, default_cash_account['account_id'],
+                payment_amount, 0,
+                payment_currency,
+                f"Received payment for {stock_number} (imported)"
+            )
+            
+            await db.execute(
+                """
+                INSERT INTO transaction_lines (
+                    transaction_id, line_number, account_id, debit_amount, credit_amount,
+                    currency, description
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                transaction_id, 2, ar_account['account_id'],
+                0, payment_amount,
+                payment_currency,
+                f"Payment reduces AR for {stock_number} (imported)"
+            )
+            
+            imported_count += 1
+            imported_transactions.append({
+                'payment_id': payment_id,
+                'transaction_id': transaction_id,
+                'reference_number': reference_number,
+                'amount': payment_amount,
+                'date': str(payment_date)
+            })
+    
+    return {
+        'success': True,
+        'imported_count': imported_count,
+        'imported_transactions': imported_transactions,
+        'message': f"Successfully imported {imported_count} payment(s) into accounting system"
+    }
+
+# ==================== COST ITEMS ENDPOINTS ====================
+async def record_inventory_sale(
+    inventory_id: int,
+    sale_data: dict,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Record a bus sale in the accounting system
+    
+    Creates:
+    1. Revenue entry (Debit AR, Credit Revenue)
+    2. COGS entry (Debit COGS, Credit Inventory)
+    
+    Requires inventory to be marked as sold first (is_sold = True)
+    """
+    from datetime import datetime
+    
+    # Verify inventory exists and is sold
+    inventory = await db.fetchrow(
+        """
+        SELECT inventory_id, stock_number, is_sold, sale_price, sale_currency, sale_date
+        FROM inventory 
+        WHERE inventory_id = $1 AND is_deleted = FALSE
+        """,
+        inventory_id
+    )
+    
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    
+    if not inventory['is_sold']:
+        raise HTTPException(status_code=400, detail="Inventory must be marked as sold before recording sale")
+    
+    if not inventory['sale_price'] or not inventory['sale_currency']:
+        raise HTTPException(status_code=400, detail="Sale price and currency required")
+    
+    # Check if sale already recorded
+    existing_sale = await db.fetchval(
+        "SELECT transaction_id FROM transactions WHERE reference_type = 'sale' AND reference_id = $1",
+        inventory_id
+    )
+    
+    if existing_sale:
+        raise HTTPException(status_code=400, detail="Sale already recorded in accounting. Cannot record twice.")
+    
+    sale_price = float(inventory['sale_price'])
+    sale_currency = inventory['sale_currency']
+    sale_date = inventory['sale_date'] or datetime.now().date()
+    stock_number = inventory['stock_number']
+    
+    # Calculate COGS from cost_items
+    cogs_query = """
+        SELECT COALESCE(SUM(amount), 0) as total_cogs
+        FROM cost_items
+        WHERE inventory_id = $1 AND currency = $2
+    """
+    cogs_row = await db.fetchrow(cogs_query, inventory_id, sale_currency)
+    total_cogs = float(cogs_row['total_cogs'])
+    
+    # Get account IDs
+    revenue_account = await db.fetchrow(
+        "SELECT account_id FROM accounts WHERE account_name LIKE '%Bus Sales%' AND account_type = 'Income' LIMIT 1"
+    )
+    
+    ar_account = await db.fetchrow(
+        f"SELECT account_id FROM accounts WHERE account_name = 'Accounts Receivable - {sale_currency}'"
+    )
+    
+    cogs_account = await db.fetchrow(
+        "SELECT account_id FROM accounts WHERE account_name LIKE '%Cost of Goods Sold%' AND account_code = '5000'"
+    )
+    
+    inventory_account = await db.fetchrow(
+        "SELECT account_id FROM accounts WHERE account_name = 'Bus Inventory'"
+    )
+    
+    if not revenue_account:
+        raise HTTPException(status_code=500, detail="Bus Sales Revenue account not found")
+    if not ar_account:
+        raise HTTPException(status_code=500, detail=f"Accounts Receivable - {sale_currency} account not found")
+    if not cogs_account:
+        raise HTTPException(status_code=500, detail="COGS account not found")
+    if not inventory_account:
+        raise HTTPException(status_code=500, detail="Bus Inventory account not found")
+    
+    # Generate reference number
+    reference_number = f"SALE-{sale_date.strftime('%Y%m%d')}-{stock_number}"
+    
+    # Start transaction
+    async with db.transaction():
+        # Create main transaction record
+        transaction_id = await db.fetchval(
+            """
+            INSERT INTO transactions (
+                transaction_date, description, reference_type, reference_id, 
+                reference_number, currency, created_by, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING transaction_id
+            """,
+            sale_date,
+            f"Sale of {stock_number}",
+            "sale",
+            inventory_id,
+            reference_number,
+            sale_currency,
+            user['username']
+        )
+        
+        # Transaction Line 1: Debit AR (increase receivable)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, line_number, account_id, debit_amount, credit_amount, 
+                currency, description
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """,
+            transaction_id, 1, ar_account['account_id'],
+            sale_price, 0,
+            sale_currency,
+            f"Sale of {stock_number} - Receivable"
+        )
+        
+        # Transaction Line 2: Credit Revenue (increase revenue)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, line_number, account_id, debit_amount, credit_amount, 
+                currency, description
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """,
+            transaction_id, 2, revenue_account['account_id'],
+            0, sale_price,
+            sale_currency,
+            f"Sale of {stock_number} - Revenue"
+        )
+        
+        # Transaction Line 3: Debit COGS (record expense)
+        if total_cogs > 0:
+            await db.execute(
+                """
+                INSERT INTO transaction_lines (
+                    transaction_id, line_number, account_id, debit_amount, credit_amount, 
+                    currency, description
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                transaction_id, 3, cogs_account['account_id'],
+                total_cogs, 0,
+                sale_currency,
+                f"COGS for {stock_number}"
+            )
+            
+            # Transaction Line 4: Credit Inventory (reduce asset)
+            await db.execute(
+                """
+                INSERT INTO transaction_lines (
+                    transaction_id, line_number, account_id, debit_amount, credit_amount, 
+                    currency, description
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                transaction_id, 4, inventory_account['account_id'],
+                0, total_cogs,
+                sale_currency,
+                f"Remove {stock_number} from inventory"
+            )
+    
+    gross_profit = sale_price - total_cogs
+    
+    return {
+        'success': True,
+        'transaction_id': transaction_id,
+        'reference_number': reference_number,
+        'sale_price': sale_price,
+        'currency': sale_currency,
+        'cogs': total_cogs,
+        'gross_profit': gross_profit,
+        'ar_balance': sale_price,  # Initially equals sale price
+        'message': f"Sale recorded successfully. Gross Profit: {sale_currency} ${gross_profit:,.2f}"
+    }
+
+@app.post("/api/inventory/{inventory_id}/record-payment")
+async def record_inventory_payment(
+    inventory_id: int,
+    payment_data: dict,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Record a payment against a sold bus
+    
+    Creates:
+    1. Payment record in payments table
+    2. Accounting entry (Debit Cash/Bank, Credit AR)
+    """
+    from datetime import datetime
+    
+    # Verify inventory exists and is sold
+    inventory = await db.fetchrow(
+        """
+        SELECT inventory_id, stock_number, is_sold, sale_currency
+        FROM inventory 
+        WHERE inventory_id = $1 AND is_deleted = FALSE
+        """,
+        inventory_id
+    )
+    
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    
+    if not inventory['is_sold']:
+        raise HTTPException(status_code=400, detail="Cannot record payment for unsold inventory")
+    
+    # Extract payment info
+    payment_amount = float(payment_data.get('payment_amount'))
+    payment_currency = payment_data.get('payment_currency', inventory['sale_currency'])
+    payment_date_str = payment_data.get('payment_date')
+    payment_method = payment_data.get('payment_method', 'Cash')
+    payment_type = payment_data.get('payment_type', 'Payment')
+    payment_account_id = payment_data.get('payment_account_id')  # Bank account receiving payment
+    payment_notes = payment_data.get('payment_notes', '')
+    
+    # Convert date
+    if isinstance(payment_date_str, str):
+        payment_date = datetime.strptime(payment_date_str, '%Y-%m-%d').date()
+    else:
+        payment_date = datetime.now().date()
+    
+    stock_number = inventory['stock_number']
+    
+    # Get AR account
+    ar_account = await db.fetchrow(
+        f"SELECT account_id FROM accounts WHERE account_name = 'Accounts Receivable - {payment_currency}'"
+    )
+    
+    if not ar_account:
+        raise HTTPException(status_code=500, detail=f"AR account for {payment_currency} not found")
+    
+    # Get payment destination account (bank/cash)
+    if not payment_account_id:
+        raise HTTPException(status_code=400, detail="payment_account_id required (bank account receiving payment)")
+    
+    payment_account = await db.fetchrow(
+        "SELECT account_id, account_name FROM accounts WHERE account_id = $1",
+        int(payment_account_id)
+    )
+    
+    if not payment_account:
+        raise HTTPException(status_code=404, detail="Payment account not found")
+    
+    # Start transaction
+    async with db.transaction():
+        # Insert into payments table
+        payment_id = await db.fetchval(
+            """
+            INSERT INTO payments (
+                inventory_id, payment_amount, payment_currency, payment_date,
+                payment_method, payment_type, payment_notes, created_by
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING payment_id
+            """,
+            inventory_id, payment_amount, payment_currency, payment_date,
+            payment_method, payment_type, payment_notes, user['username']
+        )
+        
+        # Count existing payments to generate sequence number
+        payment_count = await db.fetchval(
+            "SELECT COUNT(*) FROM payments WHERE inventory_id = $1",
+            inventory_id
+        )
+        
+        # Generate reference number
+        reference_number = f"PYMT-{payment_date.strftime('%Y%m%d')}-{stock_number}-{payment_count:03d}"
+        
+        # Update payment with reference number
+        await db.execute(
+            "UPDATE payments SET reference_number = $1 WHERE payment_id = $2",
+            reference_number, payment_id
+        )
+        
+        # Create accounting transaction
+        transaction_id = await db.fetchval(
+            """
+            INSERT INTO transactions (
+                transaction_date, description, reference_type, reference_id,
+                reference_number, currency, created_by, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING transaction_id
+            """,
+            payment_date,
+            f"Payment for {stock_number} - {payment_type}",
+            "payment",
+            payment_id,
+            reference_number,
+            payment_currency,
+            user['username']
+        )
+        
+        # Transaction Line 1: Debit Cash/Bank (increase cash)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, line_number, account_id, debit_amount, credit_amount,
+                currency, description
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """,
+            transaction_id, 1, payment_account['account_id'],
+            payment_amount, 0,
+            payment_currency,
+            f"Received payment for {stock_number}"
+        )
+        
+        # Transaction Line 2: Credit AR (reduce receivable)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, line_number, account_id, debit_amount, credit_amount,
+                currency, description
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """,
+            transaction_id, 2, ar_account['account_id'],
+            0, payment_amount,
+            payment_currency,
+            f"Payment reduces AR for {stock_number}"
+        )
+    
+    return {
+        'success': True,
+        'payment_id': payment_id,
+        'transaction_id': transaction_id,
+        'reference_number': reference_number,
+        'payment_amount': payment_amount,
+        'currency': payment_currency,
+        'message': f"Payment recorded successfully: {payment_currency} ${payment_amount:,.2f}"
+    }
+
+@app.get("/api/inventory/{inventory_id}/sale-summary")
+async def get_inventory_sale_summary(
+    inventory_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Get financial summary for a sold bus
+    
+    Returns:
+    - Sale price, COGS, Gross Profit
+    - Total payments received
+    - AR balance
+    - Payment history
+    """
+    
+    # Get inventory info
+    inventory = await db.fetchrow(
+        """
+        SELECT inventory_id, stock_number, is_sold, sale_price, sale_currency, sale_date
+        FROM inventory
+        WHERE inventory_id = $1 AND is_deleted = FALSE
+        """,
+        inventory_id
+    )
+    
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    
+    if not inventory['is_sold']:
+        return {
+            'is_sold': False,
+            'message': 'Bus not yet sold'
+        }
+    
+    sale_price = float(inventory['sale_price'] or 0)
+    sale_currency = inventory['sale_currency']
+    
+    # Calculate COGS
+    cogs = await db.fetchval(
+        """
+        SELECT COALESCE(SUM(amount), 0)
+        FROM cost_items
+        WHERE inventory_id = $1 AND currency = $2
+        """,
+        inventory_id, sale_currency
+    )
+    total_cogs = float(cogs or 0)
+    
+    # Check if sale recorded in accounting
+    sale_recorded = await db.fetchval(
+        "SELECT transaction_id FROM transactions WHERE reference_type = 'sale' AND reference_id = $1",
+        inventory_id
+    )
+    
+    # Get payments
+    payments = await db.fetch(
+        """
+        SELECT payment_id, payment_amount, payment_currency, payment_date,
+               payment_method, payment_type, reference_number, payment_notes
+        FROM payments
+        WHERE inventory_id = $1
+        ORDER BY payment_date ASC
+        """,
+        inventory_id
+    )
+    
+    total_paid = sum(float(p['payment_amount']) for p in payments if p['payment_currency'] == sale_currency)
+    
+    # Calculate AR balance
+    ar_balance = sale_price - total_paid if sale_recorded else sale_price
+    
+    return {
+        'is_sold': True,
+        'stock_number': inventory['stock_number'],
+        'sale_date': str(inventory['sale_date']),
+        'sale_price': sale_price,
+        'currency': sale_currency,
+        'cogs': total_cogs,
+        'gross_profit': sale_price - total_cogs,
+        'gross_profit_margin': ((sale_price - total_cogs) / sale_price * 100) if sale_price > 0 else 0,
+        'sale_recorded_in_accounting': bool(sale_recorded),
+        'total_payments_received': total_paid,
+        'ar_balance': ar_balance,
+        'payment_count': len(payments),
+        'payments': [dict(p) for p in payments]
+    }
+
+@app.post("/api/inventory/{inventory_id}/import-existing-payments")
+async def import_existing_payments(
+    inventory_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    ONE-TIME MIGRATION: Import existing payments into accounting system
+    
+    For payments that were recorded in the payments table but never 
+    created accounting entries. This creates the missing accounting 
+    entries (Debit Cash, Credit AR) for each payment.
+    """
+    from datetime import datetime
+    
+    # Verify inventory exists and is sold
+    inventory = await db.fetchrow(
+        """
+        SELECT inventory_id, stock_number, is_sold, sale_currency
+        FROM inventory 
+        WHERE inventory_id = $1 AND is_deleted = FALSE
+        """,
+        inventory_id
+    )
+    
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    
+    if not inventory['is_sold']:
+        raise HTTPException(status_code=400, detail="Cannot import payments for unsold inventory")
+    
+    stock_number = inventory['stock_number']
+    sale_currency = inventory['sale_currency']
+    
+    # Get AR account
+    ar_account = await db.fetchrow(
+        f"SELECT account_id FROM accounts WHERE account_name = 'Accounts Receivable - {sale_currency}'"
+    )
+    
+    if not ar_account:
+        raise HTTPException(status_code=500, detail=f"AR account for {sale_currency} not found")
+    
+    # Find all payments that don't have accounting entries yet
+    payments_to_import = await db.fetch(
+        """
+        SELECT p.payment_id, p.payment_amount, p.payment_currency, p.payment_date,
+               p.payment_method, p.payment_type, p.payment_notes
+        FROM payments p
+        LEFT JOIN transactions t ON t.reference_type = 'payment' AND t.reference_id = p.payment_id
+        WHERE p.inventory_id = $1 AND t.transaction_id IS NULL
+        ORDER BY p.payment_date, p.payment_id
+        """,
+        inventory_id
+    )
+    
+    if not payments_to_import:
+        return {
+            'success': True,
+            'imported_count': 0,
+            'message': 'No payments need importing. All payments already have accounting entries.'
+        }
+    
+    # For payments without a payment_account_id, we need to determine where to credit
+    # We'll use a default cash account or require it in the request
+    # For now, let's use "Cash on Hand" in the appropriate currency
+    default_cash_account = await db.fetchrow(
+        f"SELECT account_id FROM accounts WHERE account_name = 'Cash on Hand - {sale_currency}'"
+    )
+    
+    if not default_cash_account:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Default cash account not found. Please specify payment_account_id for each payment."
+        )
+    
+    imported_count = 0
+    imported_transactions = []
+    
+    # Process each payment
+    for idx, payment in enumerate(payments_to_import, start=1):
+        payment_id = payment['payment_id']
+        payment_amount = float(payment['payment_amount'])
+        payment_currency = payment['payment_currency']
+        payment_date = payment['payment_date']
+        payment_type = payment['payment_type']
+        
+        # Generate reference number
+        reference_number = f"PYMT-{payment_date.strftime('%Y%m%d')}-{stock_number}-{idx:03d}"
+        
+        async with db.transaction():
+            # Update payment with reference number
+            await db.execute(
+                "UPDATE payments SET reference_number = $1 WHERE payment_id = $2",
+                reference_number, payment_id
+            )
+            
+            # Create accounting transaction
+            transaction_id = await db.fetchval(
+                """
+                INSERT INTO transactions (
+                    transaction_date, description, reference_type, reference_id,
+                    reference_number, currency, created_by, created_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+                RETURNING transaction_id
+                """,
+                payment_date,
+                f"Payment for {stock_number} - {payment_type} (imported)",
+                "payment",
+                payment_id,
+                reference_number,
+                payment_currency,
+                user['username']
+            )
+            
+            # Transaction Line 1: Debit Cash (increase cash)
+            await db.execute(
+                """
+                INSERT INTO transaction_lines (
+                    transaction_id, line_number, account_id, debit_amount, credit_amount,
+                    currency, description
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                transaction_id, 1, default_cash_account['account_id'],
+                payment_amount, 0,
+                payment_currency,
+                f"Received payment for {stock_number} (imported)"
+            )
+            
+            # Transaction Line 2: Credit AR (reduce receivable)
+            await db.execute(
+                """
+                INSERT INTO transaction_lines (
+                    transaction_id, line_number, account_id, debit_amount, credit_amount,
+                    currency, description
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                transaction_id, 2, ar_account['account_id'],
+                0, payment_amount,
+                payment_currency,
+                f"Payment reduces AR for {stock_number} (imported)"
+            )
+            
+            imported_count += 1
+            imported_transactions.append({
+                'payment_id': payment_id,
+                'transaction_id': transaction_id,
+                'reference_number': reference_number,
+                'amount': payment_amount,
+                'date': str(payment_date)
+            })
+    
+    return {
+        'success': True,
+        'imported_count': imported_count,
+        'imported_transactions': imported_transactions,
+        'message': f"Successfully imported {imported_count} payment(s) into accounting system"
+    }
+
 # ==================== COST ITEMS ENDPOINTS ====================
 
 @app.get("/api/inventory/{inventory_id}/costs")
