@@ -3036,7 +3036,8 @@ async def get_balance_sheet(
                 COALESCE(SUM(CASE WHEN tl.currency = 'MXN' THEN tl.credit_amount ELSE 0 END), 0) as credit_mxn
             FROM accounts a
             LEFT JOIN transaction_lines tl ON a.account_id = tl.account_id
-            LEFT JOIN transactions t ON tl.transaction_id = t.transaction_id AND t.transaction_date <= $1
+            LEFT JOIN transactions t ON tl.transaction_id = t.transaction_id
+            WHERE t.transaction_date IS NULL OR t.transaction_date <= $1
             GROUP BY a.account_id, a.account_code, a.account_name, a.account_type, a.account_subtype, a.currency
         )
         SELECT 
