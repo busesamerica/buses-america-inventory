@@ -3086,7 +3086,8 @@ async def get_balance_sheet(
         if row['account_type'] == 'Asset':
             assets['USD'] += account_data['balance_usd']
             assets['MXN'] += account_data['balance_mxn']
-            if row['account_subtype'] in ['Cash & Cash Equivalents', 'Inventory', 'Current Asset']:
+            # Current Assets: Bank, Cash, AR, Inventory
+            if row['account_subtype'] in ['Bank', 'Cash', 'AR', 'Inventory']:
                 assets['current'].append(account_data)
             else:
                 assets['non_current'].append(account_data)
@@ -3094,7 +3095,8 @@ async def get_balance_sheet(
         elif row['account_type'] == 'Liability':
             liabilities['USD'] += account_data['balance_usd']
             liabilities['MXN'] += account_data['balance_mxn']
-            if row['account_subtype'] in ['Current Liability', 'Line of Credit']:
+            # Current Liabilities: AP, Credit Line
+            if row['account_subtype'] in ['AP', 'Credit Line']:
                 liabilities['current'].append(account_data)
             else:
                 liabilities['non_current'].append(account_data)
@@ -3106,12 +3108,13 @@ async def get_balance_sheet(
     
     # Convert if needed
     if currency == "USD":
-        assets['USD'] += assets['MXN'] / float(exchange_rate)
-        liabilities['USD'] += liabilities['MXN'] / float(exchange_rate)
-        equity['USD'] += equity['MXN'] / float(exchange_rate)
+        # Converting MXN to USD: multiply by MXN→USD rate (e.g., MXN * 0.057)
+        assets['USD'] += assets['MXN'] * float(exchange_rate)
+        liabilities['USD'] += liabilities['MXN'] * float(exchange_rate)
+        equity['USD'] += equity['MXN'] * float(exchange_rate)
         
         for account in assets['current'] + assets['non_current'] + liabilities['current'] + liabilities['non_current'] + equity['accounts']:
-            account['balance_usd'] += account['balance_mxn'] / float(exchange_rate)
+            account['balance_usd'] += account['balance_mxn'] * float(exchange_rate)
             account['balance_mxn'] = 0
         
         total_liabilities_equity = liabilities['USD'] + equity['USD']
