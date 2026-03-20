@@ -219,13 +219,7 @@ class InventoryUpdate(BaseModel):
     minimum_price: Optional[Decimal] = None
     
     # Sale info
-    client_name: Optional[str] = None
-    client_company: Optional[str] = None
-    client_location: Optional[str] = None
-    client_contact: Optional[str] = None
-    client_email: Optional[str] = None
-    client_phone: Optional[str] = None
-    client_use_case: Optional[str] = None
+    client_id: Optional[int] = None
     sale_date: Optional[date] = None
     sale_price: Optional[Decimal] = None
     sale_price_usd: Optional[Decimal] = None
@@ -289,12 +283,7 @@ class Inventory(BaseModel):
     
     is_sold: bool
     sale_date: Optional[date]
-    client_name: Optional[str]
-    client_company: Optional[str]
-    client_location: Optional[str]
-    client_contact: Optional[str]
-    client_email: Optional[str]
-    client_use_case: Optional[str]
+    client_id: Optional[int]
     sale_price: Optional[Decimal]
     sale_currency: Optional[str]
     deposit_amount: Optional[Decimal]
@@ -1732,15 +1721,20 @@ async def get_clients(
     user=Depends(get_current_user)
 ):
     """Get all clients for dropdowns and selection"""
-    query = """
-        SELECT client_id, client_name, client_email, client_phone, 
-               client_company, client_location
-        FROM clients
-        WHERE is_deleted = FALSE
-        ORDER BY client_name
-    """
-    rows = await db.fetch(query)
-    return [dict(row) for row in rows]
+    try:
+        query = """
+            SELECT client_id, client_name, client_email, client_phone, 
+                   client_company, client_location
+            FROM clients
+            WHERE is_deleted = FALSE
+            ORDER BY client_name
+        """
+        rows = await db.fetch(query)
+        return [dict(row) for row in rows]
+    except Exception as e:
+        # If clients table doesn't exist, return empty array
+        # This allows the system to work without client management
+        return []
 
 # ==================== COST ITEMS ENDPOINTS ====================
 async def record_inventory_sale(
