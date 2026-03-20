@@ -1007,8 +1007,8 @@ function InventoryApp() {
             </div>
           )}
 
-          {/* SALES REPORTS VIEW */}
-          {view === 'sales-reports' && <SalesReports />}
+          {/* SALES MANAGEMENT VIEW */}
+          {view === 'sales-reports' && <SalesManagement />}
 
           {/* ACCOUNTING VIEW */}
           {view === 'accounting' && <AccountingDashboard />} 
