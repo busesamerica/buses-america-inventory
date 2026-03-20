@@ -11,6 +11,7 @@ const AccountingDashboard = () => {
   const [showDistributionHistory, setShowDistributionHistory] = React.useState(false);
   const [showIncomeStatement, setShowIncomeStatement] = React.useState(false);
   const [showBalanceSheet, setShowBalanceSheet] = React.useState(false);
+  const [showPeriodClosing, setShowPeriodClosing] = React.useState(false);
 
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
 
@@ -340,6 +341,22 @@ const AccountingDashboard = () => {
             📊 Balance Sheet
           </button>
           <button
+            onClick={() => setShowPeriodClosing(true)}
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.5rem',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              boxShadow: '0 2px 4px rgba(220, 38, 38, 0.3)'
+            }}
+          >
+            🔒 Close Period
+          </button>
+          <button
             onClick={() => window.location.reload()}
             style={{
               padding: '0.75rem 1.5rem',
@@ -389,6 +406,15 @@ const AccountingDashboard = () => {
       <BalanceSheetReport
         isOpen={showBalanceSheet}
         onClose={() => setShowBalanceSheet(false)}
+      />
+
+      <PeriodClosingModal
+        isOpen={showPeriodClosing}
+        onClose={() => setShowPeriodClosing(false)}
+        onComplete={() => {
+          loadCashPosition();
+          loadAccounts();
+        }}
       />
     </div>
   );
