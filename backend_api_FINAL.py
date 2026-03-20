@@ -3211,6 +3211,305 @@ async def get_balance_sheet(
             'balance_difference_usd': assets['USD'] - total_liabilities_equity_usd,
             'balance_difference_mxn': assets['MXN'] - total_liabilities_equity_mxn
         }
+
+@app.post("/api/accounting/close-period")
+async def close_accounting_period(
+    period_data: dict,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Close an accounting period by transferring Net Income to Retained Earnings
+    
+    Steps:
+    1. Calculate Net Income for the period (Revenue - Expenses)
+    2. Create closing entries to zero out all Revenue and Expense accounts
+    3. Transfer Net Income to Retained Earnings
+    """
+    
+    from datetime import datetime
+    
+    start_date = period_data.get('start_date')
+    end_date = period_data.get('end_date')
+    period_name = period_data.get('period_name', f"{start_date} to {end_date}")
+    
+    # Convert dates
+    start = datetime.strptime(start_date, '%Y-%m-%d').date()
+    end = datetime.strptime(end_date, '%Y-%m-%d').date()
+    
+    # Get exchange rate for conversions
+    exchange_rate_mxn_usd = await db.fetchval(
+        "SELECT rate FROM exchange_rates WHERE from_currency = 'MXN' AND to_currency = 'USD' ORDER BY created_at DESC LIMIT 1"
+    ) or 0.057
+    
+    # Query to get all revenue and expense account balances for the period
+    query = """
+        WITH period_activity AS (
+            SELECT 
+                a.account_id,
+                a.account_code,
+                a.account_name,
+                a.account_type,
+                COALESCE(SUM(CASE WHEN tl.currency = 'USD' THEN tl.debit_amount ELSE 0 END), 0) as debit_usd,
+                COALESCE(SUM(CASE WHEN tl.currency = 'USD' THEN tl.credit_amount ELSE 0 END), 0) as credit_usd,
+                COALESCE(SUM(CASE WHEN tl.currency = 'MXN' THEN tl.debit_amount ELSE 0 END), 0) as debit_mxn,
+                COALESCE(SUM(CASE WHEN tl.currency = 'MXN' THEN tl.credit_amount ELSE 0 END), 0) as credit_mxn
+            FROM accounts a
+            LEFT JOIN transaction_lines tl ON a.account_id = tl.account_id
+            LEFT JOIN transactions t ON tl.transaction_id = t.transaction_id
+            WHERE t.transaction_date >= $1 AND t.transaction_date <= $2
+            GROUP BY a.account_id, a.account_code, a.account_name, a.account_type
+        )
+        SELECT 
+            account_id,
+            account_code,
+            account_name,
+            account_type,
+            debit_usd,
+            credit_usd,
+            debit_mxn,
+            credit_mxn,
+            -- Income: credits - debits (revenue increases with credits)
+            -- Expense: debits - credits (expenses increase with debits)
+            CASE 
+                WHEN account_type = 'Income' THEN (credit_usd - debit_usd)
+                WHEN account_type = 'Expense' THEN (debit_usd - credit_usd)
+                ELSE 0
+            END as net_usd,
+            CASE 
+                WHEN account_type = 'Income' THEN (credit_mxn - debit_mxn)
+                WHEN account_type = 'Expense' THEN (debit_mxn - credit_mxn)
+                ELSE 0
+            END as net_mxn
+        FROM period_activity
+        WHERE account_type IN ('Income', 'Expense')
+          AND (debit_usd > 0 OR credit_usd > 0 OR debit_mxn > 0 OR credit_mxn > 0)
+        ORDER BY account_type, account_code
+    """
+    
+    rows = await db.fetch(query, start, end)
+    
+    # Calculate Net Income
+    total_revenue_usd = 0
+    total_revenue_mxn = 0
+    total_expenses_usd = 0
+    total_expenses_mxn = 0
+    
+    accounts_to_close = []
+    
+    for row in rows:
+        account_info = {
+            'account_id': row['account_id'],
+            'account_name': row['account_name'],
+            'account_type': row['account_type'],
+            'net_usd': float(row['net_usd']),
+            'net_mxn': float(row['net_mxn'])
+        }
+        accounts_to_close.append(account_info)
+        
+        if row['account_type'] == 'Income':
+            total_revenue_usd += account_info['net_usd']
+            total_revenue_mxn += account_info['net_mxn']
+        elif row['account_type'] == 'Expense':
+            total_expenses_usd += account_info['net_usd']
+            total_expenses_mxn += account_info['net_mxn']
+    
+    net_income_usd = total_revenue_usd - total_expenses_usd
+    net_income_mxn = total_revenue_mxn - total_expenses_mxn
+    
+    # Get Retained Earnings account
+    retained_earnings = await db.fetchrow(
+        "SELECT account_id FROM accounts WHERE account_name = 'Retained Earnings'"
+    )
+    
+    if not retained_earnings:
+        raise HTTPException(status_code=404, detail="Retained Earnings account not found")
+    
+    # Generate reference number
+    period_code = end.strftime('%Y%m')  # e.g., 202603 for March 2026
+    reference_number = f"CLOSE-{period_code}"
+    
+    # Check if period already closed
+    existing_close = await db.fetchval(
+        "SELECT transaction_id FROM transactions WHERE reference_number = $1",
+        reference_number
+    )
+    
+    if existing_close:
+        raise HTTPException(status_code=400, detail=f"Period {period_name} has already been closed")
+    
+    # Create closing transaction
+    transaction_id = await db.fetchval(
+        """
+        INSERT INTO transactions (transaction_date, description, reference_type, reference_number, currency, created_by, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        RETURNING transaction_id
+        """,
+        end,  # Use last day of period as transaction date
+        f"Closing Entry - {period_name}",
+        "closing",
+        reference_number,
+        "USD",  # Default currency
+        user['username']
+    )
+    
+    # Create closing entries for each revenue and expense account
+    line_number = 1
+    
+    # Close Revenue accounts (debit revenue, credit retained earnings)
+    for account in accounts_to_close:
+        if account['account_type'] == 'Income':
+            # Close USD revenue
+            if account['net_usd'] != 0:
+                await db.execute(
+                    """
+                    INSERT INTO transaction_lines (transaction_id, line_number, account_id, debit_amount, credit_amount, currency, description)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    """,
+                    transaction_id,
+                    line_number,
+                    account['account_id'],
+                    abs(account['net_usd']),  # Debit revenue to zero it out
+                    0,
+                    'USD',
+                    f"Close {account['account_name']} to Retained Earnings"
+                )
+                line_number += 1
+            
+            # Close MXN revenue
+            if account['net_mxn'] != 0:
+                await db.execute(
+                    """
+                    INSERT INTO transaction_lines (transaction_id, line_number, account_id, debit_amount, credit_amount, currency, description)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    """,
+                    transaction_id,
+                    line_number,
+                    account['account_id'],
+                    abs(account['net_mxn']),  # Debit revenue to zero it out
+                    0,
+                    'MXN',
+                    f"Close {account['account_name']} to Retained Earnings"
+                )
+                line_number += 1
+    
+    # Close Expense accounts (credit expense, debit retained earnings)
+    for account in accounts_to_close:
+        if account['account_type'] == 'Expense':
+            # Close USD expenses
+            if account['net_usd'] != 0:
+                await db.execute(
+                    """
+                    INSERT INTO transaction_lines (transaction_id, line_number, account_id, debit_amount, credit_amount, currency, description)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    """,
+                    transaction_id,
+                    line_number,
+                    account['account_id'],
+                    0,
+                    abs(account['net_usd']),  # Credit expense to zero it out
+                    'USD',
+                    f"Close {account['account_name']} to Retained Earnings"
+                )
+                line_number += 1
+            
+            # Close MXN expenses
+            if account['net_mxn'] != 0:
+                await db.execute(
+                    """
+                    INSERT INTO transaction_lines (transaction_id, line_number, account_id, debit_amount, credit_amount, currency, description)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    """,
+                    transaction_id,
+                    line_number,
+                    account['account_id'],
+                    0,
+                    abs(account['net_mxn']),  # Credit expense to zero it out
+                    'MXN',
+                    f"Close {account['account_name']} to Retained Earnings"
+                )
+                line_number += 1
+    
+    # Transfer Net Income to Retained Earnings
+    # If Net Income is positive (profit): Credit Retained Earnings
+    # If Net Income is negative (loss): Debit Retained Earnings
+    
+    if net_income_usd != 0:
+        if net_income_usd > 0:
+            # Profit: Credit Retained Earnings
+            await db.execute(
+                """
+                INSERT INTO transaction_lines (transaction_id, line_number, account_id, debit_amount, credit_amount, currency, description)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                transaction_id,
+                line_number,
+                retained_earnings['account_id'],
+                0,
+                abs(net_income_usd),
+                'USD',
+                f"Net Income for {period_name}"
+            )
+        else:
+            # Loss: Debit Retained Earnings
+            await db.execute(
+                """
+                INSERT INTO transaction_lines (transaction_id, line_number, account_id, debit_amount, credit_amount, currency, description)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                transaction_id,
+                line_number,
+                retained_earnings['account_id'],
+                abs(net_income_usd),
+                0,
+                'USD',
+                f"Net Loss for {period_name}"
+            )
+        line_number += 1
+    
+    if net_income_mxn != 0:
+        if net_income_mxn > 0:
+            # Profit: Credit Retained Earnings
+            await db.execute(
+                """
+                INSERT INTO transaction_lines (transaction_id, line_number, account_id, debit_amount, credit_amount, currency, description)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                transaction_id,
+                line_number,
+                retained_earnings['account_id'],
+                0,
+                abs(net_income_mxn),
+                'MXN',
+                f"Net Income for {period_name}"
+            )
+        else:
+            # Loss: Debit Retained Earnings
+            await db.execute(
+                """
+                INSERT INTO transaction_lines (transaction_id, line_number, account_id, debit_amount, credit_amount, currency, description)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                transaction_id,
+                line_number,
+                retained_earnings['account_id'],
+                abs(net_income_mxn),
+                0,
+                'MXN',
+                f"Net Loss for {period_name}"
+            )
+        line_number += 1
+    
+    return {
+        'success': True,
+        'transaction_id': transaction_id,
+        'reference_number': reference_number,
+        'period_name': period_name,
+        'net_income_usd': net_income_usd,
+        'net_income_mxn': net_income_mxn,
+        'accounts_closed': len(accounts_to_close),
+        'message': f"Successfully closed period {period_name}. Net Income: ${net_income_usd:,.2f} USD / MXN ${net_income_mxn:,.2f}"
+    }
     
 if __name__ == "__main__":
     import uvicorn
