@@ -1724,6 +1724,24 @@ async def import_existing_sale_payments(
         'message': f"Successfully imported {imported_count} payment(s) into accounting system"
     }
 
+# ==================== CLIENTS ENDPOINTS ====================
+
+@app.get("/api/clients")
+async def get_clients(
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Get all clients for dropdowns and selection"""
+    query = """
+        SELECT client_id, client_name, client_email, client_phone, 
+               client_company, client_location
+        FROM clients
+        WHERE is_deleted = FALSE
+        ORDER BY client_name
+    """
+    rows = await db.fetch(query)
+    return [dict(row) for row in rows]
+
 # ==================== COST ITEMS ENDPOINTS ====================
 async def record_inventory_sale(
     inventory_id: int,
