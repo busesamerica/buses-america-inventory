@@ -2805,9 +2805,21 @@ async def get_income_statement(
     # Get exchange rate if needed
     exchange_rate = 1.0
     if currency == "USD":
+        # Converting MXN to USD: need MXN→USD rate
         exchange_rate = await db.fetchval(
             "SELECT rate FROM exchange_rates WHERE from_currency = 'MXN' AND to_currency = 'USD' ORDER BY created_at DESC LIMIT 1"
-        ) or 17.50
+        ) or 0.057  # Default ~1/17.5
+    elif currency == "MXN":
+        # Converting USD to MXN: need USD→MXN rate
+        exchange_rate = await db.fetchval(
+            "SELECT rate FROM exchange_rates WHERE from_currency = 'USD' AND to_currency = 'MXN' ORDER BY created_at DESC LIMIT 1"
+        )
+        # If no USD→MXN rate exists, calculate from MXN→USD rate
+        if not exchange_rate:
+            mxn_to_usd = await db.fetchval(
+                "SELECT rate FROM exchange_rates WHERE from_currency = 'MXN' AND to_currency = 'USD' ORDER BY created_at DESC LIMIT 1"
+            ) or 0.057
+            exchange_rate = 1 / mxn_to_usd  # Invert the rate
     
     # Query account activity for the period
     query = """
