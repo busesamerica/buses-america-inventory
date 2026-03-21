@@ -1,5 +1,3 @@
-console.log('Payment accounts:', paymentAccounts);
-console.log('Loading:', loadingAccounts);
 
 const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
   const [formData, setFormData] = useState({
