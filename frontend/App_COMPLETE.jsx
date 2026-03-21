@@ -280,9 +280,9 @@ function UserDropdown() {
 
   return (
     <div style={{position:'relative'}}>
-      <button onClick={()=>setIsOpen(!isOpen)} style={{display:'flex',alignItems:'center',gap:'0.5rem',padding:'0.5rem 1rem',background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:'6px',color:'white',cursor:'pointer',fontSize:'0.9rem'}}>
+      <button onClick={()=>setIsOpen(!isOpen)} style={{display:'flex',alignItems:'center',gap:'0.5rem',padding:'0.5rem 1rem',background:'#1a1a1a',border:'1px solid #444',borderRadius:'6px',color:'white',cursor:'pointer',fontSize:'0.9rem'}}>
         <span>👤</span>
-        <span>{user.full_name}</span>
+        <span style={{fontWeight:'600'}}>{user.full_name}</span>
         <span style={{fontSize:'0.7rem'}}>▼</span>
       </button>
       {isOpen && (
@@ -585,9 +585,8 @@ function InventoryApp() {
   const [showCreateInventoryModal, setShowCreateInventoryModal] = useState(false);
   const [showCostModal, setShowCostModal] = useState(false);
   const [selectedBusForCosts, setSelectedBusForCosts] = useState(null);
-  const [showSalesModal, setShowSalesModal] = useState(false);
-  const [selectedBusForSale, setSelectedBusForSale] = useState(null);
   const [currentExchangeRate, setCurrentExchangeRate] = useState(17.50);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -660,18 +659,6 @@ function InventoryApp() {
     }
   };
 
-  const handleRecordSale = async (saleData) => {
-    try {
-      await api.updateInventory(selectedBusForSale.inventory_id, saleData);
-      await loadData();
-      setShowSalesModal(false);
-      setSelectedBusForSale(null);
-      alert('✅ Sale recorded successfully!');
-    } catch (error) {
-      throw new Error(error.message || 'Failed to record sale');
-    }
-  };
-
   const handleSaveSupplier = async (data) => {
     await api.createSupplier(data);
     await loadData();
@@ -715,9 +702,11 @@ function InventoryApp() {
         <nav style={{flex:1,padding:'1rem'}}>
           {[
             {id:'dashboard',label:'Dashboard',icon:'📊'},
-            {id:'inventory',label:'Inventory',icon:'🚌'},
+            {id:'inventory',label:'Inventory',icon:'🚌'},  
             {id:'suppliers',label:'Suppliers',icon:'🏢'},
-            {id:'pre-inspections',label:'Pre-Inspections',icon:'🔍'}
+            {id:'pre-inspections',label:'Pre-Inspections',icon:'🔍'},
+            {id:'sales-reports',label:'Sales Reports',icon:'💰'},
+            {id:'accounting',label:'Accounting',icon:'💼'}
           ].map(item => (
             <button
               key={item.id}
@@ -759,8 +748,10 @@ function InventoryApp() {
           <h1 style={{margin:0,fontSize:'1.5rem'}}>
             {view === 'dashboard' && 'Dashboard'}
             {view === 'inventory' && 'Inventory Management'}
-            {view === 'suppliers' && 'Suppliers'}
+            {view === 'sales-reports' && 'Sales Reports & Analytics'}
             {view === 'pre-inspections' && 'Pre-Inspections'}
+            {view === 'suppliers' && 'Suppliers'}
+            {view === 'accounting' && 'Accounting Dashboard'}
           </h1>
           <UserDropdown />
         </div>
@@ -888,15 +879,6 @@ function InventoryApp() {
                               >
                                 💰 Costs
                               </button>
-                              <button 
-                                onClick={() => {
-                                  setSelectedBusForSale(bus);
-                                  setShowSalesModal(true);
-                                }} 
-                                style={{padding:'0.5rem 1rem',background:'#3b82f6',color:'white',border:'none',borderRadius:'4px',fontSize:'0.875rem',cursor:'pointer',fontWeight:'600'}}
-                              >
-                                💵 Record Sale
-                              </button>
                               {user.role === 'admin' && (
                                 <button onClick={() => handleDeleteBus(bus)} style={{padding:'0.5rem 1rem',background:'#dc3545',color:'white',border:'none',borderRadius:'4px',fontSize:'0.875rem',cursor:'pointer'}}>
                                   🗑️ Delete
@@ -911,7 +893,7 @@ function InventoryApp() {
                 )}
               </div>
             </div>
-          )}
+          )} 
 
           {/* SUPPLIERS VIEW */}
           {view === 'suppliers' && (
@@ -1062,6 +1044,12 @@ function InventoryApp() {
               </div>
             </div>
           )}
+
+          {/* SALES REPORTS VIEW */}
+          {view === 'sales-reports' && <SalesReports />}
+
+          {/* ACCOUNTING VIEW */}
+          {view === 'accounting' && <AccountingDashboard />} 
         </div>
       </div>
 
@@ -1164,18 +1152,6 @@ function InventoryApp() {
       onSave={handleSaveCosts}
     />
   )}
-
-  {showSalesModal && selectedBusForSale && (
-    <SalesModal
-      bus={selectedBusForSale}
-      currentExchangeRate={currentExchangeRate}
-      onClose={() => {
-        setShowSalesModal(false);
-        setSelectedBusForSale(null);
-      }}
-      onSave={handleRecordSale}
-    />
-  )}
     </div>
   );
 }
@@ -1204,3 +1180,4 @@ function App() {
 }
 
 window.App = App;
+
