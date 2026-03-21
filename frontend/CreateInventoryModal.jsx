@@ -6,7 +6,8 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
     purchase_price_usd: '',
     purchase_date: new Date().toISOString().split('T')[0],
     supplier_id: '',
-    current_location: 'United States'
+    current_location: 'United States',
+    payment_account_id: ''  // ADDED: Required payment account
   });
 
   const API_URL = `${window.API_BASE_URL || 'https://buses-america.onrender.com'}/api`;
@@ -22,6 +23,37 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
   
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [paymentAccounts, setPaymentAccounts] = useState([]);  // ADDED: Payment accounts
+  const [loadingAccounts, setLoadingAccounts] = useState(true);  // ADDED: Loading state
+
+  // ADDED: Fetch payment accounts on mount
+  React.useEffect(() => {
+    const fetchPaymentAccounts = async () => {
+      try {
+        const response = await fetch(`${API_URL}/accounting/accounts`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+          }
+        });
+        
+        if (response.ok) {
+          const accounts = await response.json();
+          // Filter for bank and cash accounts only
+          const paymentAccs = accounts.filter(acc => 
+            acc.account_type === 'Asset' && 
+            (acc.account_name.includes('Bank') || acc.account_name.includes('Cash'))
+          );
+          setPaymentAccounts(paymentAccs);
+        }
+      } catch (err) {
+        console.error('Failed to load payment accounts:', err);
+      } finally {
+        setLoadingAccounts(false);
+      }
+    };
+    
+    fetchPaymentAccounts();
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -32,8 +64,8 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
   e.preventDefault();
   setError('');
   
-  if (!formData.stock_number || !formData.purchase_price_usd) {
-    setError('Please fill in all required fields');
+  if (!formData.stock_number || !formData.purchase_price_usd || !formData.payment_account_id) {
+    setError('Please fill in all required fields including payment account');
     return;
   }
   
@@ -297,6 +329,47 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
                       }
                     </div>
                   )}
+                </div>
+
+                {/* ADDED: Paid From Dropdown */}
+                <div>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '0.5rem',
+                    fontWeight: '600',
+                    color: '#1f2937',
+                    fontSize: '0.875rem'
+                  }}>
+                    Paid From <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <select
+                    name="payment_account_id"
+                    value={formData.payment_account_id}
+                    onChange={handleChange}
+                    required
+                    disabled={loadingAccounts}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '2px solid #e5e7eb',
+                      borderRadius: '0.5rem',
+                      fontSize: '1rem',
+                      fontWeight: '500',
+                      cursor: loadingAccounts ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    <option value="">
+                      {loadingAccounts ? 'Loading accounts...' : 'Select payment account'}
+                    </option>
+                    {paymentAccounts.map(account => (
+                      <option key={account.account_id} value={account.account_id}>
+                        {account.account_name} ({account.currency})
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                    Which bank/cash account was used to pay for this bus?
+                  </div>
                 </div>
 
                 <div>
