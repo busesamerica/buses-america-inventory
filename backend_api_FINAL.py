@@ -930,6 +930,80 @@ async def create_inventory(
                 row['inventory_id'], inventory.pre_inspection_id
             )
         
+        # CREATE ACCOUNTING ENTRIES FOR PURCHASE
+        # Calculate total purchase cost (all in USD initially)
+        purchase_price = float(inventory.purchase_price_usd or 0)
+        transport_cost = float(inventory.transport_to_stock_cost_usd or 0)
+        reconditioning_cost = float(inventory.initial_reconditioning_cost_usd or 0)
+        other_costs = float(inventory.other_acquisition_costs_usd or 0)
+        total_purchase_cost = purchase_price + transport_cost + reconditioning_cost + other_costs
+        
+        # Only create accounting entry if there's a purchase cost
+        if total_purchase_cost > 0:
+            from datetime import datetime
+            purchase_date = inventory.purchase_date or datetime.now().date()
+            stock_number = inventory.stock_number
+            
+            # Get account IDs
+            inventory_account = await db.fetchrow(
+                "SELECT account_id FROM accounts WHERE account_name = 'Bus Inventory'"
+            )
+            cash_account = await db.fetchrow(
+                "SELECT account_id FROM accounts WHERE account_name = 'Cash on Hand - USD'"
+            )
+            
+            if inventory_account and cash_account:
+                # Create transaction
+                reference_number = f"PURCH-{purchase_date.strftime('%Y%m%d')}-{stock_number}"
+                
+                transaction_id = await db.fetchval(
+                    """
+                    INSERT INTO transactions (
+                        transaction_date, description, reference_type, reference_id,
+                        reference_number, currency, created_by, created_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+                    RETURNING transaction_id
+                    """,
+                    purchase_date,
+                    f"Purchase of {stock_number}",
+                    "purchase",
+                    row['inventory_id'],
+                    reference_number,
+                    'USD',
+                    current_user['username']
+                )
+                
+                # Line 1: Debit Bus Inventory (increase asset)
+                await db.execute(
+                    """
+                    INSERT INTO transaction_lines (
+                        transaction_id, account_id, debit_amount, credit_amount,
+                        currency, notes
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    """,
+                    transaction_id, inventory_account['account_id'],
+                    total_purchase_cost, 0,
+                    'USD',
+                    f"Purchase of {stock_number} - Total cost: ${total_purchase_cost:,.2f}"
+                )
+                
+                # Line 2: Credit Cash (decrease asset - money paid out)
+                await db.execute(
+                    """
+                    INSERT INTO transaction_lines (
+                        transaction_id, account_id, debit_amount, credit_amount,
+                        currency, notes
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    """,
+                    transaction_id, cash_account['account_id'],
+                    0, total_purchase_cost,
+                    'USD',
+                    f"Payment for {stock_number}"
+                )
+        
         return dict(row)
     except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=400, detail="VIN or Stock Number already exists")
@@ -1978,6 +2052,174 @@ async def record_sale_accounting_retroactive(
         'margin': round(margin, 2),
         'currency': sale_currency,
         'message': f"Sale accounting entries created for {stock_number}. Revenue and COGS recorded."
+    }
+
+# ==================== PURCHASE PAYMENT ENDPOINTS ====================
+
+@app.post("/api/inventory/{inventory_id}/record-purchase-payment")
+async def record_purchase_payment(
+    inventory_id: int,
+    payment_data: dict,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Record the payment for a bus purchase in accounting
+    
+    Creates:
+    1. Debit Bus Inventory (Asset increases)
+    2. Credit Payment Account (Asset decreases - cash/bank account)
+    
+    Handles multi-currency: If payment is from MXN account but purchase is in USD,
+    uses exchange rate for conversion.
+    
+    Required fields in payment_data:
+    - payment_account_id: Which account was used to pay
+    - payment_date: When payment was made (optional, defaults to purchase_date)
+    """
+    from datetime import datetime
+    
+    # Extract payment data
+    payment_account_id = payment_data.get('payment_account_id')
+    payment_date_str = payment_data.get('payment_date')
+    
+    if not payment_account_id:
+        raise HTTPException(status_code=400, detail="payment_account_id is required")
+    
+    # Get inventory details
+    inventory = await db.fetchrow(
+        """
+        SELECT inventory_id, stock_number, purchase_price_usd, purchase_date
+        FROM inventory
+        WHERE inventory_id = $1 AND is_deleted = FALSE
+        """,
+        inventory_id
+    )
+    
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    
+    if not inventory['purchase_price_usd']:
+        raise HTTPException(status_code=400, detail="Bus must have a purchase price")
+    
+    purchase_price_usd = float(inventory['purchase_price_usd'])
+    stock_number = inventory['stock_number']
+    
+    # Use provided payment date or default to purchase date
+    if payment_date_str:
+        payment_date = datetime.strptime(payment_date_str, '%Y-%m-%d').date()
+    else:
+        payment_date = inventory['purchase_date'] or datetime.now().date()
+    
+    # Check if purchase payment already recorded
+    existing_payment = await db.fetchval(
+        "SELECT transaction_id FROM transactions WHERE reference_type = 'purchase' AND reference_id = $1",
+        inventory_id
+    )
+    
+    if existing_payment:
+        raise HTTPException(status_code=400, detail="Purchase payment already recorded in accounting")
+    
+    # Get payment account details
+    payment_account = await db.fetchrow(
+        "SELECT account_id, account_name, currency FROM accounts WHERE account_id = $1",
+        payment_account_id
+    )
+    
+    if not payment_account:
+        raise HTTPException(status_code=404, detail="Payment account not found")
+    
+    payment_account_currency = payment_account['currency']
+    
+    # Get Bus Inventory account
+    inventory_account = await db.fetchrow(
+        "SELECT account_id FROM accounts WHERE account_name = 'Bus Inventory'"
+    )
+    
+    if not inventory_account:
+        raise HTTPException(status_code=500, detail="Bus Inventory account not found")
+    
+    # Handle currency conversion if needed
+    if payment_account_currency == 'MXN':
+        # Payment is in MXN, but purchase is in USD - need to convert
+        exchange_rate_row = await db.fetchrow(
+            "SELECT rate FROM exchange_rates WHERE from_currency = 'USD' AND to_currency = 'MXN' AND is_active = TRUE ORDER BY effective_date DESC LIMIT 1"
+        )
+        usd_to_mxn_rate = float(exchange_rate_row['rate']) if exchange_rate_row else 17.50
+        payment_amount_mxn = purchase_price_usd * usd_to_mxn_rate
+        payment_currency = 'MXN'
+        payment_amount = payment_amount_mxn
+    elif payment_account_currency == 'USD':
+        # Both in USD - straightforward
+        payment_currency = 'USD'
+        payment_amount = purchase_price_usd
+    else:
+        # Account is multi-currency - default to USD
+        payment_currency = 'USD'
+        payment_amount = purchase_price_usd
+    
+    reference_number = f"PURCH-{payment_date.strftime('%Y%m%d')}-{stock_number}"
+    
+    # Create accounting entries
+    async with db.transaction():
+        # Main transaction record
+        transaction_id = await db.fetchval(
+            """
+            INSERT INTO transactions (
+                transaction_date, description, reference_type, reference_id,
+                reference_number, currency, created_by, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING transaction_id
+            """,
+            payment_date,
+            f"Purchase of {stock_number}",
+            "purchase",
+            inventory_id,
+            reference_number,
+            payment_currency,
+            user['username']
+        )
+        
+        # Line 1: Debit Bus Inventory (increase asset)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            """,
+            transaction_id, inventory_account['account_id'],
+            payment_amount, 0,
+            payment_currency,
+            f"Purchase of {stock_number} - Add to inventory"
+        )
+        
+        # Line 2: Credit Payment Account (decrease cash/bank)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            """,
+            transaction_id, payment_account['account_id'],
+            0, payment_amount,
+            payment_currency,
+            f"Payment for {stock_number}"
+        )
+    
+    return {
+        'success': True,
+        'transaction_id': transaction_id,
+        'reference_number': reference_number,
+        'purchase_price_usd': purchase_price_usd,
+        'payment_amount': payment_amount,
+        'payment_currency': payment_currency,
+        'payment_account': payment_account['account_name'],
+        'message': f"Purchase payment recorded for {stock_number}"
     }
 
 # ==================== CLIENTS ENDPOINTS ====================
