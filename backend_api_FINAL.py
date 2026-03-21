@@ -1771,6 +1771,215 @@ async def import_existing_sale_payments(
         'message': f"Successfully imported {imported_count} payment(s) into accounting system"
     }
 
+@app.post("/api/sales/{inventory_id}/record-sale-accounting")
+async def record_sale_accounting_retroactive(
+    inventory_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    RETROACTIVE SALE RECORDING
+    
+    For buses that were marked as sold BEFORE the unified accounting system.
+    Creates the Revenue + COGS + AR accounting entries for an already-sold bus.
+    
+    Requirements:
+    - Inventory must already be marked as sold (is_sold = True)
+    - Must have sale_price, sale_currency, sale_date
+    - Sale must NOT already be recorded in accounting
+    """
+    from datetime import datetime
+    
+    # Get inventory details
+    inventory = await db.fetchrow(
+        """
+        SELECT inventory_id, stock_number, is_sold, sale_price, sale_currency, 
+               sale_date, purchase_price_usd
+        FROM inventory 
+        WHERE inventory_id = $1 AND is_deleted = FALSE
+        """,
+        inventory_id
+    )
+    
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    
+    if not inventory['is_sold']:
+        raise HTTPException(status_code=400, detail="Inventory must be marked as sold. Use POST /api/sales/record for new sales.")
+    
+    if not inventory['sale_price'] or not inventory['sale_currency']:
+        raise HTTPException(status_code=400, detail="Sale price and currency required")
+    
+    # Check if sale already recorded in accounting
+    existing_sale = await db.fetchval(
+        "SELECT transaction_id FROM transactions WHERE reference_type = 'sale' AND reference_id = $1",
+        inventory_id
+    )
+    
+    if existing_sale:
+        raise HTTPException(status_code=400, detail="Sale already recorded in accounting. Cannot record twice.")
+    
+    sale_price = float(inventory['sale_price'])
+    sale_currency = inventory['sale_currency']
+    sale_date = inventory['sale_date'] or datetime.now().date()
+    stock_number = inventory['stock_number']
+    purchase_price_usd = float(inventory['purchase_price_usd'])
+    
+    # Calculate COGS: Purchase Price + Cost Items
+    if sale_currency == 'MXN':
+        exchange_rate_row = await db.fetchrow(
+            "SELECT rate FROM exchange_rates WHERE from_currency = 'USD' AND to_currency = 'MXN' AND is_active = TRUE ORDER BY effective_date DESC LIMIT 1"
+        )
+        usd_to_mxn_rate = float(exchange_rate_row['rate']) if exchange_rate_row else 17.50
+        purchase_price_in_sale_currency = purchase_price_usd * usd_to_mxn_rate
+    else:
+        usd_to_mxn_rate = 17.50
+        purchase_price_in_sale_currency = purchase_price_usd
+    
+    # Get all cost items and convert to sale currency
+    all_cost_items = await db.fetch(
+        "SELECT amount, currency FROM cost_items WHERE inventory_id = $1",
+        inventory_id
+    )
+    
+    total_cost_items = 0.0
+    for item in all_cost_items:
+        item_amount = float(item['amount'])
+        item_currency = item['currency']
+        
+        if item_currency == sale_currency:
+            total_cost_items += item_amount
+        elif item_currency == 'USD' and sale_currency == 'MXN':
+            total_cost_items += item_amount * usd_to_mxn_rate
+        elif item_currency == 'MXN' and sale_currency == 'USD':
+            total_cost_items += item_amount / usd_to_mxn_rate
+    
+    total_cogs = purchase_price_in_sale_currency + total_cost_items
+    
+    # Get account IDs
+    revenue_account = await db.fetchrow(
+        "SELECT account_id FROM accounts WHERE account_name LIKE '%Bus Sales%' AND account_type = 'Income' LIMIT 1"
+    )
+    
+    ar_account = await db.fetchrow(
+        f"SELECT account_id FROM accounts WHERE account_name = 'Accounts Receivable - {sale_currency}'"
+    )
+    
+    cogs_account = await db.fetchrow(
+        "SELECT account_id FROM accounts WHERE account_name LIKE '%Cost of Goods Sold%' AND account_code = '5000'"
+    )
+    
+    inventory_account = await db.fetchrow(
+        "SELECT account_id FROM accounts WHERE account_name = 'Bus Inventory'"
+    )
+    
+    if not revenue_account:
+        raise HTTPException(status_code=500, detail="Bus Sales Revenue account not found")
+    if not ar_account:
+        raise HTTPException(status_code=500, detail=f"Accounts Receivable - {sale_currency} account not found")
+    if not cogs_account:
+        raise HTTPException(status_code=500, detail="COGS account not found")
+    if not inventory_account:
+        raise HTTPException(status_code=500, detail="Bus Inventory account not found")
+    
+    reference_number = f"SALE-{sale_date.strftime('%Y%m%d')}-{stock_number}"
+    
+    # Create accounting entries
+    async with db.transaction():
+        # Main transaction record
+        transaction_id = await db.fetchval(
+            """
+            INSERT INTO transactions (
+                transaction_date, description, reference_type, reference_id,
+                reference_number, currency, created_by, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING transaction_id
+            """,
+            sale_date,
+            f"Sale of {stock_number} (retroactive)",
+            "sale",
+            inventory_id,
+            reference_number,
+            sale_currency,
+            user['username']
+        )
+        
+        # Line 1: Debit AR (increase receivable)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            """,
+            transaction_id, ar_account['account_id'],
+            sale_price, 0,
+            sale_currency,
+            f"Sale of {stock_number} - Receivable (retroactive)"
+        )
+        
+        # Line 2: Credit Revenue (increase revenue)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            """,
+            transaction_id, revenue_account['account_id'],
+            0, sale_price,
+            sale_currency,
+            f"Sale of {stock_number} - Revenue (retroactive)"
+        )
+        
+        # Line 3: Debit COGS (increase expense)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            """,
+            transaction_id, cogs_account['account_id'],
+            total_cogs, 0,
+            sale_currency,
+            f"COGS for {stock_number} (retroactive)"
+        )
+        
+        # Line 4: Credit Inventory (decrease asset)
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, account_id, debit_amount, credit_amount,
+                currency, notes
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            """,
+            transaction_id, inventory_account['account_id'],
+            0, total_cogs,
+            sale_currency,
+            f"Inventory sold: {stock_number} (retroactive)"
+        )
+    
+    gross_profit = sale_price - total_cogs
+    margin = (gross_profit / sale_price * 100) if sale_price > 0 else 0
+    
+    return {
+        'success': True,
+        'transaction_id': transaction_id,
+        'reference_number': reference_number,
+        'sale_price': sale_price,
+        'cogs': total_cogs,
+        'gross_profit': gross_profit,
+        'margin': round(margin, 2),
+        'currency': sale_currency,
+        'message': f"Sale accounting entries created for {stock_number}. Revenue and COGS recorded."
+    }
+
 # ==================== CLIENTS ENDPOINTS ====================
 
 @app.get("/api/clients")
@@ -4239,14 +4448,16 @@ async def get_income_statement(
     
     # Convert if needed
     if currency == "USD":
-        revenue['USD'] += revenue['MXN'] / float(exchange_rate)
-        cogs['USD'] += cogs['MXN'] / float(exchange_rate)
-        operating_expenses['USD'] += operating_expenses['MXN'] / float(exchange_rate)
-        gross_profit = gross_profit_usd + (gross_profit_mxn / float(exchange_rate))
-        net_income = net_income_usd + (net_income_mxn / float(exchange_rate))
+        # exchange_rate is MXN→USD (e.g., 0.057 means 1 MXN = 0.057 USD)
+        # To convert MXN to USD: multiply by the rate
+        revenue['USD'] += revenue['MXN'] * float(exchange_rate)
+        cogs['USD'] += cogs['MXN'] * float(exchange_rate)
+        operating_expenses['USD'] += operating_expenses['MXN'] * float(exchange_rate)
+        gross_profit = gross_profit_usd + (gross_profit_mxn * float(exchange_rate))
+        net_income = net_income_usd + (net_income_mxn * float(exchange_rate))
         
         for account in revenue['accounts'] + cogs['accounts'] + operating_expenses['accounts']:
-            account['amount_usd'] += account['amount_mxn'] / float(exchange_rate)
+            account['amount_usd'] += account['amount_mxn'] * float(exchange_rate)
             account['amount_mxn'] = 0
         
         return {
@@ -4269,8 +4480,10 @@ async def get_income_statement(
         net_income = net_income_mxn + (net_income_usd * float(exchange_rate))
         
         for account in revenue['accounts'] + cogs['accounts'] + operating_expenses['accounts']:
-            account['amount_mxn'] += account['amount_usd'] * float(exchange_rate)
-            account['amount_usd'] = 0
+            # Only convert if there's actually USD amount (not zero)
+            if account['amount_usd'] != 0:
+                account['amount_mxn'] += account['amount_usd'] * float(exchange_rate)
+                account['amount_usd'] = 0
         
         return {
             'start_date': start_date,
