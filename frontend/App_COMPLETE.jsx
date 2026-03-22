@@ -437,8 +437,6 @@ function InventoryApp() {
   const [selectedInspection, setSelectedInspection] = useState(null);
   const [showInspectionReport, setShowInspectionReport] = useState(false);
   const [showCreateInventoryModal, setShowCreateInventoryModal] = useState(false);
-  const [showCostModal, setShowCostModal] = useState(false);
-  const [selectedBusForCosts, setSelectedBusForCosts] = useState(null);
   const [currentExchangeRate, setCurrentExchangeRate] = useState(17.50);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -501,17 +499,6 @@ function InventoryApp() {
     }
   };
 
-  const handleSaveCosts = async (costData) => {
-    try {
-      await api.updateInventory(selectedBusForCosts.inventory_id, costData);
-      await loadData();
-      setShowCostModal(false);
-      setSelectedBusForCosts(null);
-      alert('✅ Costs saved successfully!');
-    } catch (error) {
-      throw new Error(error.message || 'Failed to save costs');
-    }
-  };
 
   const handleSaveSupplier = async (data) => {
     await api.createSupplier(data);
@@ -913,17 +900,6 @@ function InventoryApp() {
     />
   )}
 
-  {showCostModal && selectedBusForCosts && (
-    <CostManagementModal
-      bus={selectedBusForCosts}
-      currentExchangeRate={currentExchangeRate}
-      onClose={() => {
-        setShowCostModal(false);
-        setSelectedBusForCosts(null);
-      }}
-      onSave={handleSaveCosts}
-    />
-  )}
     </div>
   );
 }
@@ -952,3 +928,4 @@ function App() {
 }
 
 window.App = App;
+
