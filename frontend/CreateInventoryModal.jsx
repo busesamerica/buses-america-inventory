@@ -288,6 +288,47 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
                 />
               </div>
 
+              {/* TESTING: Paid From Dropdown - AT THE TOP */}
+              <div style={{ marginTop: '1rem', padding: '1rem', background: '#fef3c7', borderRadius: '0.5rem' }}>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '0.5rem',
+                  fontWeight: '600',
+                  color: '#1f2937',
+                  fontSize: '0.875rem'
+                }}>
+                  🧪 TEST: Paid From <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <select
+                  name="payment_account_id"
+                  value={formData.payment_account_id}
+                  onChange={handleChange}
+                  required
+                  disabled={loadingAccounts}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '0.5rem',
+                    fontSize: '1rem',
+                    fontWeight: '500',
+                    cursor: loadingAccounts ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  <option value="">
+                    {loadingAccounts ? 'Loading accounts...' : 'Select payment account'}
+                  </option>
+                  {paymentAccounts.map(account => (
+                    <option key={account.account_id} value={account.account_id}>
+                      {account.account_name} ({account.currency})
+                    </option>
+                  ))}
+                </select>
+                <div style={{ fontSize: '0.75rem', color: '#78350f', marginTop: '0.25rem' }}>
+                  🧪 If you see this, the dropdown code works! The issue was layout/position.
+                </div>
+              </div>
+
               {/* Purchase Info */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
