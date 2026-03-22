@@ -306,152 +306,6 @@ function UserDropdown() {
   );
 }
 
-// ============= BUS FORM (ADD/EDIT) =============
-function BusForm({ bus, onSave, onCancel }) {
-  const [formData, setFormData] = useState({
-    stock_number: '',
-    vin: '',
-    year: new Date().getFullYear(),
-    make: '',
-    model: '',
-    passenger_capacity: '',
-    purchase_date: new Date().toISOString().split('T')[0],
-    purchase_price_usd: '',
-    current_location: 'United States',
-    status: 'Available',
-    condition: 'Good'
-  });
-  
-  useEffect(() => {
-    if (bus) {
-      setFormData({
-        ...bus,
-        purchase_price_usd: bus.purchase_price_usd || '',
-        passenger_capacity: bus.passenger_capacity || '',
-        purchase_date: bus.purchase_date ? bus.purchase_date.split('T')[0] : new Date().toISOString().split('T')[0]
-      });
-    }
-  }, [bus]);
-  
-  const [saving, setSaving] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const data = {
-        ...formData,
-        year: parseInt(formData.year),
-        passenger_capacity: formData.passenger_capacity ? parseInt(formData.passenger_capacity) : null,
-        purchase_price_usd: Math.round(parseFloat(formData.purchase_price_usd) * 100) / 100
-      };
-      await onSave(data);
-    } catch (error) {
-      alert('Error: ' + error.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleChange = (e) => {
-  const { name, value } = e.target;
-  const updated = { ...formData, [name]: value };
-  
-  // Auto-generate stock number from VIN
-  if (name === 'vin' && value.length >= 6) {
-    const last6 = value.slice(-6).toUpperCase();
-    updated.stock_number = `BA-${last6}`;
-  }
-  
-  setFormData(updated);
-};
-
-  return (
-    <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:'1rem'}}>
-      <div style={{background:'white',borderRadius:'8px',maxWidth:'700px',width:'100%',maxHeight:'90vh',overflow:'auto'}}>
-        <div style={{padding:'1.5rem',borderBottom:'1px solid #ddd',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,background:'white',zIndex:1}}>
-          <h2 style={{margin:0}}>{bus ? 'Edit Bus' : 'Add New Bus'}</h2>
-          <button onClick={onCancel} style={{background:'none',border:'none',fontSize:'1.5rem',cursor:'pointer',color:'#666'}}>×</button>
-        </div>
-        
-        <form onSubmit={handleSubmit} style={{padding:'1.5rem'}}>
-          <div style={{display:'grid',gap:'1.25rem'}}>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
-              <div>
-                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Stock Number *</label>
-                <input name="stock_number" value={formData.stock_number} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
-              </div>
-              <div>
-                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>VIN *</label>
-                <input name="vin" value={formData.vin} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
-              </div>
-            </div>
-            
-            <div style={{display:'grid',gridTemplateColumns:'1fr 2fr 2fr',gap:'1rem'}}>
-              <div>
-                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Year *</label>
-                <input name="year" type="number" value={formData.year} onChange={handleChange} required min="1990" max="2030" style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
-              </div>
-              <div>
-                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Make *</label>
-                <input name="make" value={formData.make} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
-              </div>
-              <div>
-                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Model *</label>
-                <input name="model" value={formData.model} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
-              </div>
-            </div>
-            
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
-              <div>
-                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Capacity</label>
-                <input name="passenger_capacity" type="number" value={formData.passenger_capacity} onChange={handleChange} min="1" max="99" style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
-              </div>
-              <div>
-                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Purchase Date *</label>
-                <input name="purchase_date" type="date" value={formData.purchase_date} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
-              </div>
-            </div>
-            
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'1rem'}}>
-              <div>
-                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Price (USD) *</label>
-                <input name="purchase_price_usd" type="number" step="0.01" value={formData.purchase_price_usd} onChange={handleChange} required min="0" style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
-              </div>
-              <div>
-                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Location *</label>
-                <select name="current_location" value={formData.current_location} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}>
-                  <option value="United States">United States</option>
-                  <option value="Mexico">Mexico</option>
-                </select>
-              </div>
-              <div>
-                <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500',fontSize:'0.9rem'}}>Status *</label>
-                <select name="status" value={formData.status} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}>
-                  <option value="Available">Available</option>
-                  <option value="Sold">Sold</option>
-                  <option value="In Transit">In Transit</option>
-                  <option value="Under Repair">Under Repair</option>
-                  <option value="Delivered">Delivered</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          
-          <div style={{display:'flex',gap:'1rem',marginTop:'2rem',paddingTop:'1.5rem',borderTop:'1px solid #eee'}}>
-            <button type="submit" disabled={saving} style={{flex:1,padding:'0.75rem',background:saving?'#ccc':'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:saving?'not-allowed':'pointer'}}>
-              {saving ? 'Saving...' : (bus ? '💾 Update Bus' : '💾 Save Bus')}
-            </button>
-            <button type="button" onClick={onCancel} style={{flex:1,padding:'0.75rem',background:'#e0e0e0',color:'#333',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
-              Cancel
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 // ============= SUPPLIER FORM =============
 function SupplierForm({ onSave, onCancel }) {
   const [formData, setFormData] = useState({
@@ -818,82 +672,7 @@ function InventoryApp() {
           )}
 
           {/* INVENTORY VIEW */}
-          {view === 'inventory' && (
-            <div style={{maxWidth:'1400px'}}>
-              <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',marginBottom:'1.5rem'}}>
-                <div style={{display:'flex',gap:'1rem',flexWrap:'wrap'}}>
-                  <input
-                    type="text"
-                    placeholder="🔍 Search by stock#, VIN, make, model, year..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    style={{flex:1,minWidth:'300px',padding:'0.75rem',border:'1px solid #ddd',borderRadius:'6px',fontSize:'1rem'}}
-                  />
-                  <button onClick={() => setShowBusForm(true)} style={{padding:'0.75rem 1.5rem',background:'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer',whiteSpace:'nowrap'}}>
-                    ➕ Add New Bus
-                  </button>
-                </div>
-              </div>
-
-              <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
-                <h3 style={{marginTop:0,marginBottom:'1.5rem'}}>
-                  All Buses ({filteredInventory.length})
-                </h3>
-                {filteredInventory.length === 0 ? (
-                  <div style={{textAlign:'center',padding:'3rem',color:'#666'}}>
-                    <div style={{fontSize:'3rem',marginBottom:'1rem'}}>🚌</div>
-                    <div>{search ? 'No buses match your search' : 'No inventory yet'}</div>
-                  </div>
-                ) : (
-                  <div style={{display:'grid',gap:'1rem'}}>
-                    {filteredInventory.map((bus) => (
-                      <div key={bus.inventory_id} style={{padding:'1.25rem',border:'1px solid #ddd',borderRadius:'6px'}}>
-                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',marginBottom:'0.75rem'}}>
-                          <div style={{flex:1}}>
-                            <div style={{fontWeight:'700',fontSize:'1.2rem',marginBottom:'0.5rem'}}>
-                              {bus.year} {bus.make} {bus.model}
-                            </div>
-                            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:'0.5rem',color:'#666',fontSize:'0.9rem'}}>
-                              <div>📋 Stock: <strong>{bus.stock_number}</strong></div>
-                              <div>🔖 VIN: <strong>{bus.vin}</strong></div>
-                              <div>👥 Capacity: <strong>{bus.passenger_capacity || 'N/A'}</strong></div>
-                              <div>📍 Location: <strong>{bus.current_location}</strong></div>
-                              <div>📅 Purchased: <strong>{formatDate(bus.purchase_date)}</strong></div>
-                              <div>📊 Status: <strong style={{color:bus.status==='Available'?'#28a745':'#666'}}>{bus.status}</strong></div>
-                            </div>
-                          </div>
-                          <div style={{textAlign:'right',marginLeft:'1rem'}}>
-                            <div style={{fontSize:'1.5rem',fontWeight:'700',color:'#28a745',marginBottom:'0.5rem'}}>
-                              {formatCurrency(bus.purchase_price_usd)}
-                            </div>
-                            <div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap'}}>
-                              <button onClick={() => {setEditingBus(bus);setShowBusForm(true);}} style={{padding:'0.5rem 1rem',background:'#007bff',color:'white',border:'none',borderRadius:'4px',fontSize:'0.875rem',cursor:'pointer'}}>
-                                ✏️ Edit
-                              </button>
-                              <button 
-                                onClick={() => {
-                                  setSelectedBusForCosts(bus);
-                                  setShowCostModal(true);
-                                }} 
-                                style={{padding:'0.5rem 1rem',background:'#10b981',color:'white',border:'none',borderRadius:'4px',fontSize:'0.875rem',cursor:'pointer',fontWeight:'600'}}
-                              >
-                                💰 Costs
-                              </button>
-                              {user.role === 'admin' && (
-                                <button onClick={() => handleDeleteBus(bus)} style={{padding:'0.5rem 1rem',background:'#dc3545',color:'white',border:'none',borderRadius:'4px',fontSize:'0.875rem',cursor:'pointer'}}>
-                                  🗑️ Delete
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )} 
+          {view === 'inventory' && <InventoryManagement />}
 
           {/* SUPPLIERS VIEW */}
           {view === 'suppliers' && (
@@ -1054,13 +833,6 @@ function InventoryApp() {
       </div>
 
       {/* Modals */}
-      {showBusForm && (
-        <BusForm
-          bus={editingBus}
-          onSave={handleSaveBus}
-          onCancel={() => {setShowBusForm(false);setEditingBus(null);}}
-        />
-      )}
       {showSupplierForm && (
         <SupplierForm
           onSave={handleSaveSupplier}
@@ -1180,4 +952,3 @@ function App() {
 }
 
 window.App = App;
-
