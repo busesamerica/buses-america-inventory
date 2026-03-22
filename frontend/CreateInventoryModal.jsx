@@ -331,47 +331,6 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
                   )}
                 </div>
 
-                {/* ADDED: Paid From Dropdown */}
-                <div>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '0.5rem',
-                    fontWeight: '600',
-                    color: '#1f2937',
-                    fontSize: '0.875rem'
-                  }}>
-                    Paid From <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
-                  <select
-                    name="payment_account_id"
-                    value={formData.payment_account_id}
-                    onChange={handleChange}
-                    required
-                    disabled={loadingAccounts}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      border: '2px solid #e5e7eb',
-                      borderRadius: '0.5rem',
-                      fontSize: '1rem',
-                      fontWeight: '500',
-                      cursor: loadingAccounts ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    <option value="">
-                      {loadingAccounts ? 'Loading accounts...' : 'Select payment account'}
-                    </option>
-                    {paymentAccounts.map(account => (
-                      <option key={account.account_id} value={account.account_id}>
-                        {account.account_name} ({account.currency})
-                      </option>
-                    ))}
-                  </select>
-                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                    Which bank/cash account was used to pay for this bus?
-                  </div>
-                </div>
-
                 <div>
                   <label style={{
                     display: 'block',
@@ -396,6 +355,47 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
                       fontSize: '1rem'
                     }}
                   />
+                </div>
+              </div>
+
+              {/* ADDED: Paid From Dropdown - Moved outside grid */}
+              <div style={{ marginTop: '1rem' }}>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '0.5rem',
+                  fontWeight: '600',
+                  color: '#1f2937',
+                  fontSize: '0.875rem'
+                }}>
+                  Paid From <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <select
+                  name="payment_account_id"
+                  value={formData.payment_account_id}
+                  onChange={handleChange}
+                  required
+                  disabled={loadingAccounts}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '0.5rem',
+                    fontSize: '1rem',
+                    fontWeight: '500',
+                    cursor: loadingAccounts ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  <option value="">
+                    {loadingAccounts ? 'Loading accounts...' : 'Select payment account'}
+                  </option>
+                  {paymentAccounts.map(account => (
+                    <option key={account.account_id} value={account.account_id}>
+                      {account.account_name} ({account.currency})
+                    </option>
+                  ))}
+                </select>
+                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                  Which bank/cash account was used to pay for this bus?
                 </div>
               </div>
 
