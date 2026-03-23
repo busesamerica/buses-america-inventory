@@ -3,21 +3,23 @@ const { useState, useEffect } = React;
 const InventoryManagement = () => {
   const API_URL = `${window.API_BASE_URL || 'https://buses-america.onrender.com'}/api`;
   
-  // State
   const [inventory, setInventory] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [inspections, setInspections] = useState([]);
   const [paymentAccounts, setPaymentAccounts] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [expandedRows, setExpandedRows] = useState(new Set());
   const [showBusForm, setShowBusForm] = useState(false);
   const [editingBus, setEditingBus] = useState(null);
   const [showCostModal, setShowCostModal] = useState(false);
   const [selectedBusForCosts, setSelectedBusForCosts] = useState(null);
   const [showPurchasePaymentModal, setShowPurchasePaymentModal] = useState(false);
   const [selectedBusForPayment, setSelectedBusForPayment] = useState(null);
+  const [showInspectionReport, setShowInspectionReport] = useState(false);
+  const [selectedInspection, setSelectedInspection] = useState(null);
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || '{}'));
 
-  // Load data
   useEffect(() => {
     loadData();
     loadPaymentAccounts();
@@ -25,16 +27,20 @@ const InventoryManagement = () => {
 
   const loadData = async () => {
     try {
-      const [invData, suppData] = await Promise.all([
+      const [invData, suppData, inspData] = await Promise.all([
         fetch(`${API_URL}/inventory`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` }
         }).then(r => r.json()),
         fetch(`${API_URL}/suppliers`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` }
+        }).then(r => r.json()),
+        fetch(`${API_URL}/pre-inspections`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` }
         }).then(r => r.json())
       ]);
       setInventory(invData);
       setSuppliers(suppData);
+      setInspections(inspData);
     } catch (err) {
       console.error('Failed to load data:', err);
     } finally {
@@ -77,10 +83,8 @@ const InventoryManagement = () => {
       });
 
       if (!response.ok) throw new Error('Failed to save bus');
-
       const savedBus = await response.json();
 
-      // Auto-create purchase payment for NEW buses (not edits)
       if (!editingBus && busData.payment_account_id) {
         try {
           await fetch(`${API_URL}/inventory/${savedBus.inventory_id}/record-purchase-payment`, {
@@ -94,13 +98,12 @@ const InventoryManagement = () => {
               payment_date: busData.purchase_date
             })
           });
-          alert('✅ Bus saved and purchase payment recorded in accounting!');
+          alert('✅ Bus saved and purchase payment recorded!');
         } catch (err) {
-          console.error('Failed to record purchase payment:', err);
-          alert('✅ Bus saved, but purchase payment failed. You can record it manually.');
+          alert('✅ Bus saved, but payment failed. Record manually.');
         }
       } else {
-        alert(editingBus ? '✅ Bus updated successfully!' : '✅ Bus saved successfully!');
+        alert(editingBus ? '✅ Bus updated!' : '✅ Bus saved!');
       }
 
       setShowBusForm(false);
@@ -126,6 +129,28 @@ const InventoryManagement = () => {
     }
   };
 
+  const toggleRow = (inventoryId) => {
+    const newExpanded = new Set(expandedRows);
+    if (newExpanded.has(inventoryId)) {
+      newExpanded.delete(inventoryId);
+    } else {
+      newExpanded.add(inventoryId);
+    }
+    setExpandedRows(newExpanded);
+  };
+
+  const getInspectionForBus = (bus) => {
+    return inspections.find(insp => insp.vin === bus.vin);
+  };
+
+  const handleViewInspection = (bus) => {
+    const inspection = getInspectionForBus(bus);
+    if (inspection) {
+      setSelectedInspection(inspection);
+      setShowInspectionReport(true);
+    }
+  };
+
   const formatCurrency = (amount) => {
     if (!amount && amount !== 0) return '$0.00';
     return `$${parseFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -140,7 +165,6 @@ const InventoryManagement = () => {
     });
   };
 
-  // Filter inventory
   const filteredInventory = inventory.filter(bus => {
     if (!search) return true;
     const searchLower = search.toLowerCase();
@@ -149,7 +173,8 @@ const InventoryManagement = () => {
       bus.vin?.toLowerCase().includes(searchLower) ||
       bus.make?.toLowerCase().includes(searchLower) ||
       bus.model?.toLowerCase().includes(searchLower) ||
-      bus.year?.toString().includes(searchLower)
+      bus.year?.toString().includes(searchLower) ||
+      bus.engine_make?.toLowerCase().includes(searchLower)
     );
   });
 
@@ -164,12 +189,11 @@ const InventoryManagement = () => {
 
   return (
     <div style={{ maxWidth: '1400px' }}>
-      {/* Search & Add Button */}
       <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <input
             type="text"
-            placeholder="🔍 Search by stock#, VIN, make, model, year..."
+            placeholder="🔍 Search by stock#, VIN, make, model, engine..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ flex: 1, minWidth: '300px', padding: '0.75rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '1rem' }}
@@ -183,79 +207,184 @@ const InventoryManagement = () => {
         </div>
       </div>
 
-      {/* Inventory List */}
-      <div style={{ background: 'white', padding: '2rem', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-        <h3 style={{ marginTop: 0, marginBottom: '1.5rem' }}>
-          All Buses ({filteredInventory.length})
-        </h3>
-        
+      <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+        <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
+          <h3 style={{ margin: 0 }}>All Buses ({filteredInventory.length})</h3>
+        </div>
+
         {filteredInventory.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: '#666' }}>
             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🚌</div>
             <div>{search ? 'No buses match your search' : 'No inventory yet'}</div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gap: '1rem' }}>
-            {filteredInventory.map((bus) => (
-              <div key={bus.inventory_id} style={{ padding: '1.25rem', border: '1px solid #ddd', borderRadius: '6px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.75rem' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '700', fontSize: '1.2rem', marginBottom: '0.5rem' }}>
-                      {bus.year} {bus.make} {bus.model}
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', color: '#666', fontSize: '0.9rem' }}>
-                      <div>📋 Stock: <strong>{bus.stock_number}</strong></div>
-                      <div>🔖 VIN: <strong>{bus.vin}</strong></div>
-                      <div>👥 Capacity: <strong>{bus.passenger_capacity || 'N/A'}</strong></div>
-                      <div>📍 Location: <strong>{bus.current_location}</strong></div>
-                      <div>📅 Purchased: <strong>{formatDate(bus.purchase_date)}</strong></div>
-                      <div>📊 Status: <strong style={{ color: bus.status === 'Available' ? '#28a745' : '#666' }}>{bus.status}</strong></div>
-                      {bus.supplier_id && (
-                        <div>🏢 Supplier: <strong>{suppliers.find(s => s.supplier_id === bus.supplier_id)?.company_name || 'Unknown'}</strong></div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+                  <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: '600', fontSize: '0.875rem', color: '#6b7280', width: '40px' }}></th>
+                  <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: '600', fontSize: '0.875rem', color: '#6b7280' }}>Stock #</th>
+                  <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: '600', fontSize: '0.875rem', color: '#6b7280' }}>Vehicle</th>
+                  <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: '600', fontSize: '0.875rem', color: '#6b7280' }}>Engine</th>
+                  <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: '600', fontSize: '0.875rem', color: '#6b7280' }}>Capacity</th>
+                  <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontWeight: '600', fontSize: '0.875rem', color: '#6b7280', width: '80px' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredInventory.map((bus) => {
+                  const isExpanded = expandedRows.has(bus.inventory_id);
+                  const inspection = getInspectionForBus(bus);
+                  const supplier = suppliers.find(s => s.supplier_id === bus.supplier_id);
+
+                  return (
+                    <React.Fragment key={bus.inventory_id}>
+                      <tr style={{ borderBottom: '1px solid #e5e7eb', cursor: 'pointer' }} onClick={() => toggleRow(bus.inventory_id)}>
+                        <td style={{ padding: '1rem', textAlign: 'center' }}>
+                          <span style={{ fontSize: '1.25rem', color: '#6b7280', transition: 'transform 0.2s', display: 'inline-block', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                            ▶
+                          </span>
+                        </td>
+                        <td style={{ padding: '1rem', fontWeight: '600', fontSize: '0.9rem' }}>
+                          {bus.stock_number}
+                        </td>
+                        <td style={{ padding: '1rem' }}>
+                          <div style={{ fontWeight: '600' }}>{bus.year} {bus.make} {bus.model}</div>
+                        </td>
+                        <td style={{ padding: '1rem', fontSize: '0.9rem', color: '#6b7280' }}>
+                          {bus.engine_make || bus.engine_model ? `${bus.engine_make || ''} ${bus.engine_model || ''}`.trim() : 'N/A'}
+                        </td>
+                        <td style={{ padding: '1rem', fontSize: '0.9rem' }}>
+                          {bus.passenger_capacity ? `${bus.passenger_capacity} passengers` : 'N/A'}
+                        </td>
+                        <td style={{ padding: '1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          <div style={{ position: 'relative', display: 'inline-block' }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const menu = e.currentTarget.nextElementSibling;
+                                menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+                              }}
+                              style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '0.25rem 0.5rem', color: '#6b7280' }}
+                            >
+                              ⋮
+                            </button>
+                            <div style={{ display: 'none', position: 'absolute', right: 0, top: '100%', background: 'white', border: '1px solid #e5e7eb', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10, minWidth: '150px' }}>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingBus(bus);
+                                  setShowBusForm(true);
+                                  e.currentTarget.parentElement.style.display = 'none';
+                                }}
+                                style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.875rem' }}
+                              >
+                                ✏️ Edit
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedBusForCosts(bus);
+                                  setShowCostModal(true);
+                                  e.currentTarget.parentElement.style.display = 'none';
+                                }}
+                                style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.875rem' }}
+                              >
+                                💰 Costs
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedBusForPayment(bus);
+                                  setShowPurchasePaymentModal(true);
+                                  e.currentTarget.parentElement.style.display = 'none';
+                                }}
+                                style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.875rem' }}
+                              >
+                                💳 Purchase Payment
+                              </button>
+                              {inspection && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleViewInspection(bus);
+                                    e.currentTarget.parentElement.style.display = 'none';
+                                  }}
+                                  style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.875rem' }}
+                                >
+                                  🔍 View Inspection
+                                </button>
+                              )}
+                              {user.role === 'admin' && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteBus(bus);
+                                    e.currentTarget.parentElement.style.display = 'none';
+                                  }}
+                                  style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.875rem', color: '#dc3545', borderTop: '1px solid #e5e7eb' }}
+                                >
+                                  🗑️ Delete
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {isExpanded && (
+                        <tr style={{ borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
+                          <td colSpan="6" style={{ padding: '1.5rem 2rem' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                              <div>
+                                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>VIN</div>
+                                <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{bus.vin}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Location</div>
+                                <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{bus.current_location}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Status</div>
+                                <div style={{ fontWeight: '600', fontSize: '0.9rem', color: bus.status === 'Available' ? '#10b981' : '#6b7280' }}>{bus.status}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Purchase Date</div>
+                                <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{formatDate(bus.purchase_date)}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Purchase Price</div>
+                                <div style={{ fontWeight: '600', fontSize: '0.9rem', color: '#10b981' }}>{formatCurrency(bus.purchase_price_usd)}</div>
+                              </div>
+                              {supplier && (
+                                <div>
+                                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Supplier</div>
+                                  <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{supplier.company_name}</div>
+                                </div>
+                              )}
+                              {inspection && (
+                                <div>
+                                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Inspection</div>
+                                  <div 
+                                    onClick={() => handleViewInspection(bus)}
+                                    style={{ fontWeight: '600', fontSize: '0.9rem', color: '#2563eb', cursor: 'pointer', textDecoration: 'underline' }}
+                                  >
+                                    {formatDate(inspection.inspection_date)} - {inspection.overall_condition || 'Completed'}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right', marginLeft: '1rem' }}>
-                    <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#28a745', marginBottom: '0.5rem' }}>
-                      {formatCurrency(bus.purchase_price_usd)}
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                      <button 
-                        onClick={() => { setEditingBus(bus); setShowBusForm(true); }} 
-                        style={{ padding: '0.5rem 1rem', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', fontSize: '0.875rem', cursor: 'pointer' }}
-                      >
-                        ✏️ Edit
-                      </button>
-                      <button 
-                        onClick={() => { setSelectedBusForCosts(bus); setShowCostModal(true); }} 
-                        style={{ padding: '0.5rem 1rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', fontSize: '0.875rem', cursor: 'pointer', fontWeight: '600' }}
-                      >
-                        💰 Costs
-                      </button>
-                      <button 
-                        onClick={() => { setSelectedBusForPayment(bus); setShowPurchasePaymentModal(true); }} 
-                        style={{ padding: '0.5rem 1rem', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '4px', fontSize: '0.875rem', cursor: 'pointer', fontWeight: '600' }}
-                      >
-                        💳 Purchase Payment
-                      </button>
-                      {user.role === 'admin' && (
-                        <button 
-                          onClick={() => handleDeleteBus(bus)} 
-                          style={{ padding: '0.5rem 1rem', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', fontSize: '0.875rem', cursor: 'pointer' }}
-                        >
-                          🗑️ Delete
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
 
-      {/* Modals */}
       {showBusForm && (
         <BusForm
           bus={editingBus}
@@ -286,11 +415,17 @@ const InventoryManagement = () => {
           }}
         />
       )}
+
+      {showInspectionReport && selectedInspection && (
+        <PreInspectionReport
+          inspection={selectedInspection}
+          onClose={() => { setShowInspectionReport(false); setSelectedInspection(null); }}
+        />
+      )}
     </div>
   );
 };
 
-// ==================== BUS FORM ====================
 function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
   const [formData, setFormData] = useState({
     stock_number: '',
@@ -299,6 +434,8 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     make: '',
     model: '',
     passenger_capacity: '',
+    engine_make: '',
+    engine_model: '',
     purchase_date: new Date().toISOString().split('T')[0],
     purchase_price_usd: '',
     current_location: 'United States',
@@ -308,7 +445,6 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     supplier_id: ''
   });
 
-  const [loadingAccounts] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -317,8 +453,11 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
         ...bus,
         purchase_price_usd: bus.purchase_price_usd || '',
         passenger_capacity: bus.passenger_capacity || '',
+        engine_make: bus.engine_make || '',
+        engine_model: bus.engine_model || '',
         purchase_date: bus.purchase_date ? bus.purchase_date.split('T')[0] : new Date().toISOString().split('T')[0],
-        payment_account_id: bus.payment_account_id || ''
+        payment_account_id: bus.payment_account_id || '',
+        supplier_id: bus.supplier_id || ''
       });
     }
   }, [bus]);
@@ -326,7 +465,6 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Only require payment_account_id for NEW buses (not edits)
     if (!bus && !formData.payment_account_id) {
       alert('Please select a payment account');
       return;
@@ -338,7 +476,8 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
         ...formData,
         year: parseInt(formData.year),
         passenger_capacity: formData.passenger_capacity ? parseInt(formData.passenger_capacity) : null,
-        purchase_price_usd: Math.round(parseFloat(formData.purchase_price_usd) * 100) / 100
+        purchase_price_usd: Math.round(parseFloat(formData.purchase_price_usd) * 100) / 100,
+        supplier_id: formData.supplier_id ? parseInt(formData.supplier_id) : null
       };
       await onSave(data);
     } catch (error) {
@@ -352,7 +491,6 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     const { name, value } = e.target;
     const updated = { ...formData, [name]: value };
 
-    // Auto-generate stock number from VIN
     if (name === 'vin' && value.length >= 6) {
       const last6 = value.slice(-6).toUpperCase();
       updated.stock_number = `BA-${last6}`;
@@ -371,7 +509,6 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
 
         <form onSubmit={handleSubmit} style={{ padding: '1.5rem' }}>
           <div style={{ display: 'grid', gap: '1.25rem' }}>
-            {/* Stock Number & VIN */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Stock Number *</label>
@@ -383,7 +520,6 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               </div>
             </div>
 
-            {/* Year, Make, Model */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 2fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Year *</label>
@@ -399,7 +535,17 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               </div>
             </div>
 
-            {/* Capacity & Purchase Date */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Engine Make</label>
+                <input name="engine_make" value={formData.engine_make} onChange={handleChange} style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Engine Model</label>
+                <input name="engine_model" value={formData.engine_model} onChange={handleChange} style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Capacity</label>
@@ -411,7 +557,6 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               </div>
             </div>
 
-            {/* Price & Paid From */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Price (USD) *</label>
@@ -420,17 +565,16 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               {!bus && (
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>
-                    Paid From * <span style={{ fontSize: '0.75rem', color: '#666', fontWeight: '400' }}>(for new buses)</span>
+                    Paid From * <span style={{ fontSize: '0.75rem', color: '#666', fontWeight: '400' }}>(new buses)</span>
                   </label>
                   <select
                     name="payment_account_id"
                     value={formData.payment_account_id}
                     onChange={handleChange}
                     required={!bus}
-                    disabled={loadingAccounts}
                     style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }}
                   >
-                    <option value="">{loadingAccounts ? 'Loading...' : 'Select account'}</option>
+                    <option value="">Select account</option>
                     {paymentAccounts.map(account => (
                       <option key={account.account_id} value={account.account_id}>
                         {account.account_name} ({account.currency})
@@ -441,11 +585,8 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               )}
             </div>
 
-            {/* Supplier */}
             <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>
-                Supplier
-              </label>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Supplier</label>
               <select
                 name="supplier_id"
                 value={formData.supplier_id}
@@ -461,7 +602,6 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               </select>
             </div>
 
-            {/* Location, Status, Condition */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Location *</label>
@@ -506,7 +646,6 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
   );
 }
 
-// ==================== RECORD PURCHASE PAYMENT MODAL ====================
 function RecordPurchasePaymentModal({ bus, paymentAccounts, onClose, onSuccess }) {
   const API_URL = `${window.API_BASE_URL || 'https://buses-america.onrender.com'}/api`;
   
@@ -591,7 +730,7 @@ function RecordPurchasePaymentModal({ bus, paymentAccounts, onClose, onSuccess }
               ))}
             </select>
             <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-              Which bank/cash account was used to pay for this bus?
+              Which bank/cash account was used?
             </div>
           </div>
 
@@ -630,3 +769,5 @@ function RecordPurchasePaymentModal({ bus, paymentAccounts, onClose, onSuccess }
     </div>
   );
 }
+
+window.InventoryManagement = InventoryManagement;
