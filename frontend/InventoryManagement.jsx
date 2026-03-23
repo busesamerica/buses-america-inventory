@@ -211,7 +211,7 @@ const InventoryManagement = () => {
                       <div>📅 Purchased: <strong>{formatDate(bus.purchase_date)}</strong></div>
                       <div>📊 Status: <strong style={{ color: bus.status === 'Available' ? '#28a745' : '#666' }}>{bus.status}</strong></div>
                       {bus.supplier_id && (
-                        <div>🏢 Supplier: <strong>{suppliers.find(s => s.supplier_id === bus.supplier_id)?.supplier_name || 'Unknown'}</strong></div>
+                        <div>🏢 Supplier: <strong>{suppliers.find(s => s.supplier_id === bus.supplier_id)?.company_name || 'Unknown'}</strong></div>
                       )}
                     </div>
                   </div>
@@ -455,7 +455,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
                 <option value="">Select supplier (optional)</option>
                 {suppliers.map(supplier => (
                   <option key={supplier.supplier_id} value={supplier.supplier_id}>
-                    {supplier.supplier_name}
+                    {supplier.company_name}
                   </option>
                 ))}
               </select>
