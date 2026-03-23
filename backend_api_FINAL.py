@@ -3309,22 +3309,22 @@ async def get_sales_analytics(
         start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
     
     # Build base query with filters
-    where_clauses = ["is_sold = TRUE", "is_deleted = FALSE"]
+    where_clauses = ["i.is_sold = TRUE", "i.is_deleted = FALSE"]
     params = []
     param_count = 1
     
     # Date filter
-    where_clauses.append(f"sale_date >= ${param_count}")
+    where_clauses.append(f"i.sale_date >= ${param_count}")
     params.append(start_date)
     param_count += 1
     
-    where_clauses.append(f"sale_date <= ${param_count}")
+    where_clauses.append(f"i.sale_date <= ${param_count}")
     params.append(end_date)
     param_count += 1
     
     # Currency filter (optional)
     if currency and currency != 'ALL':
-        where_clauses.append(f"sale_currency = ${param_count}")
+        where_clauses.append(f"i.sale_currency = ${param_count}")
         params.append(currency)
         param_count += 1
     
