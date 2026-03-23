@@ -3358,8 +3358,8 @@ async def get_sales_analytics(
             i.vin,
             i.sale_date,
             c.client_name,
-            c.company_name as client_company,
-            c.location as client_location,
+            c.client_company,
+            c.client_location,
             i.client_use_case,
             i.sale_price,
             i.sale_currency,
@@ -3443,8 +3443,8 @@ async def get_sales_analytics(
     client_analytics_query = f"""
         SELECT 
             c.client_name,
-            c.company_name as client_company,
-            c.location as client_location,
+            c.client_company,
+            c.client_location,
             COUNT(*) as total_purchases,
             SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as total_spent_usd,
             SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as total_spent_mxn,
@@ -3453,7 +3453,7 @@ async def get_sales_analytics(
         FROM inventory i
         LEFT JOIN clients c ON i.client_id = c.client_id
         WHERE {where_clause} AND i.client_id IS NOT NULL
-        GROUP BY c.client_name, c.company_name, c.location
+        GROUP BY c.client_name, c.client_company, c.client_location
         ORDER BY total_purchases DESC, total_spent_usd DESC
         LIMIT 10
     """
