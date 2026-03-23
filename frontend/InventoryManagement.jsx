@@ -227,6 +227,7 @@ const InventoryManagement = () => {
                   <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: '600', fontSize: '0.875rem', color: '#6b7280' }}>Vehicle</th>
                   <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: '600', fontSize: '0.875rem', color: '#6b7280' }}>Engine</th>
                   <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: '600', fontSize: '0.875rem', color: '#6b7280' }}>Capacity</th>
+                  <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: '600', fontSize: '0.875rem', color: '#6b7280' }}>Price</th>
                   <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontWeight: '600', fontSize: '0.875rem', color: '#6b7280', width: '80px' }}>Actions</th>
                 </tr>
               </thead>
@@ -255,6 +256,9 @@ const InventoryManagement = () => {
                         </td>
                         <td style={{ padding: '1rem', fontSize: '0.9rem' }}>
                           {bus.passenger_capacity ? `${bus.passenger_capacity} passengers` : 'N/A'}
+                        </td>
+                        <td style={{ padding: '1rem', fontSize: '0.9rem', textAlign: 'right', fontWeight: '600', color: '#10b981' }}>
+                          {formatCurrency(bus.purchase_price_usd)}
                         </td>
                         <td style={{ padding: '1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                           <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -333,7 +337,7 @@ const InventoryManagement = () => {
 
                       {isExpanded && (
                         <tr style={{ borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
-                          <td colSpan="6" style={{ padding: '1.5rem 2rem' }}>
+                          <td colSpan="7" style={{ padding: '1.5rem 2rem' }}>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
                               <div>
                                 <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>VIN</div>
@@ -477,7 +481,9 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
         year: parseInt(formData.year),
         passenger_capacity: formData.passenger_capacity ? parseInt(formData.passenger_capacity) : null,
         purchase_price_usd: Math.round(parseFloat(formData.purchase_price_usd) * 100) / 100,
-        supplier_id: formData.supplier_id ? parseInt(formData.supplier_id) : null
+        supplier_id: formData.supplier_id ? parseInt(formData.supplier_id) : null,
+        engine_make: formData.engine_make || null,
+        engine_model: formData.engine_model || null
       };
       await onSave(data);
     } catch (error) {
