@@ -210,6 +210,9 @@ const InventoryManagement = () => {
                       <div>📍 Location: <strong>{bus.current_location}</strong></div>
                       <div>📅 Purchased: <strong>{formatDate(bus.purchase_date)}</strong></div>
                       <div>📊 Status: <strong style={{ color: bus.status === 'Available' ? '#28a745' : '#666' }}>{bus.status}</strong></div>
+                      {bus.supplier_id && (
+                        <div>🏢 Supplier: <strong>{suppliers.find(s => s.supplier_id === bus.supplier_id)?.supplier_name || 'Unknown'}</strong></div>
+                      )}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right', marginLeft: '1rem' }}>
@@ -256,6 +259,7 @@ const InventoryManagement = () => {
       {showBusForm && (
         <BusForm
           bus={editingBus}
+          suppliers={suppliers}
           paymentAccounts={paymentAccounts}
           onSave={handleSaveBus}
           onCancel={() => { setShowBusForm(false); setEditingBus(null); }}
@@ -287,7 +291,7 @@ const InventoryManagement = () => {
 };
 
 // ==================== BUS FORM ====================
-function BusForm({ bus, paymentAccounts, onSave, onCancel }) {
+function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
   const [formData, setFormData] = useState({
     stock_number: '',
     vin: '',
@@ -300,7 +304,8 @@ function BusForm({ bus, paymentAccounts, onSave, onCancel }) {
     current_location: 'United States',
     status: 'Available',
     condition: 'Good',
-    payment_account_id: ''
+    payment_account_id: '',
+    supplier_id: ''
   });
 
   const [loadingAccounts] = useState(false);
@@ -434,6 +439,26 @@ function BusForm({ bus, paymentAccounts, onSave, onCancel }) {
                   </select>
                 </div>
               )}
+            </div>
+
+            {/* Supplier */}
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>
+                Supplier
+              </label>
+              <select
+                name="supplier_id"
+                value={formData.supplier_id}
+                onChange={handleChange}
+                style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }}
+              >
+                <option value="">Select supplier (optional)</option>
+                {suppliers.map(supplier => (
+                  <option key={supplier.supplier_id} value={supplier.supplier_id}>
+                    {supplier.supplier_name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Location, Status, Condition */}
