@@ -3360,7 +3360,7 @@ async def get_sales_analytics(
             c.client_name,
             c.client_company,
             c.client_location,
-            i.client_use_case,
+            c.client_use_case,
             i.sale_price,
             i.sale_currency,
             i.purchase_price_usd,
@@ -3449,7 +3449,7 @@ async def get_sales_analytics(
             SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as total_spent_usd,
             SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as total_spent_mxn,
             MAX(i.sale_date) as last_purchase_date,
-            STRING_AGG(DISTINCT i.client_use_case, ', ') as use_cases
+            STRING_AGG(DISTINCT c.client_use_case, ', ') as use_cases
         FROM inventory i
         LEFT JOIN clients c ON i.client_id = c.client_id
         WHERE {where_clause} AND i.client_id IS NOT NULL
@@ -3462,13 +3462,14 @@ async def get_sales_analytics(
     # Use case breakdown
     use_case_query = f"""
         SELECT 
-            COALESCE(i.client_use_case, 'Not Specified') as use_case,
+            COALESCE(c.client_use_case, 'Not Specified') as use_case,
             COUNT(*) as count,
             SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as revenue_usd,
             SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as revenue_mxn
         FROM inventory i
+        LEFT JOIN clients c ON i.client_id = c.client_id
         WHERE {where_clause}
-        GROUP BY i.client_use_case
+        GROUP BY c.client_use_case
         ORDER BY count DESC
     """
     use_case_breakdown = await db.fetch(use_case_query, *params)
@@ -3476,13 +3477,13 @@ async def get_sales_analytics(
     # ========== MONTHLY TRENDS ==========
     monthly_query = f"""
         SELECT 
-            DATE_TRUNC('month', sale_date) as month,
+            DATE_TRUNC('month', i.sale_date) as month,
             COUNT(*) as sales_count,
-            SUM(CASE WHEN sale_currency = 'USD' THEN sale_price ELSE 0 END) as revenue_usd,
-            SUM(CASE WHEN sale_currency = 'MXN' THEN sale_price ELSE 0 END) as revenue_mxn
-        FROM inventory
+            SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as revenue_usd,
+            SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as revenue_mxn
+        FROM inventory i
         WHERE {where_clause}
-        GROUP BY DATE_TRUNC('month', sale_date)
+        GROUP BY DATE_TRUNC('month', i.sale_date)
         ORDER BY month
     """
     monthly_trends = await db.fetch(monthly_query, *params)
