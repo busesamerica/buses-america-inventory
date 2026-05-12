@@ -979,45 +979,49 @@ async def get_inventory(
     db=Depends(get_db)
 ):
     """Get inventory with filters"""
-    conditions = ["is_deleted = FALSE"]
+    conditions = ["i.is_deleted = FALSE"]
     params = []
     param_count = 1
     
     if status:
-        conditions.append(f"status = ${param_count}")
+        conditions.append(f"i.status = ${param_count}")
         params.append(status)
         param_count += 1
     
     if current_location:
-        conditions.append(f"current_location = ${param_count}")
+        conditions.append(f"i.current_location = ${param_count}")
         params.append(current_location)
         param_count += 1
     
     if is_sold is not None:
-        conditions.append(f"is_sold = ${param_count}")
+        conditions.append(f"i.is_sold = ${param_count}")
         params.append(is_sold)
         param_count += 1
     
     if make:
-        conditions.append(f"make ILIKE ${param_count}")
+        conditions.append(f"i.make ILIKE ${param_count}")
         params.append(f"%{make}%")
         param_count += 1
     
     if year:
-        conditions.append(f"year = ${param_count}")
+        conditions.append(f"i.year = ${param_count}")
         params.append(year)
         param_count += 1
     
     if supplier_id:
-        conditions.append(f"supplier_id = ${param_count}")
+        conditions.append(f"i.supplier_id = ${param_count}")
         params.append(supplier_id)
         param_count += 1
     
     where_clause = " AND ".join(conditions)
     query = f"""
-        SELECT * FROM inventory 
+        SELECT i.*, 
+               c.client_name, c.client_company, c.client_location, 
+               c.client_contact, c.client_email, c.client_use_case
+        FROM inventory i
+        LEFT JOIN clients c ON i.client_id = c.client_id
         WHERE {where_clause}
-        ORDER BY created_at DESC
+        ORDER BY i.created_at DESC
         LIMIT ${param_count} OFFSET ${param_count + 1}
     """
     params.extend([limit, offset])
