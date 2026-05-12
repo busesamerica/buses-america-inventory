@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+const { useState } = React;
 
 const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
   const [formData, setFormData] = useState(initialData || {
@@ -1281,4 +1281,4 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
   );
 };
 
-export default PreInspectionForm;
+window.PreInspectionForm = PreInspectionForm;
