@@ -216,6 +216,9 @@ class InventoryUpdate(BaseModel):
     engine_type: Optional[str] = None
     transmission: Optional[str] = None
     
+    # Supplier
+    supplier_id: Optional[int] = None
+    
     # Allow partial updates
     status: Optional[str] = None
     current_location: Optional[str] = None
@@ -225,9 +228,6 @@ class InventoryUpdate(BaseModel):
     asking_currency: Optional[str] = None
     minimum_price: Optional[Decimal] = None
     minimum_currency: Optional[str] = None
-    
-    # Supplier
-    supplier_id: Optional[int] = None
     
     # Sale info
     client_name: Optional[str] = None
@@ -375,6 +375,7 @@ class PreInspectionCreate(BaseModel):
     brake_system: Optional[str] = None
     air_conditioning: Optional[bool] = None
     heater: Optional[bool] = None
+    seat_belts: Optional[int] = None
     emergency_exits: Optional[int] = None
     fire_extinguisher: Optional[bool] = None
     first_aid_kit: Optional[bool] = None
@@ -2597,9 +2598,6 @@ async def create_pre_inspection(inspection: PreInspectionCreate, db=Depends(get_
             passenger_capacity, wheelchair_capacity, engine_make, engine_model,
             engine_type, transmission, fuel_type, gvwr, length_feet,
             exterior_color, interior_color, title_status,
-            body_style, brake_system, air_conditioning, heater,
-            seat_belts, emergency_exits, fire_extinguisher, first_aid_kit,
-            ada_compliant, wheelchair_lift_ramp,
             inspection_location, seller_name, seller_asking_price, seller_contact,
             inspection_date, inspector_name,
             engine_condition, engine_starts, engine_oil_condition, engine_coolant_condition,
@@ -2621,8 +2619,7 @@ async def create_pre_inspection(inspection: PreInspectionCreate, db=Depends(get_
         $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28,
         $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41,
         $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54,
-        $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67,
-        $68, $69, $70, $71, $72, $73, $74
+        $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66
     )
         RETURNING *
     """
@@ -2635,9 +2632,6 @@ async def create_pre_inspection(inspection: PreInspectionCreate, db=Depends(get_
         inspection.engine_make, inspection.engine_model, inspection.engine_type,
         inspection.transmission, inspection.fuel_type, inspection.gvwr, inspection.length_feet,
         inspection.exterior_color, inspection.interior_color, inspection.title_status,
-        inspection.body_style, inspection.brake_system, inspection.air_conditioning, inspection.heater,
-        inspection.seat_belts, inspection.emergency_exits, inspection.fire_extinguisher, inspection.first_aid_kit,
-        inspection.ada_compliant, inspection.wheelchair_lift_ramp,
         inspection.inspection_location, inspection.seller_name, inspection.seller_asking_price,
         inspection.seller_contact, inspection.inspection_date, inspection.inspector_name,
         inspection.engine_condition, inspection.engine_starts, inspection.engine_oil_condition,
@@ -2765,22 +2759,17 @@ async def create_inventory_from_inspection(
             passenger_capacity, wheelchair_capacity,
             engine_make, engine_model, engine_type, transmission, fuel_type,
             gvwr, length_feet, exterior_color, interior_color, title_status,
-            body_style, brake_system, air_conditioning, heater,
-            emergency_exits, fire_extinguisher, first_aid_kit,
-            ada_compliant, wheelchair_lift_ramp,
             condition, purchase_location, pre_inspection_id, internal_notes,
             purchase_date, purchase_price_usd, supplier_id,
             current_location, status, created_by
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-            $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28,
-            $29, $30, $31, $32, $33, $34, $35
+            $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28
         )
         RETURNING *
     """
     
     # Execute the inventory creation
-    # Use .get() for fields that might not exist in inspection table
     inventory_row = await db.fetchrow(
         inventory_query,
         inspection['vin'],
@@ -2788,30 +2777,21 @@ async def create_inventory_from_inspection(
         inspection['year'],
         inspection['make'],
         inspection['model'],
-        inspection.get('odometer'),
-        inspection.get('passenger_capacity'),  # NULL if not in inspection
-        inspection.get('wheelchair_capacity'),  # NULL if not in inspection
-        inspection.get('engine_make'),  # NULL if not in inspection
-        inspection.get('engine_model'),  # NULL if not in inspection
-        inspection.get('engine_type'),  # NULL if not in inspection
-        inspection.get('transmission'),  # NULL if not in inspection
-        inspection.get('fuel_type'),  # NULL if not in inspection
-        inspection.get('gvwr'),  # NULL if not in inspection
-        inspection.get('length_feet'),  # NULL if not in inspection
-        inspection.get('exterior_color'),  # NULL if not in inspection
-        inspection.get('interior_color'),  # NULL if not in inspection
-        inspection.get('title_status'),  # NULL if not in inspection
-        inspection.get('body_style'),  # Body style
-        inspection.get('brake_system'),  # Brake system type
-        inspection.get('air_conditioning'),  # Has AC
-        inspection.get('heater'),  # Has heater
-        inspection.get('emergency_exits'),  # Number of emergency exits
-        inspection.get('fire_extinguisher'),  # Has fire extinguisher
-        inspection.get('first_aid_kit'),  # NEW: Has first aid kit
-        inspection.get('ada_compliant'),  # NEW: ADA compliant
-        inspection.get('wheelchair_lift_ramp'),  # NEW: Wheelchair lift/ramp type
+        inspection['odometer'],
+        inspection['passenger_capacity'],
+        inspection['wheelchair_capacity'],
+        inspection['engine_make'],
+        inspection['engine_model'],
+        inspection['engine_type'],
+        inspection['transmission'],
+        inspection['fuel_type'],
+        inspection['gvwr'],
+        inspection['length_feet'],
+        inspection['exterior_color'],
+        inspection['interior_color'],
+        inspection['title_status'],
         condition,
-        inspection.get('inspection_location'),
+        inspection['inspection_location'],
         inspection_id,
         summary,
         purchase_date,
