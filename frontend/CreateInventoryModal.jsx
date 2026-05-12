@@ -7,7 +7,9 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
     purchase_date: new Date().toISOString().split('T')[0],
     supplier_id: '',
     current_location: 'United States',
-    payment_account_id: ''  // ADDED: Required payment account
+    payment_account_id: '',  // ADDED: Required payment account
+    asking_price: '',  // Our sale price - NOT pre-filled
+    asking_currency: 'USD'
   });
 
   const API_URL = `${window.API_BASE_URL || 'https://buses-america.onrender.com'}/api`;
@@ -525,6 +527,62 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
                   <option value="Mexico">Mexico</option>
                   <option value="In Transit">In Transit</option>
                 </select>
+              </div>
+
+              {/* Asking Price (Sale Price) */}
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '0.5rem',
+                    fontWeight: '600',
+                    color: '#1f2937',
+                    fontSize: '0.875rem'
+                  }}>
+                    Asking Price (Sale Price) <span style={{ fontSize: '0.75rem', color: '#666', fontWeight: '400' }}>(optional)</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="asking_price"
+                    value={formData.asking_price}
+                    onChange={handleChange}
+                    placeholder="Enter selling price"
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '2px solid #e5e7eb',
+                      borderRadius: '0.5rem',
+                      fontSize: '1rem'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '0.5rem',
+                    fontWeight: '600',
+                    color: '#1f2937',
+                    fontSize: '0.875rem'
+                  }}>
+                    Currency
+                  </label>
+                  <select
+                    name="asking_currency"
+                    value={formData.asking_currency}
+                    onChange={handleChange}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '2px solid #e5e7eb',
+                      borderRadius: '0.5rem',
+                      fontSize: '1rem'
+                    }}
+                  >
+                    <option value="USD">USD</option>
+                    <option value="MXN">MXN</option>
+                  </select>
+                </div>
               </div>
 
               {/* Profit Estimate */}
