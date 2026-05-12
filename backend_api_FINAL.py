@@ -1592,14 +1592,15 @@ async def get_sales_analytics(
     overview_query = f"""
         SELECT 
             COUNT(*) as total_sales,
-            COUNT(DISTINCT client_name) as unique_clients,
-            SUM(CASE WHEN sale_currency = 'USD' THEN sale_price ELSE 0 END) as revenue_usd,
-            SUM(CASE WHEN sale_currency = 'MXN' THEN sale_price ELSE 0 END) as revenue_mxn,
-            SUM(CASE WHEN payment_status = 'Paid in Full' THEN 0 ELSE COALESCE(balance_due, 0) END) as pending_balance_total,
-            COUNT(CASE WHEN payment_status = 'Paid in Full' THEN 1 END) as paid_in_full_count,
-            COUNT(CASE WHEN payment_status = 'Partial Payment' THEN 1 END) as partial_payment_count,
-            COUNT(CASE WHEN payment_status = 'Pending Deposit' THEN 1 END) as pending_deposit_count
-        FROM inventory
+            COUNT(DISTINCT i.client_id) as unique_clients,
+            SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as revenue_usd,
+            SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as revenue_mxn,
+            SUM(CASE WHEN i.payment_status = 'Paid in Full' THEN 0 ELSE COALESCE(i.balance_due, 0) END) as pending_balance_total,
+            COUNT(CASE WHEN i.payment_status = 'Paid in Full' THEN 1 END) as paid_in_full_count,
+            COUNT(CASE WHEN i.payment_status = 'Partial Payment' THEN 1 END) as partial_payment_count,
+            COUNT(CASE WHEN i.payment_status = 'Pending Deposit' THEN 1 END) as pending_deposit_count
+        FROM inventory i
+        LEFT JOIN clients c ON i.client_id = c.client_id
         WHERE {where_clause}
     """
     overview = await db.fetchrow(overview_query, *params)
@@ -1615,10 +1616,10 @@ async def get_sales_analytics(
             i.model,
             i.vin,
             i.sale_date,
-            i.client_name,
-            i.client_company,
-            i.client_location,
-            i.client_use_case,
+            c.client_name,
+            c.client_company,
+            c.client_location,
+            c.client_use_case,
             i.sale_price,
             i.sale_currency,
             i.purchase_price_usd,
@@ -1627,6 +1628,7 @@ async def get_sales_analytics(
             COALESCE(i.total_cost_usd, i.purchase_price_usd) as total_cost_usd,
             COALESCE(i.total_cost_mxn, 0) as total_cost_mxn
         FROM inventory i
+        LEFT JOIN clients c ON i.client_id = c.client_id
         WHERE {where_clause}
         ORDER BY i.sale_date DESC
     """
@@ -1699,17 +1701,18 @@ async def get_sales_analytics(
     # ========== CLIENT ANALYTICS ==========
     client_analytics_query = f"""
         SELECT 
-            client_name,
-            client_company,
-            client_location,
+            c.client_name,
+            c.client_company,
+            c.client_location,
             COUNT(*) as total_purchases,
-            SUM(CASE WHEN sale_currency = 'USD' THEN sale_price ELSE 0 END) as total_spent_usd,
-            SUM(CASE WHEN sale_currency = 'MXN' THEN sale_price ELSE 0 END) as total_spent_mxn,
-            MAX(sale_date) as last_purchase_date,
-            STRING_AGG(DISTINCT client_use_case, ', ') as use_cases
-        FROM inventory
-        WHERE {where_clause} AND client_name IS NOT NULL
-        GROUP BY client_name, client_company, client_location
+            SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as total_spent_usd,
+            SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as total_spent_mxn,
+            MAX(i.sale_date) as last_purchase_date,
+            STRING_AGG(DISTINCT c.client_use_case, ', ') as use_cases
+        FROM inventory i
+        LEFT JOIN clients c ON i.client_id = c.client_id
+        WHERE {where_clause} AND c.client_name IS NOT NULL
+        GROUP BY c.client_name, c.client_company, c.client_location
         ORDER BY total_purchases DESC, total_spent_usd DESC
         LIMIT 10
     """
@@ -1718,13 +1721,14 @@ async def get_sales_analytics(
     # Use case breakdown
     use_case_query = f"""
         SELECT 
-            COALESCE(client_use_case, 'Not Specified') as use_case,
+            COALESCE(c.client_use_case, 'Not Specified') as use_case,
             COUNT(*) as count,
-            SUM(CASE WHEN sale_currency = 'USD' THEN sale_price ELSE 0 END) as revenue_usd,
-            SUM(CASE WHEN sale_currency = 'MXN' THEN sale_price ELSE 0 END) as revenue_mxn
-        FROM inventory
+            SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as revenue_usd,
+            SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as revenue_mxn
+        FROM inventory i
+        LEFT JOIN clients c ON i.client_id = c.client_id
         WHERE {where_clause}
-        GROUP BY client_use_case
+        GROUP BY c.client_use_case
         ORDER BY count DESC
     """
     use_case_breakdown = await db.fetch(use_case_query, *params)
