@@ -1,4 +1,4 @@
-
+import React, { useState } from 'react';
 
 const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
   const [formData, setFormData] = useState(initialData || {
@@ -21,6 +21,18 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
     exterior_color: '',
     interior_color: '',
     title_status: '',
+    
+    // NEW: Additional Vehicle Details
+    body_style: '',
+    brake_system: '',
+    air_conditioning: null,
+    heater: null,
+    seat_belts: '',
+    emergency_exits: '',
+    fire_extinguisher: null,
+    first_aid_kit: null,
+    ada_compliant: null,
+    wheelchair_lift_ramp: '',
     
     // Section 2: Location & Source
     inspection_location: '',
@@ -108,27 +120,14 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
   };
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  console.log('Form submitted!', formData);
-  console.log('onSave prop:', onSave);
-  
-  setSaving(true);
-  try {
-    if (typeof onSave === 'function') {
-      console.log('Calling onSave with formData...');
+    e.preventDefault();
+    setSaving(true);
+    try {
       await onSave(formData);
-      console.log('onSave completed successfully!');
-    } else {
-      console.error('onSave is not a function!', typeof onSave);
-      alert('Error: Form save handler not configured properly');
+    } finally {
+      setSaving(false);
     }
-  } catch (error) {
-    console.error('Submit error:', error);
-    alert('Error saving inspection: ' + error.message);
-  } finally {
-    setSaving(false);
-  }
-};
+  };
 
   const sections = [
     { id: 0, title: '📋 Basic Information', icon: '📋' },
@@ -415,6 +414,153 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
               >
                 <option value="">Select...</option>
                 {titleStatuses.map(status => <option key={status} value={status}>{status}</option>)}
+              </select>
+            </div>
+
+            {/* NEW FIELDS */}
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Body Style</label>
+              <select
+                name="body_style"
+                value={formData.body_style}
+                onChange={handleChange}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+              >
+                <option value="">Select...</option>
+                <option value="Type A School Bus">Type A School Bus</option>
+                <option value="Type B School Bus">Type B School Bus</option>
+                <option value="Type C School Bus">Type C School Bus</option>
+                <option value="Type D School Bus">Type D School Bus</option>
+                <option value="Transit Bus">Transit Bus</option>
+                <option value="Shuttle Bus">Shuttle Bus</option>
+                <option value="Coach Bus">Coach Bus</option>
+                <option value="Mini Bus">Mini Bus</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Brake System</label>
+              <select
+                name="brake_system"
+                value={formData.brake_system}
+                onChange={handleChange}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+              >
+                <option value="">Select...</option>
+                <option value="Air Brakes">Air Brakes</option>
+                <option value="Hydraulic Brakes">Hydraulic Brakes</option>
+                <option value="Air-Over-Hydraulic">Air-Over-Hydraulic</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Air Conditioning</label>
+              <select
+                name="air_conditioning"
+                value={formData.air_conditioning === null ? '' : formData.air_conditioning}
+                onChange={(e) => setFormData({...formData, air_conditioning: e.target.value === '' ? null : e.target.value === 'true'})}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+              >
+                <option value="">Select...</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Heater</label>
+              <select
+                name="heater"
+                value={formData.heater === null ? '' : formData.heater}
+                onChange={(e) => setFormData({...formData, heater: e.target.value === '' ? null : e.target.value === 'true'})}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+              >
+                <option value="">Select...</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Seat Belts (quantity)</label>
+              <input
+                type="number"
+                name="seat_belts"
+                value={formData.seat_belts}
+                onChange={handleChange}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+                placeholder="40"
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Emergency Exits (quantity)</label>
+              <input
+                type="number"
+                name="emergency_exits"
+                value={formData.emergency_exits}
+                onChange={handleChange}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+                placeholder="3"
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Fire Extinguisher</label>
+              <select
+                name="fire_extinguisher"
+                value={formData.fire_extinguisher === null ? '' : formData.fire_extinguisher}
+                onChange={(e) => setFormData({...formData, fire_extinguisher: e.target.value === '' ? null : e.target.value === 'true'})}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+              >
+                <option value="">Select...</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>First Aid Kit</label>
+              <select
+                name="first_aid_kit"
+                value={formData.first_aid_kit === null ? '' : formData.first_aid_kit}
+                onChange={(e) => setFormData({...formData, first_aid_kit: e.target.value === '' ? null : e.target.value === 'true'})}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+              >
+                <option value="">Select...</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>ADA Compliant</label>
+              <select
+                name="ada_compliant"
+                value={formData.ada_compliant === null ? '' : formData.ada_compliant}
+                onChange={(e) => setFormData({...formData, ada_compliant: e.target.value === '' ? null : e.target.value === 'true'})}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+              >
+                <option value="">Select...</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Wheelchair Lift/Ramp</label>
+              <select
+                name="wheelchair_lift_ramp"
+                value={formData.wheelchair_lift_ramp}
+                onChange={handleChange}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+              >
+                <option value="">Select...</option>
+                <option value="None">None</option>
+                <option value="Wheelchair Lift">Wheelchair Lift</option>
+                <option value="Wheelchair Ramp">Wheelchair Ramp</option>
+                <option value="Both">Both Lift & Ramp</option>
               </select>
             </div>
           </div>
@@ -1024,7 +1170,6 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
             {sections.map((section, idx) => (
               <button
                 key={section.id}
-                type="button"
                 onClick={() => setCurrentSection(idx)}
                 style={{
                   padding: '0.5rem 0.75rem',
@@ -1048,93 +1193,92 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
           </div>
         </div>
 
-        {/* Form with Content and Footer */}
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
-            {renderSection()}
-          </div>
+        {/* Form Content */}
+        <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
+          {renderSection()}
+        </form>
 
-          <div style={{
-            padding: '1.5rem',
-            borderTop: '2px solid #e5e7eb',
-            display: 'flex',
-            justifyContent: 'space-between',
-            gap: '1rem',
-            background: '#f9fafb'
-          }}>
+        {/* Footer */}
+        <div style={{
+          padding: '1.5rem',
+          borderTop: '2px solid #e5e7eb',
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: '1rem',
+          background: '#f9fafb'
+        }}>
+          <button
+            type="button"
+            onClick={() => setCurrentSection(Math.max(0, currentSection - 1))}
+            disabled={currentSection === 0}
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: currentSection === 0 ? '#e5e7eb' : 'white',
+              color: currentSection === 0 ? '#9ca3af' : '#374151',
+              border: '2px solid #e5e7eb',
+              borderRadius: '0.5rem',
+              cursor: currentSection === 0 ? 'not-allowed' : 'pointer',
+              fontWeight: '600'
+            }}
+          >
+            ← Previous
+          </button>
+
+          <div style={{ display: 'flex', gap: '1rem' }}>
             <button
               type="button"
-              onClick={() => setCurrentSection(Math.max(0, currentSection - 1))}
-              disabled={currentSection === 0}
+              onClick={onClose}
               style={{
                 padding: '0.75rem 1.5rem',
-                background: currentSection === 0 ? '#e5e7eb' : 'white',
-                color: currentSection === 0 ? '#9ca3af' : '#374151',
+                background: 'white',
+                color: '#374151',
                 border: '2px solid #e5e7eb',
                 borderRadius: '0.5rem',
-                cursor: currentSection === 0 ? 'not-allowed' : 'pointer',
+                cursor: 'pointer',
                 fontWeight: '600'
               }}
             >
-              ← Previous
+              Cancel
             </button>
 
-            <div style={{ display: 'flex', gap: '1rem' }}>
+            {currentSection < sections.length - 1 ? (
               <button
                 type="button"
-                onClick={onClose}
+                onClick={() => setCurrentSection(currentSection + 1)}
                 style={{
                   padding: '0.75rem 1.5rem',
-                  background: 'white',
-                  color: '#374151',
-                  border: '2px solid #e5e7eb',
+                  background: '#FFD700',
+                  color: '#1a1a1a',
+                  border: 'none',
                   borderRadius: '0.5rem',
                   cursor: 'pointer',
-                  fontWeight: '600'
+                  fontWeight: '700'
                 }}
               >
-                Cancel
+                Next →
               </button>
-
-              {currentSection < sections.length - 1 ? (
-                <button
-                  type="button"
-                  onClick={() => setCurrentSection(currentSection + 1)}
-                  style={{
-                    padding: '0.75rem 1.5rem',
-                    background: '#FFD700',
-                    color: '#1a1a1a',
-                    border: 'none',
-                    borderRadius: '0.5rem',
-                    cursor: 'pointer',
-                    fontWeight: '700'
-                  }}
-                >
-                  Next →
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={saving}
-                  style={{
-                    padding: '0.75rem 1.5rem',
-                    background: saving ? '#9ca3af' : '#10b981',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '0.5rem',
-                    cursor: saving ? 'not-allowed' : 'pointer',
-                    fontWeight: '700'
-                  }}
-                >
-                  {saving ? '💾 Saving...' : '✅ Save Inspection'}
-                </button>
-              )}
-            </div>
+            ) : (
+              <button
+                type="submit"
+                disabled={saving}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  background: saving ? '#9ca3af' : '#10b981',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  fontWeight: '700'
+                }}
+              >
+                {saving ? '💾 Saving...' : '✅ Save Inspection'}
+              </button>
+            )}
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
 };
 
-window.PreInspectionForm = PreInspectionForm;
+export default PreInspectionForm;
