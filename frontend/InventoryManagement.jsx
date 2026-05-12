@@ -258,7 +258,7 @@ const InventoryManagement = () => {
                           {bus.passenger_capacity ? `${bus.passenger_capacity} passengers` : 'N/A'}
                         </td>
                         <td style={{ padding: '1rem', fontSize: '0.9rem', textAlign: 'right', fontWeight: '600', color: '#10b981' }}>
-                          {formatCurrency(bus.purchase_price_usd)}
+                          {bus.asking_price ? `${formatCurrency(bus.asking_price)} ${bus.asking_currency || 'USD'}` : '-'}
                         </td>
                         <td style={{ padding: '1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                           <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -357,8 +357,14 @@ const InventoryManagement = () => {
                               </div>
                               <div>
                                 <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Purchase Price</div>
-                                <div style={{ fontWeight: '600', fontSize: '0.9rem', color: '#10b981' }}>{formatCurrency(bus.purchase_price_usd)}</div>
+                                <div style={{ fontWeight: '600', fontSize: '0.9rem', color: '#ef4444' }}>{formatCurrency(bus.purchase_price_usd)} USD</div>
                               </div>
+                              {bus.asking_price && (
+                                <div>
+                                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Asking Price (Sale)</div>
+                                  <div style={{ fontWeight: '600', fontSize: '0.9rem', color: '#10b981' }}>{formatCurrency(bus.asking_price)} {bus.asking_currency || 'USD'}</div>
+                                </div>
+                              )}
                               {supplier && (
                                 <div>
                                   <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Supplier</div>
@@ -442,6 +448,8 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     engine_model: '',
     purchase_date: new Date().toISOString().split('T')[0],
     purchase_price_usd: '',
+    asking_price: '',
+    asking_currency: 'USD',
     current_location: 'United States',
     status: 'Available',
     condition: 'Good',
@@ -459,6 +467,8 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
         passenger_capacity: bus.passenger_capacity || '',
         engine_make: bus.engine_make || '',
         engine_model: bus.engine_model || '',
+        asking_price: bus.asking_price || '',
+        asking_currency: bus.asking_currency || 'USD',
         purchase_date: bus.purchase_date ? bus.purchase_date.split('T')[0] : new Date().toISOString().split('T')[0],
         payment_account_id: bus.payment_account_id || '',
         supplier_id: bus.supplier_id || ''
@@ -481,6 +491,8 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
         year: parseInt(formData.year),
         passenger_capacity: formData.passenger_capacity ? parseInt(formData.passenger_capacity) : null,
         purchase_price_usd: Math.round(parseFloat(formData.purchase_price_usd) * 100) / 100,
+        asking_price: formData.asking_price ? Math.round(parseFloat(formData.asking_price) * 100) / 100 : null,
+        asking_currency: formData.asking_currency || 'USD',
         supplier_id: formData.supplier_id ? parseInt(formData.supplier_id) : null,
         engine_make: formData.engine_make || null,
         engine_model: formData.engine_model || null
@@ -565,7 +577,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Price (USD) *</label>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Purchase Price (USD) *</label>
                 <input name="purchase_price_usd" type="number" step="0.01" value={formData.purchase_price_usd} onChange={handleChange} required min="0" style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
               </div>
               {!bus && (
@@ -606,6 +618,36 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>
+                  Asking Price (Sale Price) <span style={{ fontSize: '0.75rem', color: '#666', fontWeight: '400' }}>(optional)</span>
+                </label>
+                <input 
+                  name="asking_price" 
+                  type="number" 
+                  step="0.01" 
+                  value={formData.asking_price} 
+                  onChange={handleChange} 
+                  min="0" 
+                  placeholder="Enter selling price"
+                  style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} 
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Currency</label>
+                <select
+                  name="asking_currency"
+                  value={formData.asking_currency}
+                  onChange={handleChange}
+                  style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                >
+                  <option value="USD">USD</option>
+                  <option value="MXN">MXN</option>
+                </select>
+              </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
