@@ -210,16 +210,33 @@ class InventoryUpdate(BaseModel):
     purchase_date: Optional[date] = None
     condition: Optional[str] = None
     
+    # Engine fields
+    engine_make: Optional[str] = None
+    engine_model: Optional[str] = None
+    engine_type: Optional[str] = None
+    transmission: Optional[str] = None
+    
     # Allow partial updates
     status: Optional[str] = None
     current_location: Optional[str] = None
     us_stock_location: Optional[str] = None
     mexico_stock_location: Optional[str] = None
     asking_price: Optional[Decimal] = None
+    asking_currency: Optional[str] = None
     minimum_price: Optional[Decimal] = None
+    minimum_currency: Optional[str] = None
+    
+    # Supplier
+    supplier_id: Optional[int] = None
     
     # Sale info
-    client_id: Optional[int] = None
+    client_name: Optional[str] = None
+    client_company: Optional[str] = None
+    client_location: Optional[str] = None
+    client_contact: Optional[str] = None
+    client_email: Optional[str] = None
+    client_phone: Optional[str] = None
+    client_use_case: Optional[str] = None
     sale_date: Optional[date] = None
     sale_price: Optional[Decimal] = None
     sale_price_usd: Optional[Decimal] = None
@@ -283,7 +300,12 @@ class Inventory(BaseModel):
     
     is_sold: bool
     sale_date: Optional[date]
-    client_id: Optional[int]
+    client_name: Optional[str]
+    client_company: Optional[str]
+    client_location: Optional[str]
+    client_contact: Optional[str]
+    client_email: Optional[str]
+    client_use_case: Optional[str]
     sale_price: Optional[Decimal]
     sale_currency: Optional[str]
     deposit_amount: Optional[Decimal]
@@ -348,6 +370,16 @@ class PreInspectionCreate(BaseModel):
     exterior_color: Optional[str] = None
     interior_color: Optional[str] = None
     title_status: Optional[str] = None
+    # NEW: Additional vehicle specs and safety
+    body_style: Optional[str] = None
+    brake_system: Optional[str] = None
+    air_conditioning: Optional[bool] = None
+    heater: Optional[bool] = None
+    emergency_exits: Optional[int] = None
+    fire_extinguisher: Optional[bool] = None
+    first_aid_kit: Optional[bool] = None
+    ada_compliant: Optional[bool] = None
+    wheelchair_lift_ramp: Optional[str] = None
     inspection_location: Optional[str] = None
     seller_name: Optional[str] = None
     seller_asking_price: Optional[Decimal] = None
@@ -930,80 +962,6 @@ async def create_inventory(
                 row['inventory_id'], inventory.pre_inspection_id
             )
         
-        # CREATE ACCOUNTING ENTRIES FOR PURCHASE
-        # Calculate total purchase cost (all in USD initially)
-        purchase_price = float(inventory.purchase_price_usd or 0)
-        transport_cost = float(inventory.transport_to_stock_cost_usd or 0)
-        reconditioning_cost = float(inventory.initial_reconditioning_cost_usd or 0)
-        other_costs = float(inventory.other_acquisition_costs_usd or 0)
-        total_purchase_cost = purchase_price + transport_cost + reconditioning_cost + other_costs
-        
-        # Only create accounting entry if there's a purchase cost
-        if total_purchase_cost > 0:
-            from datetime import datetime
-            purchase_date = inventory.purchase_date or datetime.now().date()
-            stock_number = inventory.stock_number
-            
-            # Get account IDs
-            inventory_account = await db.fetchrow(
-                "SELECT account_id FROM accounts WHERE account_name = 'Bus Inventory'"
-            )
-            cash_account = await db.fetchrow(
-                "SELECT account_id FROM accounts WHERE account_name = 'Cash on Hand - USD'"
-            )
-            
-            if inventory_account and cash_account:
-                # Create transaction
-                reference_number = f"PURCH-{purchase_date.strftime('%Y%m%d')}-{stock_number}"
-                
-                transaction_id = await db.fetchval(
-                    """
-                    INSERT INTO transactions (
-                        transaction_date, description, reference_type, reference_id,
-                        reference_number, currency, created_by, created_at
-                    )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-                    RETURNING transaction_id
-                    """,
-                    purchase_date,
-                    f"Purchase of {stock_number}",
-                    "purchase",
-                    row['inventory_id'],
-                    reference_number,
-                    'USD',
-                    current_user['username']
-                )
-                
-                # Line 1: Debit Bus Inventory (increase asset)
-                await db.execute(
-                    """
-                    INSERT INTO transaction_lines (
-                        transaction_id, account_id, debit_amount, credit_amount,
-                        currency, notes
-                    )
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    """,
-                    transaction_id, inventory_account['account_id'],
-                    total_purchase_cost, 0,
-                    'USD',
-                    f"Purchase of {stock_number} - Total cost: ${total_purchase_cost:,.2f}"
-                )
-                
-                # Line 2: Credit Cash (decrease asset - money paid out)
-                await db.execute(
-                    """
-                    INSERT INTO transaction_lines (
-                        transaction_id, account_id, debit_amount, credit_amount,
-                        currency, notes
-                    )
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    """,
-                    transaction_id, cash_account['account_id'],
-                    0, total_purchase_cost,
-                    'USD',
-                    f"Payment for {stock_number}"
-                )
-        
         return dict(row)
     except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=400, detail="VIN or Stock Number already exists")
@@ -1121,1722 +1079,6 @@ async def delete_inventory(
                    description=f"Deleted bus {row['stock_number']}")
     
     return {"message": "Inventory item deleted successfully"}
-
-# ==================== UNIFIED SALES MANAGEMENT ====================
-
-@app.post("/api/sales/record")
-async def record_sale(
-    sale_data: dict,
-    db=Depends(get_db),
-    user=Depends(get_current_user)
-):
-    """
-    UNIFIED SALE RECORDING
-    
-    Records a complete sale transaction:
-    1. Updates inventory (marks as sold, sets price/date/currency)
-    2. Creates Revenue accounting entry
-    3. Creates COGS accounting entry (from cost_items)
-    4. Creates AR entry
-    5. Links to client (if provided)
-    
-    This is the ONLY way to record a sale - ensures consistency
-    """
-    from datetime import datetime
-    
-    # Extract sale data
-    inventory_id = sale_data.get('inventory_id')
-    sale_price = float(sale_data.get('sale_price'))
-    sale_currency = sale_data.get('sale_currency')
-    sale_date_str = sale_data.get('sale_date')
-    client_id = sale_data.get('client_id')  # Optional
-    sale_notes = sale_data.get('sale_notes', '')
-    
-    # Convert date
-    if isinstance(sale_date_str, str):
-        sale_date = datetime.strptime(sale_date_str, '%Y-%m-%d').date()
-    else:
-        sale_date = datetime.now().date()
-    
-    # Verify inventory exists and is NOT already sold
-    inventory = await db.fetchrow(
-        """
-        SELECT inventory_id, stock_number, is_sold, is_deleted, 
-               purchase_price_usd
-        FROM inventory 
-        WHERE inventory_id = $1
-        """,
-        inventory_id
-    )
-    
-    if not inventory:
-        raise HTTPException(status_code=404, detail="Inventory item not found")
-    
-    if inventory['is_deleted']:
-        raise HTTPException(status_code=400, detail="Cannot sell deleted inventory")
-    
-    if inventory['is_sold']:
-        raise HTTPException(status_code=400, detail="Inventory already marked as sold")
-    
-    stock_number = inventory['stock_number']
-    purchase_price_usd = float(inventory['purchase_price_usd'])
-    
-    # Check if sale already recorded in accounting
-    existing_sale = await db.fetchval(
-        "SELECT transaction_id FROM transactions WHERE reference_type = 'sale' AND reference_id = $1",
-        inventory_id
-    )
-    
-    if existing_sale:
-        raise HTTPException(status_code=400, detail="Sale already recorded in accounting system")
-    
-    # Calculate COGS: Purchase Price + Cost Items
-    # Get exchange rate if needed
-    if sale_currency == 'MXN':
-        # Need to convert purchase_price_usd to MXN
-        exchange_rate_row = await db.fetchrow(
-            "SELECT rate FROM exchange_rates WHERE from_currency = 'USD' AND to_currency = 'MXN' AND is_active = TRUE ORDER BY effective_date DESC LIMIT 1"
-        )
-        usd_to_mxn_rate = float(exchange_rate_row['rate']) if exchange_rate_row else 17.50
-        purchase_price_in_sale_currency = purchase_price_usd * usd_to_mxn_rate
-    else:
-        # Sale is in USD, purchase price is already in USD
-        purchase_price_in_sale_currency = purchase_price_usd
-    
-    # Add cost items - need to convert to sale currency
-    # Get all cost items (both USD and MXN)
-    all_cost_items = await db.fetch(
-        "SELECT amount, currency FROM cost_items WHERE inventory_id = $1",
-        inventory_id
-    )
-    
-    total_cost_items = 0.0
-    for item in all_cost_items:
-        item_amount = float(item['amount'])
-        item_currency = item['currency']
-        
-        if item_currency == sale_currency:
-            # Already in the right currency
-            total_cost_items += item_amount
-        elif item_currency == 'USD' and sale_currency == 'MXN':
-            # Convert USD to MXN
-            total_cost_items += item_amount * usd_to_mxn_rate
-        elif item_currency == 'MXN' and sale_currency == 'USD':
-            # Convert MXN to USD (divide by rate)
-            total_cost_items += item_amount / usd_to_mxn_rate
-    
-    # Total COGS = Purchase Price (converted if needed) + Cost Items (all converted)
-    total_cogs = purchase_price_in_sale_currency + total_cost_items
-    
-    # Get account IDs
-    revenue_account = await db.fetchrow(
-        "SELECT account_id FROM accounts WHERE account_name LIKE '%Bus Sales%' AND account_type = 'Income' LIMIT 1"
-    )
-    
-    ar_account = await db.fetchrow(
-        f"SELECT account_id FROM accounts WHERE account_name = 'Accounts Receivable - {sale_currency}'"
-    )
-    
-    cogs_account = await db.fetchrow(
-        "SELECT account_id FROM accounts WHERE account_name LIKE '%Cost of Goods Sold%' AND account_code = '5000'"
-    )
-    
-    inventory_account = await db.fetchrow(
-        "SELECT account_id FROM accounts WHERE account_name = 'Bus Inventory'"
-    )
-    
-    if not revenue_account:
-        raise HTTPException(status_code=500, detail="Bus Sales Revenue account not found")
-    if not ar_account:
-        raise HTTPException(status_code=500, detail=f"Accounts Receivable - {sale_currency} account not found")
-    if not cogs_account:
-        raise HTTPException(status_code=500, detail="COGS account not found")
-    if not inventory_account:
-        raise HTTPException(status_code=500, detail="Bus Inventory account not found")
-    
-    # Generate reference number
-    reference_number = f"SALE-{sale_date.strftime('%Y%m%d')}-{stock_number}"
-    
-    # START UNIFIED TRANSACTION
-    async with db.transaction():
-        # STEP 1: Update inventory (mark as sold)
-        await db.execute(
-            """
-            UPDATE inventory 
-            SET is_sold = TRUE,
-                sale_price = $1,
-                sale_currency = $2,
-                sale_date = $3,
-                sale_price_usd = CASE WHEN $2 = 'USD' THEN $1 ELSE NULL END,
-                sale_price_mxn = CASE WHEN $2 = 'MXN' THEN $1 ELSE NULL END,
-                client_id = $4
-            WHERE inventory_id = $5
-            """,
-            sale_price, sale_currency, sale_date, client_id, inventory_id
-        )
-        
-        # STEP 2: Create accounting transaction
-        transaction_id = await db.fetchval(
-            """
-            INSERT INTO transactions (
-                transaction_date, description, reference_type, reference_id, 
-                reference_number, currency, created_by, created_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-            RETURNING transaction_id
-            """,
-            sale_date,
-            f"Sale of {stock_number}" + (f" - {sale_notes}" if sale_notes else ""),
-            "sale",
-            inventory_id,
-            reference_number,
-            sale_currency,
-            user['username']
-        )
-        
-        # STEP 3: Create accounting entries
-        
-        # Line 1: Debit AR (increase receivable)
-        await db.execute(
-            """
-            INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            transaction_id, ar_account['account_id'],
-            sale_price, 0,
-            sale_currency,
-            f"Sale of {stock_number} - Receivable"
-        )
-        
-        # Line 2: Credit Revenue (increase revenue)
-        await db.execute(
-            """
-            INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            transaction_id, revenue_account['account_id'],
-            0, sale_price,
-            sale_currency,
-            f"Sale of {stock_number} - Revenue"
-        )
-        
-        # Line 3 & 4: COGS entries (if there are costs)
-        if total_cogs > 0:
-            # Debit COGS (record expense)
-            await db.execute(
-                """
-                INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-                VALUES ($1, $2, $3, $4, $5, $6)
-                """,
-                transaction_id, cogs_account['account_id'],
-                total_cogs, 0,
-                sale_currency,
-                f"COGS for {stock_number}"
-            )
-            
-            # Credit Inventory (reduce asset)
-            await db.execute(
-                """
-                INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-                VALUES ($1, $2, $3, $4, $5, $6)
-                """,
-                transaction_id, inventory_account['account_id'],
-                0, total_cogs,
-                sale_currency,
-                f"Remove {stock_number} from inventory"
-            )
-    
-    gross_profit = sale_price - total_cogs
-    gross_profit_margin = (gross_profit / sale_price * 100) if sale_price > 0 else 0
-    
-    return {
-        'success': True,
-        'inventory_id': inventory_id,
-        'stock_number': stock_number,
-        'transaction_id': transaction_id,
-        'reference_number': reference_number,
-        'sale_price': sale_price,
-        'currency': sale_currency,
-        'cogs': total_cogs,
-        'gross_profit': gross_profit,
-        'gross_profit_margin': round(gross_profit_margin, 2),
-        'ar_balance': sale_price,
-        'message': f"Sale recorded successfully! {stock_number} sold for {sale_currency} ${sale_price:,.2f}. Gross Profit: {sale_currency} ${gross_profit:,.2f} ({gross_profit_margin:.1f}%)"
-    }
-
-@app.post("/api/sales/{inventory_id}/payment")
-async def record_sale_payment(
-    inventory_id: int,
-    payment_data: dict,
-    db=Depends(get_db),
-    user=Depends(get_current_user)
-):
-    """
-    Record a payment for a sold bus
-    
-    Creates:
-    1. Payment record in payments table
-    2. Accounting entry (Debit Cash/Bank, Credit AR)
-    
-    Part of unified sales management
-    """
-    from datetime import datetime
-    
-    # Verify inventory exists and is sold
-    inventory = await db.fetchrow(
-        """
-        SELECT inventory_id, stock_number, is_sold, sale_currency
-        FROM inventory 
-        WHERE inventory_id = $1 AND is_deleted = FALSE
-        """,
-        inventory_id
-    )
-    
-    if not inventory:
-        raise HTTPException(status_code=404, detail="Inventory item not found")
-    
-    if not inventory['is_sold']:
-        raise HTTPException(status_code=400, detail="Cannot record payment for unsold inventory. Record the sale first.")
-    
-    # Extract payment info
-    payment_amount = float(payment_data.get('payment_amount'))
-    payment_currency = payment_data.get('payment_currency', inventory['sale_currency'])
-    payment_date_str = payment_data.get('payment_date')
-    payment_method = payment_data.get('payment_method', 'Cash')
-    payment_type = payment_data.get('payment_type', 'Payment')
-    payment_account_id = payment_data.get('payment_account_id')  # Bank account receiving payment
-    payment_notes = payment_data.get('payment_notes', '')
-    
-    # Convert date
-    if isinstance(payment_date_str, str):
-        payment_date = datetime.strptime(payment_date_str, '%Y-%m-%d').date()
-    else:
-        payment_date = datetime.now().date()
-    
-    stock_number = inventory['stock_number']
-    
-    # Get AR account
-    ar_account = await db.fetchrow(
-        f"SELECT account_id FROM accounts WHERE account_name = 'Accounts Receivable - {payment_currency}'"
-    )
-    
-    if not ar_account:
-        raise HTTPException(status_code=500, detail=f"AR account for {payment_currency} not found")
-    
-    # Get payment destination account (bank/cash)
-    if not payment_account_id:
-        raise HTTPException(status_code=400, detail="payment_account_id required (bank account receiving payment)")
-    
-    payment_account = await db.fetchrow(
-        "SELECT account_id, account_name FROM accounts WHERE account_id = $1",
-        int(payment_account_id)
-    )
-    
-    if not payment_account:
-        raise HTTPException(status_code=404, detail="Payment account not found")
-    
-    # Start transaction
-    async with db.transaction():
-        # Insert into payments table
-        payment_id = await db.fetchval(
-            """
-            INSERT INTO payments (
-                inventory_id, payment_amount, payment_currency, payment_date,
-                payment_method, payment_type, payment_notes, created_by
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING payment_id
-            """,
-            inventory_id, payment_amount, payment_currency, payment_date,
-            payment_method, payment_type, payment_notes, user['username']
-        )
-        
-        # Count existing payments to generate sequence number
-        payment_count = await db.fetchval(
-            "SELECT COUNT(*) FROM payments WHERE inventory_id = $1",
-            inventory_id
-        )
-        
-        # Generate reference number
-        reference_number = f"PYMT-{payment_date.strftime('%Y%m%d')}-{stock_number}-{payment_count:03d}"
-        
-        # Update payment with reference number
-        await db.execute(
-            "UPDATE payments SET reference_number = $1 WHERE payment_id = $2",
-            reference_number, payment_id
-        )
-        
-        # Create accounting transaction
-        transaction_id = await db.fetchval(
-            """
-            INSERT INTO transactions (
-                transaction_date, description, reference_type, reference_id,
-                reference_number, currency, created_by, created_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-            RETURNING transaction_id
-            """,
-            payment_date,
-            f"Payment for {stock_number} - {payment_type}",
-            "payment",
-            payment_id,
-            reference_number,
-            payment_currency,
-            user['username']
-        )
-        
-        # Transaction Line 1: Debit Cash/Bank (increase cash)
-        await db.execute(
-            """
-            INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            transaction_id, payment_account['account_id'],
-            payment_amount, 0,
-            payment_currency,
-            f"Received payment for {stock_number}"
-        )
-        
-        # Transaction Line 2: Credit AR (reduce receivable)
-        await db.execute(
-            """
-            INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            transaction_id, ar_account['account_id'],
-            0, payment_amount,
-            payment_currency,
-            f"Payment reduces AR for {stock_number}"
-        )
-    
-    # Get updated AR balance
-    ar_balance_row = await db.fetchrow(
-        """
-        SELECT 
-            i.sale_price,
-            COALESCE(SUM(p.payment_amount), 0) as total_paid
-        FROM inventory i
-        LEFT JOIN payments p ON p.inventory_id = i.inventory_id AND p.payment_currency = i.sale_currency
-        WHERE i.inventory_id = $1
-        GROUP BY i.sale_price
-        """,
-        inventory_id
-    )
-    
-    ar_balance = float(ar_balance_row['sale_price'] or 0) - float(ar_balance_row['total_paid'] or 0)
-    
-    return {
-        'success': True,
-        'payment_id': payment_id,
-        'transaction_id': transaction_id,
-        'reference_number': reference_number,
-        'payment_amount': payment_amount,
-        'currency': payment_currency,
-        'ar_balance': ar_balance,
-        'paid_in_full': ar_balance <= 0.01,  # Account for floating point
-        'message': f"Payment recorded: {payment_currency} ${payment_amount:,.2f}. Remaining balance: {payment_currency} ${ar_balance:,.2f}"
-    }
-
-@app.get("/api/sales/{inventory_id}/summary")
-async def get_sale_summary(
-    inventory_id: int,
-    db=Depends(get_db),
-    user=Depends(get_current_user)
-):
-    """
-    Get complete financial summary for a sale
-    
-    Returns:
-    - Sale details (price, date, currency)
-    - COGS and Gross Profit
-    - Payment history
-    - AR balance
-    - Sale status
-    """
-    
-    # Get inventory and sale info (including purchase price for COGS)
-    inventory = await db.fetchrow(
-        """
-        SELECT inventory_id, stock_number, is_sold, sale_price, sale_currency, 
-               sale_date, client_id, status, purchase_price_usd
-        FROM inventory
-        WHERE inventory_id = $1 AND is_deleted = FALSE
-        """,
-        inventory_id
-    )
-    
-    if not inventory:
-        raise HTTPException(status_code=404, detail="Inventory item not found")
-    
-    if not inventory['is_sold']:
-        return {
-            'is_sold': False,
-            'stock_number': inventory['stock_number'],
-            'status': inventory['status'],
-            'message': 'Bus not yet sold. Use POST /api/sales/record to record the sale.'
-        }
-    
-    sale_price = float(inventory['sale_price'] or 0)
-    sale_currency = inventory['sale_currency']
-    purchase_price_usd = float(inventory['purchase_price_usd'])
-    
-    # Calculate COGS: Purchase Price + Cost Items
-    # Convert purchase price to sale currency if needed
-    if sale_currency == 'MXN':
-        # Convert USD purchase price to MXN
-        exchange_rate_row = await db.fetchrow(
-            "SELECT rate FROM exchange_rates WHERE from_currency = 'USD' AND to_currency = 'MXN' AND is_active = TRUE ORDER BY effective_date DESC LIMIT 1"
-        )
-        usd_to_mxn_rate = float(exchange_rate_row['rate']) if exchange_rate_row else 17.50
-        purchase_price_in_sale_currency = purchase_price_usd * usd_to_mxn_rate
-    else:
-        usd_to_mxn_rate = 17.50  # Default rate for conversions
-        purchase_price_in_sale_currency = purchase_price_usd
-    
-    # Add cost items - need to convert ALL costs to sale currency
-    all_cost_items = await db.fetch(
-        "SELECT amount, currency FROM cost_items WHERE inventory_id = $1",
-        inventory_id
-    )
-    
-    total_cost_items = 0.0
-    for item in all_cost_items:
-        item_amount = float(item['amount'])
-        item_currency = item['currency']
-        
-        if item_currency == sale_currency:
-            # Already in the right currency
-            total_cost_items += item_amount
-        elif item_currency == 'USD' and sale_currency == 'MXN':
-            # Convert USD to MXN
-            total_cost_items += item_amount * usd_to_mxn_rate
-        elif item_currency == 'MXN' and sale_currency == 'USD':
-            # Convert MXN to USD (divide by rate)
-            total_cost_items += item_amount / usd_to_mxn_rate
-    
-    # Total COGS = Purchase Price + Cost Items (all converted to sale currency)
-    total_cogs = purchase_price_in_sale_currency + total_cost_items
-    
-    # Check if sale recorded in accounting
-    sale_transaction = await db.fetchrow(
-        """
-        SELECT transaction_id, reference_number, transaction_date
-        FROM transactions 
-        WHERE reference_type = 'sale' AND reference_id = $1
-        """,
-        inventory_id
-    )
-    
-    # Get payments
-    payments = await db.fetch(
-        """
-        SELECT payment_id, payment_amount, payment_currency, payment_date,
-               payment_method, payment_type, reference_number, payment_notes
-        FROM payments
-        WHERE inventory_id = $1
-        ORDER BY payment_date ASC
-        """,
-        inventory_id
-    )
-    
-    total_paid = sum(float(p['payment_amount']) for p in payments if p['payment_currency'] == sale_currency)
-    ar_balance = sale_price - total_paid
-    
-    # Determine sale status
-    if ar_balance <= 0.01:
-        payment_status = 'Paid in Full'
-    elif total_paid > 0:
-        payment_status = 'Partially Paid'
-    else:
-        payment_status = 'Unpaid'
-    
-    # Get client info if available
-    client = None
-    if inventory['client_id']:
-        client = await db.fetchrow(
-            "SELECT client_id, client_name, client_email, client_phone FROM clients WHERE client_id = $1",
-            inventory['client_id']
-        )
-    
-    return {
-        'is_sold': True,
-        'stock_number': inventory['stock_number'],
-        'sale_date': str(inventory['sale_date']) if inventory['sale_date'] else None,
-        'sale_price': sale_price,
-        'currency': sale_currency,
-        'cogs': total_cogs,
-        'gross_profit': sale_price - total_cogs,
-        'gross_profit_margin': ((sale_price - total_cogs) / sale_price * 100) if sale_price > 0 else 0,
-        'sale_recorded_in_accounting': bool(sale_transaction),
-        'sale_reference_number': sale_transaction['reference_number'] if sale_transaction else None,
-        'total_payments_received': total_paid,
-        'ar_balance': ar_balance,
-        'payment_status': payment_status,
-        'payment_count': len(payments),
-        'payments': [dict(p) for p in payments],
-        'client': dict(client) if client else None
-    }
-
-@app.post("/api/sales/{inventory_id}/import-payments")
-async def import_existing_sale_payments(
-    inventory_id: int,
-    db=Depends(get_db),
-    user=Depends(get_current_user)
-):
-    """
-    ONE-TIME MIGRATION: Import existing payments into accounting system
-    
-    For payments that were recorded before the unified sales system.
-    Creates accounting entries for payments that don't have them yet.
-    """
-    from datetime import datetime
-    
-    # Verify inventory exists and is sold
-    inventory = await db.fetchrow(
-        """
-        SELECT inventory_id, stock_number, is_sold, sale_currency
-        FROM inventory 
-        WHERE inventory_id = $1 AND is_deleted = FALSE
-        """,
-        inventory_id
-    )
-    
-    if not inventory:
-        raise HTTPException(status_code=404, detail="Inventory item not found")
-    
-    if not inventory['is_sold']:
-        raise HTTPException(status_code=400, detail="Cannot import payments for unsold inventory")
-    
-    stock_number = inventory['stock_number']
-    sale_currency = inventory['sale_currency']
-    
-    # Get AR account
-    ar_account = await db.fetchrow(
-        f"SELECT account_id FROM accounts WHERE account_name = 'Accounts Receivable - {sale_currency}'"
-    )
-    
-    if not ar_account:
-        raise HTTPException(status_code=500, detail=f"AR account for {sale_currency} not found")
-    
-    # Find payments without accounting entries
-    payments_to_import = await db.fetch(
-        """
-        SELECT p.payment_id, p.payment_amount, p.payment_currency, p.payment_date,
-               p.payment_method, p.payment_type, p.payment_notes
-        FROM payments p
-        LEFT JOIN transactions t ON t.reference_type = 'payment' AND t.reference_id = p.payment_id
-        WHERE p.inventory_id = $1 AND t.transaction_id IS NULL
-        ORDER BY p.payment_date, p.payment_id
-        """,
-        inventory_id
-    )
-    
-    if not payments_to_import:
-        return {
-            'success': True,
-            'imported_count': 0,
-            'message': 'No payments need importing. All payments already have accounting entries.'
-        }
-    
-    # Use default cash account
-    default_cash_account = await db.fetchrow(
-        f"SELECT account_id FROM accounts WHERE account_name = 'Cash on Hand - {sale_currency}'"
-    )
-    
-    if not default_cash_account:
-        raise HTTPException(status_code=500, detail=f"Default cash account not found")
-    
-    imported_count = 0
-    imported_transactions = []
-    
-    # Process each payment
-    for idx, payment in enumerate(payments_to_import, start=1):
-        payment_id = payment['payment_id']
-        payment_amount = float(payment['payment_amount'])
-        payment_currency = payment['payment_currency']
-        payment_date = payment['payment_date']
-        payment_type = payment['payment_type']
-        
-        reference_number = f"PYMT-{payment_date.strftime('%Y%m%d')}-{stock_number}-{idx:03d}"
-        
-        async with db.transaction():
-            await db.execute(
-                "UPDATE payments SET reference_number = $1 WHERE payment_id = $2",
-                reference_number, payment_id
-            )
-            
-            transaction_id = await db.fetchval(
-                """
-                INSERT INTO transactions (
-                    transaction_date, description, reference_type, reference_id,
-                    reference_number, currency, created_by, created_at
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-                RETURNING transaction_id
-                """,
-                payment_date,
-                f"Payment for {stock_number} - {payment_type} (imported)",
-                "payment",
-                payment_id,
-                reference_number,
-                payment_currency,
-                user['username']
-            )
-            
-            await db.execute(
-                """
-                INSERT INTO transaction_lines (
-                    transaction_id, account_id, debit_amount, credit_amount,
-                    currency, notes
-                )
-                VALUES ($1, $2, $3, $4, $5, $6)
-                """,
-                transaction_id, default_cash_account['account_id'],
-                payment_amount, 0,
-                payment_currency,
-                f"Received payment for {stock_number} (imported)"
-            )
-            
-            await db.execute(
-                """
-                INSERT INTO transaction_lines (
-                    transaction_id, account_id, debit_amount, credit_amount,
-                    currency, notes
-                )
-                VALUES ($1, $2, $3, $4, $5, $6)
-                """,
-                transaction_id, ar_account['account_id'],
-                0, payment_amount,
-                payment_currency,
-                f"Payment reduces AR for {stock_number} (imported)"
-            )
-            
-            imported_count += 1
-            imported_transactions.append({
-                'payment_id': payment_id,
-                'transaction_id': transaction_id,
-                'reference_number': reference_number,
-                'amount': payment_amount,
-                'date': str(payment_date)
-            })
-    
-    return {
-        'success': True,
-        'imported_count': imported_count,
-        'imported_transactions': imported_transactions,
-        'message': f"Successfully imported {imported_count} payment(s) into accounting system"
-    }
-
-@app.post("/api/sales/{inventory_id}/record-sale-accounting")
-async def record_sale_accounting_retroactive(
-    inventory_id: int,
-    db=Depends(get_db),
-    user=Depends(get_current_user)
-):
-    """
-    RETROACTIVE SALE RECORDING
-    
-    For buses that were marked as sold BEFORE the unified accounting system.
-    Creates the Revenue + COGS + AR accounting entries for an already-sold bus.
-    
-    Requirements:
-    - Inventory must already be marked as sold (is_sold = True)
-    - Must have sale_price, sale_currency, sale_date
-    - Sale must NOT already be recorded in accounting
-    """
-    from datetime import datetime
-    
-    # Get inventory details
-    inventory = await db.fetchrow(
-        """
-        SELECT inventory_id, stock_number, is_sold, sale_price, sale_currency, 
-               sale_date, purchase_price_usd
-        FROM inventory 
-        WHERE inventory_id = $1 AND is_deleted = FALSE
-        """,
-        inventory_id
-    )
-    
-    if not inventory:
-        raise HTTPException(status_code=404, detail="Inventory item not found")
-    
-    if not inventory['is_sold']:
-        raise HTTPException(status_code=400, detail="Inventory must be marked as sold. Use POST /api/sales/record for new sales.")
-    
-    if not inventory['sale_price'] or not inventory['sale_currency']:
-        raise HTTPException(status_code=400, detail="Sale price and currency required")
-    
-    # Check if sale already recorded in accounting
-    existing_sale = await db.fetchval(
-        "SELECT transaction_id FROM transactions WHERE reference_type = 'sale' AND reference_id = $1",
-        inventory_id
-    )
-    
-    if existing_sale:
-        raise HTTPException(status_code=400, detail="Sale already recorded in accounting. Cannot record twice.")
-    
-    sale_price = float(inventory['sale_price'])
-    sale_currency = inventory['sale_currency']
-    sale_date = inventory['sale_date'] or datetime.now().date()
-    stock_number = inventory['stock_number']
-    purchase_price_usd = float(inventory['purchase_price_usd'])
-    
-    # Calculate COGS: Purchase Price + Cost Items
-    if sale_currency == 'MXN':
-        exchange_rate_row = await db.fetchrow(
-            "SELECT rate FROM exchange_rates WHERE from_currency = 'USD' AND to_currency = 'MXN' AND is_active = TRUE ORDER BY effective_date DESC LIMIT 1"
-        )
-        usd_to_mxn_rate = float(exchange_rate_row['rate']) if exchange_rate_row else 17.50
-        purchase_price_in_sale_currency = purchase_price_usd * usd_to_mxn_rate
-    else:
-        usd_to_mxn_rate = 17.50
-        purchase_price_in_sale_currency = purchase_price_usd
-    
-    # Get all cost items and convert to sale currency
-    all_cost_items = await db.fetch(
-        "SELECT amount, currency FROM cost_items WHERE inventory_id = $1",
-        inventory_id
-    )
-    
-    total_cost_items = 0.0
-    for item in all_cost_items:
-        item_amount = float(item['amount'])
-        item_currency = item['currency']
-        
-        if item_currency == sale_currency:
-            total_cost_items += item_amount
-        elif item_currency == 'USD' and sale_currency == 'MXN':
-            total_cost_items += item_amount * usd_to_mxn_rate
-        elif item_currency == 'MXN' and sale_currency == 'USD':
-            total_cost_items += item_amount / usd_to_mxn_rate
-    
-    total_cogs = purchase_price_in_sale_currency + total_cost_items
-    
-    # Get account IDs
-    revenue_account = await db.fetchrow(
-        "SELECT account_id FROM accounts WHERE account_name LIKE '%Bus Sales%' AND account_type = 'Income' LIMIT 1"
-    )
-    
-    ar_account = await db.fetchrow(
-        f"SELECT account_id FROM accounts WHERE account_name = 'Accounts Receivable - {sale_currency}'"
-    )
-    
-    cogs_account = await db.fetchrow(
-        "SELECT account_id FROM accounts WHERE account_name LIKE '%Cost of Goods Sold%' AND account_code = '5000'"
-    )
-    
-    inventory_account = await db.fetchrow(
-        "SELECT account_id FROM accounts WHERE account_name = 'Bus Inventory'"
-    )
-    
-    if not revenue_account:
-        raise HTTPException(status_code=500, detail="Bus Sales Revenue account not found")
-    if not ar_account:
-        raise HTTPException(status_code=500, detail=f"Accounts Receivable - {sale_currency} account not found")
-    if not cogs_account:
-        raise HTTPException(status_code=500, detail="COGS account not found")
-    if not inventory_account:
-        raise HTTPException(status_code=500, detail="Bus Inventory account not found")
-    
-    reference_number = f"SALE-{sale_date.strftime('%Y%m%d')}-{stock_number}"
-    
-    # Create accounting entries
-    async with db.transaction():
-        # Main transaction record
-        transaction_id = await db.fetchval(
-            """
-            INSERT INTO transactions (
-                transaction_date, description, reference_type, reference_id,
-                reference_number, currency, created_by, created_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-            RETURNING transaction_id
-            """,
-            sale_date,
-            f"Sale of {stock_number} (retroactive)",
-            "sale",
-            inventory_id,
-            reference_number,
-            sale_currency,
-            user['username']
-        )
-        
-        # Line 1: Debit AR (increase receivable)
-        await db.execute(
-            """
-            INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            transaction_id, ar_account['account_id'],
-            sale_price, 0,
-            sale_currency,
-            f"Sale of {stock_number} - Receivable (retroactive)"
-        )
-        
-        # Line 2: Credit Revenue (increase revenue)
-        await db.execute(
-            """
-            INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            transaction_id, revenue_account['account_id'],
-            0, sale_price,
-            sale_currency,
-            f"Sale of {stock_number} - Revenue (retroactive)"
-        )
-        
-        # Line 3: Debit COGS (increase expense)
-        await db.execute(
-            """
-            INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            transaction_id, cogs_account['account_id'],
-            total_cogs, 0,
-            sale_currency,
-            f"COGS for {stock_number} (retroactive)"
-        )
-        
-        # Line 4: Credit Inventory (decrease asset)
-        await db.execute(
-            """
-            INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            transaction_id, inventory_account['account_id'],
-            0, total_cogs,
-            sale_currency,
-            f"Inventory sold: {stock_number} (retroactive)"
-        )
-    
-    gross_profit = sale_price - total_cogs
-    margin = (gross_profit / sale_price * 100) if sale_price > 0 else 0
-    
-    return {
-        'success': True,
-        'transaction_id': transaction_id,
-        'reference_number': reference_number,
-        'sale_price': sale_price,
-        'cogs': total_cogs,
-        'gross_profit': gross_profit,
-        'margin': round(margin, 2),
-        'currency': sale_currency,
-        'message': f"Sale accounting entries created for {stock_number}. Revenue and COGS recorded."
-    }
-
-# ==================== PURCHASE PAYMENT ENDPOINTS ====================
-
-@app.post("/api/inventory/{inventory_id}/record-purchase-payment")
-async def record_purchase_payment(
-    inventory_id: int,
-    payment_data: dict,
-    db=Depends(get_db),
-    user=Depends(get_current_user)
-):
-    """
-    Record the payment for a bus purchase in accounting
-    
-    Creates:
-    1. Debit Bus Inventory (Asset increases)
-    2. Credit Payment Account (Asset decreases - cash/bank account)
-    
-    Handles multi-currency: If payment is from MXN account but purchase is in USD,
-    uses exchange rate for conversion.
-    
-    Required fields in payment_data:
-    - payment_account_id: Which account was used to pay
-    - payment_date: When payment was made (optional, defaults to purchase_date)
-    """
-    from datetime import datetime
-    
-    # Extract payment data
-    payment_account_id = payment_data.get('payment_account_id')
-    payment_date_str = payment_data.get('payment_date')
-    
-    if not payment_account_id:
-        raise HTTPException(status_code=400, detail="payment_account_id is required")
-    
-    # Get inventory details
-    inventory = await db.fetchrow(
-        """
-        SELECT inventory_id, stock_number, purchase_price_usd, purchase_date
-        FROM inventory
-        WHERE inventory_id = $1 AND is_deleted = FALSE
-        """,
-        inventory_id
-    )
-    
-    if not inventory:
-        raise HTTPException(status_code=404, detail="Inventory item not found")
-    
-    if not inventory['purchase_price_usd']:
-        raise HTTPException(status_code=400, detail="Bus must have a purchase price")
-    
-    purchase_price_usd = float(inventory['purchase_price_usd'])
-    stock_number = inventory['stock_number']
-    
-    # Use provided payment date or default to purchase date
-    if payment_date_str:
-        payment_date = datetime.strptime(payment_date_str, '%Y-%m-%d').date()
-    else:
-        payment_date = inventory['purchase_date'] or datetime.now().date()
-    
-    # Check if purchase payment already recorded
-    existing_payment = await db.fetchval(
-        "SELECT transaction_id FROM transactions WHERE reference_type = 'purchase' AND reference_id = $1",
-        inventory_id
-    )
-    
-    if existing_payment:
-        raise HTTPException(status_code=400, detail="Purchase payment already recorded in accounting")
-    
-    # Get payment account details
-    payment_account = await db.fetchrow(
-        "SELECT account_id, account_name, currency FROM accounts WHERE account_id = $1",
-        payment_account_id
-    )
-    
-    if not payment_account:
-        raise HTTPException(status_code=404, detail="Payment account not found")
-    
-    payment_account_currency = payment_account['currency']
-    
-    # Get Bus Inventory account
-    inventory_account = await db.fetchrow(
-        "SELECT account_id FROM accounts WHERE account_name = 'Bus Inventory'"
-    )
-    
-    if not inventory_account:
-        raise HTTPException(status_code=500, detail="Bus Inventory account not found")
-    
-    # Handle currency conversion if needed
-    if payment_account_currency == 'MXN':
-        # Payment is in MXN, but purchase is in USD - need to convert
-        exchange_rate_row = await db.fetchrow(
-            "SELECT rate FROM exchange_rates WHERE from_currency = 'USD' AND to_currency = 'MXN' AND is_active = TRUE ORDER BY effective_date DESC LIMIT 1"
-        )
-        usd_to_mxn_rate = float(exchange_rate_row['rate']) if exchange_rate_row else 17.50
-        payment_amount_mxn = purchase_price_usd * usd_to_mxn_rate
-        payment_currency = 'MXN'
-        payment_amount = payment_amount_mxn
-    elif payment_account_currency == 'USD':
-        # Both in USD - straightforward
-        payment_currency = 'USD'
-        payment_amount = purchase_price_usd
-    else:
-        # Account is multi-currency - default to USD
-        payment_currency = 'USD'
-        payment_amount = purchase_price_usd
-    
-    reference_number = f"PURCH-{payment_date.strftime('%Y%m%d')}-{stock_number}"
-    
-    # Create accounting entries
-    async with db.transaction():
-        # Main transaction record
-        transaction_id = await db.fetchval(
-            """
-            INSERT INTO transactions (
-                transaction_date, description, reference_type, reference_id,
-                reference_number, currency, created_by, created_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-            RETURNING transaction_id
-            """,
-            payment_date,
-            f"Purchase of {stock_number}",
-            "purchase",
-            inventory_id,
-            reference_number,
-            payment_currency,
-            user['username']
-        )
-        
-        # Line 1: Debit Bus Inventory (increase asset)
-        await db.execute(
-            """
-            INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            transaction_id, inventory_account['account_id'],
-            payment_amount, 0,
-            payment_currency,
-            f"Purchase of {stock_number} - Add to inventory"
-        )
-        
-        # Line 2: Credit Payment Account (decrease cash/bank)
-        await db.execute(
-            """
-            INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            transaction_id, payment_account['account_id'],
-            0, payment_amount,
-            payment_currency,
-            f"Payment for {stock_number}"
-        )
-    
-    return {
-        'success': True,
-        'transaction_id': transaction_id,
-        'reference_number': reference_number,
-        'purchase_price_usd': purchase_price_usd,
-        'payment_amount': payment_amount,
-        'payment_currency': payment_currency,
-        'payment_account': payment_account['account_name'],
-        'message': f"Purchase payment recorded for {stock_number}"
-    }
-
-# ==================== CLIENTS ENDPOINTS ====================
-
-@app.get("/api/clients")
-async def get_clients(
-    db=Depends(get_db),
-    user=Depends(get_current_user)
-):
-    """Get all clients for dropdowns and selection"""
-    try:
-        query = """
-            SELECT client_id, client_name, client_email, client_phone, 
-                   client_company, client_location
-            FROM clients
-            WHERE is_deleted = FALSE
-            ORDER BY client_name
-        """
-        rows = await db.fetch(query)
-        return [dict(row) for row in rows]
-    except Exception as e:
-        # If clients table doesn't exist, return empty array
-        # This allows the system to work without client management
-        return []
-
-# ==================== COST ITEMS ENDPOINTS ====================
-async def record_inventory_sale(
-    inventory_id: int,
-    sale_data: dict,
-    db=Depends(get_db),
-    user=Depends(get_current_user)
-):
-    """
-    Record a bus sale in the accounting system
-    
-    Creates:
-    1. Revenue entry (Debit AR, Credit Revenue)
-    2. COGS entry (Debit COGS, Credit Inventory)
-    
-    Requires inventory to be marked as sold first (is_sold = True)
-    """
-    from datetime import datetime
-    
-    # Verify inventory exists and is sold
-    inventory = await db.fetchrow(
-        """
-        SELECT inventory_id, stock_number, is_sold, sale_price, sale_currency, sale_date
-        FROM inventory 
-        WHERE inventory_id = $1 AND is_deleted = FALSE
-        """,
-        inventory_id
-    )
-    
-    if not inventory:
-        raise HTTPException(status_code=404, detail="Inventory item not found")
-    
-    if not inventory['is_sold']:
-        raise HTTPException(status_code=400, detail="Inventory must be marked as sold before recording sale")
-    
-    if not inventory['sale_price'] or not inventory['sale_currency']:
-        raise HTTPException(status_code=400, detail="Sale price and currency required")
-    
-    # Check if sale already recorded
-    existing_sale = await db.fetchval(
-        "SELECT transaction_id FROM transactions WHERE reference_type = 'sale' AND reference_id = $1",
-        inventory_id
-    )
-    
-    if existing_sale:
-        raise HTTPException(status_code=400, detail="Sale already recorded in accounting. Cannot record twice.")
-    
-    sale_price = float(inventory['sale_price'])
-    sale_currency = inventory['sale_currency']
-    sale_date = inventory['sale_date'] or datetime.now().date()
-    stock_number = inventory['stock_number']
-    
-    # Calculate COGS from cost_items
-    cogs_query = """
-        SELECT COALESCE(SUM(amount), 0) as total_cogs
-        FROM cost_items
-        WHERE inventory_id = $1 AND currency = $2
-    """
-    cogs_row = await db.fetchrow(cogs_query, inventory_id, sale_currency)
-    total_cogs = float(cogs_row['total_cogs'])
-    
-    # Get account IDs
-    revenue_account = await db.fetchrow(
-        "SELECT account_id FROM accounts WHERE account_name LIKE '%Bus Sales%' AND account_type = 'Income' LIMIT 1"
-    )
-    
-    ar_account = await db.fetchrow(
-        f"SELECT account_id FROM accounts WHERE account_name = 'Accounts Receivable - {sale_currency}'"
-    )
-    
-    cogs_account = await db.fetchrow(
-        "SELECT account_id FROM accounts WHERE account_name LIKE '%Cost of Goods Sold%' AND account_code = '5000'"
-    )
-    
-    inventory_account = await db.fetchrow(
-        "SELECT account_id FROM accounts WHERE account_name = 'Bus Inventory'"
-    )
-    
-    if not revenue_account:
-        raise HTTPException(status_code=500, detail="Bus Sales Revenue account not found")
-    if not ar_account:
-        raise HTTPException(status_code=500, detail=f"Accounts Receivable - {sale_currency} account not found")
-    if not cogs_account:
-        raise HTTPException(status_code=500, detail="COGS account not found")
-    if not inventory_account:
-        raise HTTPException(status_code=500, detail="Bus Inventory account not found")
-    
-    # Generate reference number
-    reference_number = f"SALE-{sale_date.strftime('%Y%m%d')}-{stock_number}"
-    
-    # Start transaction
-    async with db.transaction():
-        # Create main transaction record
-        transaction_id = await db.fetchval(
-            """
-            INSERT INTO transactions (
-                transaction_date, description, reference_type, reference_id, 
-                reference_number, currency, created_by, created_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-            RETURNING transaction_id
-            """,
-            sale_date,
-            f"Sale of {stock_number}",
-            "sale",
-            inventory_id,
-            reference_number,
-            sale_currency,
-            user['username']
-        )
-        
-        # Transaction Line 1: Debit AR (increase receivable)
-        await db.execute(
-            """
-            INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            transaction_id, ar_account['account_id'],
-            sale_price, 0,
-            sale_currency,
-            f"Sale of {stock_number} - Receivable"
-        )
-        
-        # Transaction Line 2: Credit Revenue (increase revenue)
-        await db.execute(
-            """
-            INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            transaction_id, revenue_account['account_id'],
-            0, sale_price,
-            sale_currency,
-            f"Sale of {stock_number} - Revenue"
-        )
-        
-        # Transaction Line 3: Debit COGS (record expense)
-        if total_cogs > 0:
-            await db.execute(
-                """
-                INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-                VALUES ($1, $2, $3, $4, $5, $6)
-                """,
-                transaction_id, cogs_account['account_id'],
-                total_cogs, 0,
-                sale_currency,
-                f"COGS for {stock_number}"
-            )
-            
-            # Transaction Line 4: Credit Inventory (reduce asset)
-            await db.execute(
-                """
-                INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-                VALUES ($1, $2, $3, $4, $5, $6)
-                """,
-                transaction_id, inventory_account['account_id'],
-                0, total_cogs,
-                sale_currency,
-                f"Remove {stock_number} from inventory"
-            )
-    
-    gross_profit = sale_price - total_cogs
-    
-    return {
-        'success': True,
-        'transaction_id': transaction_id,
-        'reference_number': reference_number,
-        'sale_price': sale_price,
-        'currency': sale_currency,
-        'cogs': total_cogs,
-        'gross_profit': gross_profit,
-        'ar_balance': sale_price,  # Initially equals sale price
-        'message': f"Sale recorded successfully. Gross Profit: {sale_currency} ${gross_profit:,.2f}"
-    }
-
-@app.post("/api/inventory/{inventory_id}/record-payment")
-async def record_inventory_payment(
-    inventory_id: int,
-    payment_data: dict,
-    db=Depends(get_db),
-    user=Depends(get_current_user)
-):
-    """
-    Record a payment against a sold bus
-    
-    Creates:
-    1. Payment record in payments table
-    2. Accounting entry (Debit Cash/Bank, Credit AR)
-    """
-    from datetime import datetime
-    
-    # Verify inventory exists and is sold
-    inventory = await db.fetchrow(
-        """
-        SELECT inventory_id, stock_number, is_sold, sale_currency
-        FROM inventory 
-        WHERE inventory_id = $1 AND is_deleted = FALSE
-        """,
-        inventory_id
-    )
-    
-    if not inventory:
-        raise HTTPException(status_code=404, detail="Inventory item not found")
-    
-    if not inventory['is_sold']:
-        raise HTTPException(status_code=400, detail="Cannot record payment for unsold inventory")
-    
-    # Extract payment info
-    payment_amount = float(payment_data.get('payment_amount'))
-    payment_currency = payment_data.get('payment_currency', inventory['sale_currency'])
-    payment_date_str = payment_data.get('payment_date')
-    payment_method = payment_data.get('payment_method', 'Cash')
-    payment_type = payment_data.get('payment_type', 'Payment')
-    payment_account_id = payment_data.get('payment_account_id')  # Bank account receiving payment
-    payment_notes = payment_data.get('payment_notes', '')
-    
-    # Convert date
-    if isinstance(payment_date_str, str):
-        payment_date = datetime.strptime(payment_date_str, '%Y-%m-%d').date()
-    else:
-        payment_date = datetime.now().date()
-    
-    stock_number = inventory['stock_number']
-    
-    # Get AR account
-    ar_account = await db.fetchrow(
-        f"SELECT account_id FROM accounts WHERE account_name = 'Accounts Receivable - {payment_currency}'"
-    )
-    
-    if not ar_account:
-        raise HTTPException(status_code=500, detail=f"AR account for {payment_currency} not found")
-    
-    # Get payment destination account (bank/cash)
-    if not payment_account_id:
-        raise HTTPException(status_code=400, detail="payment_account_id required (bank account receiving payment)")
-    
-    payment_account = await db.fetchrow(
-        "SELECT account_id, account_name FROM accounts WHERE account_id = $1",
-        int(payment_account_id)
-    )
-    
-    if not payment_account:
-        raise HTTPException(status_code=404, detail="Payment account not found")
-    
-    # Start transaction
-    async with db.transaction():
-        # Insert into payments table
-        payment_id = await db.fetchval(
-            """
-            INSERT INTO payments (
-                inventory_id, payment_amount, payment_currency, payment_date,
-                payment_method, payment_type, payment_notes, created_by
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING payment_id
-            """,
-            inventory_id, payment_amount, payment_currency, payment_date,
-            payment_method, payment_type, payment_notes, user['username']
-        )
-        
-        # Count existing payments to generate sequence number
-        payment_count = await db.fetchval(
-            "SELECT COUNT(*) FROM payments WHERE inventory_id = $1",
-            inventory_id
-        )
-        
-        # Generate reference number
-        reference_number = f"PYMT-{payment_date.strftime('%Y%m%d')}-{stock_number}-{payment_count:03d}"
-        
-        # Update payment with reference number
-        await db.execute(
-            "UPDATE payments SET reference_number = $1 WHERE payment_id = $2",
-            reference_number, payment_id
-        )
-        
-        # Create accounting transaction
-        transaction_id = await db.fetchval(
-            """
-            INSERT INTO transactions (
-                transaction_date, description, reference_type, reference_id,
-                reference_number, currency, created_by, created_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-            RETURNING transaction_id
-            """,
-            payment_date,
-            f"Payment for {stock_number} - {payment_type}",
-            "payment",
-            payment_id,
-            reference_number,
-            payment_currency,
-            user['username']
-        )
-        
-        # Transaction Line 1: Debit Cash/Bank (increase cash)
-        await db.execute(
-            """
-            INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            transaction_id, payment_account['account_id'],
-            payment_amount, 0,
-            payment_currency,
-            f"Received payment for {stock_number}"
-        )
-        
-        # Transaction Line 2: Credit AR (reduce receivable)
-        await db.execute(
-            """
-            INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            transaction_id, ar_account['account_id'],
-            0, payment_amount,
-            payment_currency,
-            f"Payment reduces AR for {stock_number}"
-        )
-    
-    return {
-        'success': True,
-        'payment_id': payment_id,
-        'transaction_id': transaction_id,
-        'reference_number': reference_number,
-        'payment_amount': payment_amount,
-        'currency': payment_currency,
-        'message': f"Payment recorded successfully: {payment_currency} ${payment_amount:,.2f}"
-    }
-
-@app.get("/api/inventory/{inventory_id}/sale-summary")
-async def get_inventory_sale_summary(
-    inventory_id: int,
-    db=Depends(get_db),
-    user=Depends(get_current_user)
-):
-    """
-    Get financial summary for a sold bus
-    
-    Returns:
-    - Sale price, COGS, Gross Profit
-    - Total payments received
-    - AR balance
-    - Payment history
-    """
-    
-    # Get inventory info
-    inventory = await db.fetchrow(
-        """
-        SELECT inventory_id, stock_number, is_sold, sale_price, sale_currency, sale_date
-        FROM inventory
-        WHERE inventory_id = $1 AND is_deleted = FALSE
-        """,
-        inventory_id
-    )
-    
-    if not inventory:
-        raise HTTPException(status_code=404, detail="Inventory item not found")
-    
-    if not inventory['is_sold']:
-        return {
-            'is_sold': False,
-            'message': 'Bus not yet sold'
-        }
-    
-    sale_price = float(inventory['sale_price'] or 0)
-    sale_currency = inventory['sale_currency']
-    
-    # Calculate COGS
-    cogs = await db.fetchval(
-        """
-        SELECT COALESCE(SUM(amount), 0)
-        FROM cost_items
-        WHERE inventory_id = $1 AND currency = $2
-        """,
-        inventory_id, sale_currency
-    )
-    total_cogs = float(cogs or 0)
-    
-    # Check if sale recorded in accounting
-    sale_recorded = await db.fetchval(
-        "SELECT transaction_id FROM transactions WHERE reference_type = 'sale' AND reference_id = $1",
-        inventory_id
-    )
-    
-    # Get payments
-    payments = await db.fetch(
-        """
-        SELECT payment_id, payment_amount, payment_currency, payment_date,
-               payment_method, payment_type, reference_number, payment_notes
-        FROM payments
-        WHERE inventory_id = $1
-        ORDER BY payment_date ASC
-        """,
-        inventory_id
-    )
-    
-    total_paid = sum(float(p['payment_amount']) for p in payments if p['payment_currency'] == sale_currency)
-    
-    # Calculate AR balance
-    ar_balance = sale_price - total_paid if sale_recorded else sale_price
-    
-    return {
-        'is_sold': True,
-        'stock_number': inventory['stock_number'],
-        'sale_date': str(inventory['sale_date']),
-        'sale_price': sale_price,
-        'currency': sale_currency,
-        'cogs': total_cogs,
-        'gross_profit': sale_price - total_cogs,
-        'gross_profit_margin': ((sale_price - total_cogs) / sale_price * 100) if sale_price > 0 else 0,
-        'sale_recorded_in_accounting': bool(sale_recorded),
-        'total_payments_received': total_paid,
-        'ar_balance': ar_balance,
-        'payment_count': len(payments),
-        'payments': [dict(p) for p in payments]
-    }
-
-@app.post("/api/inventory/{inventory_id}/import-existing-payments")
-async def import_existing_payments(
-    inventory_id: int,
-    db=Depends(get_db),
-    user=Depends(get_current_user)
-):
-    """
-    ONE-TIME MIGRATION: Import existing payments into accounting system
-    
-    For payments that were recorded in the payments table but never 
-    created accounting entries. This creates the missing accounting 
-    entries (Debit Cash, Credit AR) for each payment.
-    """
-    from datetime import datetime
-    
-    # Verify inventory exists and is sold
-    inventory = await db.fetchrow(
-        """
-        SELECT inventory_id, stock_number, is_sold, sale_currency
-        FROM inventory 
-        WHERE inventory_id = $1 AND is_deleted = FALSE
-        """,
-        inventory_id
-    )
-    
-    if not inventory:
-        raise HTTPException(status_code=404, detail="Inventory item not found")
-    
-    if not inventory['is_sold']:
-        raise HTTPException(status_code=400, detail="Cannot import payments for unsold inventory")
-    
-    stock_number = inventory['stock_number']
-    sale_currency = inventory['sale_currency']
-    
-    # Get AR account
-    ar_account = await db.fetchrow(
-        f"SELECT account_id FROM accounts WHERE account_name = 'Accounts Receivable - {sale_currency}'"
-    )
-    
-    if not ar_account:
-        raise HTTPException(status_code=500, detail=f"AR account for {sale_currency} not found")
-    
-    # Find all payments that don't have accounting entries yet
-    payments_to_import = await db.fetch(
-        """
-        SELECT p.payment_id, p.payment_amount, p.payment_currency, p.payment_date,
-               p.payment_method, p.payment_type, p.payment_notes
-        FROM payments p
-        LEFT JOIN transactions t ON t.reference_type = 'payment' AND t.reference_id = p.payment_id
-        WHERE p.inventory_id = $1 AND t.transaction_id IS NULL
-        ORDER BY p.payment_date, p.payment_id
-        """,
-        inventory_id
-    )
-    
-    if not payments_to_import:
-        return {
-            'success': True,
-            'imported_count': 0,
-            'message': 'No payments need importing. All payments already have accounting entries.'
-        }
-    
-    # For payments without a payment_account_id, we need to determine where to credit
-    # We'll use a default cash account or require it in the request
-    # For now, let's use "Cash on Hand" in the appropriate currency
-    default_cash_account = await db.fetchrow(
-        f"SELECT account_id FROM accounts WHERE account_name = 'Cash on Hand - {sale_currency}'"
-    )
-    
-    if not default_cash_account:
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Default cash account not found. Please specify payment_account_id for each payment."
-        )
-    
-    imported_count = 0
-    imported_transactions = []
-    
-    # Process each payment
-    for idx, payment in enumerate(payments_to_import, start=1):
-        payment_id = payment['payment_id']
-        payment_amount = float(payment['payment_amount'])
-        payment_currency = payment['payment_currency']
-        payment_date = payment['payment_date']
-        payment_type = payment['payment_type']
-        
-        # Generate reference number
-        reference_number = f"PYMT-{payment_date.strftime('%Y%m%d')}-{stock_number}-{idx:03d}"
-        
-        async with db.transaction():
-            # Update payment with reference number
-            await db.execute(
-                "UPDATE payments SET reference_number = $1 WHERE payment_id = $2",
-                reference_number, payment_id
-            )
-            
-            # Create accounting transaction
-            transaction_id = await db.fetchval(
-                """
-                INSERT INTO transactions (
-                    transaction_date, description, reference_type, reference_id,
-                    reference_number, currency, created_by, created_at
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-                RETURNING transaction_id
-                """,
-                payment_date,
-                f"Payment for {stock_number} - {payment_type} (imported)",
-                "payment",
-                payment_id,
-                reference_number,
-                payment_currency,
-                user['username']
-            )
-            
-            # Transaction Line 1: Debit Cash (increase cash)
-            await db.execute(
-                """
-                INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-                VALUES ($1, $2, $3, $4, $5, $6)
-                """,
-                transaction_id, default_cash_account['account_id'],
-                payment_amount, 0,
-                payment_currency,
-                f"Received payment for {stock_number} (imported)"
-            )
-            
-            # Transaction Line 2: Credit AR (reduce receivable)
-            await db.execute(
-                """
-                INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount,
-                currency, notes
-            )
-                VALUES ($1, $2, $3, $4, $5, $6)
-                """,
-                transaction_id, ar_account['account_id'],
-                0, payment_amount,
-                payment_currency,
-                f"Payment reduces AR for {stock_number} (imported)"
-            )
-            
-            imported_count += 1
-            imported_transactions.append({
-                'payment_id': payment_id,
-                'transaction_id': transaction_id,
-                'reference_number': reference_number,
-                'amount': payment_amount,
-                'date': str(payment_date)
-            })
-    
-    return {
-        'success': True,
-        'imported_count': imported_count,
-        'imported_transactions': imported_transactions,
-        'message': f"Successfully imported {imported_count} payment(s) into accounting system"
-    }
 
 # ==================== COST ITEMS ENDPOINTS ====================
 
@@ -2967,7 +1209,7 @@ async def add_inventory_cost(
             INSERT INTO transactions (
                 transaction_date, description, reference_type, reference_id,
                 currency, created_by, reference_number
-            ) VALUES ($1, $2, $3, $4, $5, $6)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING transaction_id
         """
         
@@ -3309,22 +1551,22 @@ async def get_sales_analytics(
         start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
     
     # Build base query with filters
-    where_clauses = ["i.is_sold = TRUE", "i.is_deleted = FALSE"]
+    where_clauses = ["is_sold = TRUE", "is_deleted = FALSE"]
     params = []
     param_count = 1
     
     # Date filter
-    where_clauses.append(f"i.sale_date >= ${param_count}")
+    where_clauses.append(f"sale_date >= ${param_count}")
     params.append(start_date)
     param_count += 1
     
-    where_clauses.append(f"i.sale_date <= ${param_count}")
+    where_clauses.append(f"sale_date <= ${param_count}")
     params.append(end_date)
     param_count += 1
     
     # Currency filter (optional)
     if currency and currency != 'ALL':
-        where_clauses.append(f"i.sale_currency = ${param_count}")
+        where_clauses.append(f"sale_currency = ${param_count}")
         params.append(currency)
         param_count += 1
     
@@ -3334,14 +1576,14 @@ async def get_sales_analytics(
     overview_query = f"""
         SELECT 
             COUNT(*) as total_sales,
-            COUNT(DISTINCT i.client_id) as unique_clients,
-            SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as revenue_usd,
-            SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as revenue_mxn,
-            SUM(CASE WHEN i.payment_status = 'Paid in Full' THEN 0 ELSE COALESCE(i.balance_due, 0) END) as pending_balance_total,
-            COUNT(CASE WHEN i.payment_status = 'Paid in Full' THEN 1 END) as paid_in_full_count,
-            COUNT(CASE WHEN i.payment_status = 'Partial Payment' THEN 1 END) as partial_payment_count,
-            COUNT(CASE WHEN i.payment_status = 'Pending Deposit' THEN 1 END) as pending_deposit_count
-        FROM inventory i
+            COUNT(DISTINCT client_name) as unique_clients,
+            SUM(CASE WHEN sale_currency = 'USD' THEN sale_price ELSE 0 END) as revenue_usd,
+            SUM(CASE WHEN sale_currency = 'MXN' THEN sale_price ELSE 0 END) as revenue_mxn,
+            SUM(CASE WHEN payment_status = 'Paid in Full' THEN 0 ELSE COALESCE(balance_due, 0) END) as pending_balance_total,
+            COUNT(CASE WHEN payment_status = 'Paid in Full' THEN 1 END) as paid_in_full_count,
+            COUNT(CASE WHEN payment_status = 'Partial Payment' THEN 1 END) as partial_payment_count,
+            COUNT(CASE WHEN payment_status = 'Pending Deposit' THEN 1 END) as pending_deposit_count
+        FROM inventory
         WHERE {where_clause}
     """
     overview = await db.fetchrow(overview_query, *params)
@@ -3357,10 +1599,10 @@ async def get_sales_analytics(
             i.model,
             i.vin,
             i.sale_date,
-            c.client_name,
-            c.client_company,
-            c.client_location,
-            c.client_use_case,
+            i.client_name,
+            i.client_company,
+            i.client_location,
+            i.client_use_case,
             i.sale_price,
             i.sale_currency,
             i.purchase_price_usd,
@@ -3369,7 +1611,6 @@ async def get_sales_analytics(
             COALESCE(i.total_cost_usd, i.purchase_price_usd) as total_cost_usd,
             COALESCE(i.total_cost_mxn, 0) as total_cost_mxn
         FROM inventory i
-        LEFT JOIN clients c ON i.client_id = c.client_id
         WHERE {where_clause}
         ORDER BY i.sale_date DESC
     """
@@ -3442,18 +1683,17 @@ async def get_sales_analytics(
     # ========== CLIENT ANALYTICS ==========
     client_analytics_query = f"""
         SELECT 
-            c.client_name,
-            c.client_company,
-            c.client_location,
+            client_name,
+            client_company,
+            client_location,
             COUNT(*) as total_purchases,
-            SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as total_spent_usd,
-            SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as total_spent_mxn,
-            MAX(i.sale_date) as last_purchase_date,
-            STRING_AGG(DISTINCT c.client_use_case, ', ') as use_cases
-        FROM inventory i
-        LEFT JOIN clients c ON i.client_id = c.client_id
-        WHERE {where_clause} AND i.client_id IS NOT NULL
-        GROUP BY c.client_name, c.client_company, c.client_location
+            SUM(CASE WHEN sale_currency = 'USD' THEN sale_price ELSE 0 END) as total_spent_usd,
+            SUM(CASE WHEN sale_currency = 'MXN' THEN sale_price ELSE 0 END) as total_spent_mxn,
+            MAX(sale_date) as last_purchase_date,
+            STRING_AGG(DISTINCT client_use_case, ', ') as use_cases
+        FROM inventory
+        WHERE {where_clause} AND client_name IS NOT NULL
+        GROUP BY client_name, client_company, client_location
         ORDER BY total_purchases DESC, total_spent_usd DESC
         LIMIT 10
     """
@@ -3462,14 +1702,13 @@ async def get_sales_analytics(
     # Use case breakdown
     use_case_query = f"""
         SELECT 
-            COALESCE(c.client_use_case, 'Not Specified') as use_case,
+            COALESCE(client_use_case, 'Not Specified') as use_case,
             COUNT(*) as count,
-            SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as revenue_usd,
-            SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as revenue_mxn
-        FROM inventory i
-        LEFT JOIN clients c ON i.client_id = c.client_id
+            SUM(CASE WHEN sale_currency = 'USD' THEN sale_price ELSE 0 END) as revenue_usd,
+            SUM(CASE WHEN sale_currency = 'MXN' THEN sale_price ELSE 0 END) as revenue_mxn
+        FROM inventory
         WHERE {where_clause}
-        GROUP BY c.client_use_case
+        GROUP BY client_use_case
         ORDER BY count DESC
     """
     use_case_breakdown = await db.fetch(use_case_query, *params)
@@ -3477,13 +1716,13 @@ async def get_sales_analytics(
     # ========== MONTHLY TRENDS ==========
     monthly_query = f"""
         SELECT 
-            DATE_TRUNC('month', i.sale_date) as month,
+            DATE_TRUNC('month', sale_date) as month,
             COUNT(*) as sales_count,
-            SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as revenue_usd,
-            SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as revenue_mxn
-        FROM inventory i
+            SUM(CASE WHEN sale_currency = 'USD' THEN sale_price ELSE 0 END) as revenue_usd,
+            SUM(CASE WHEN sale_currency = 'MXN' THEN sale_price ELSE 0 END) as revenue_mxn
+        FROM inventory
         WHERE {where_clause}
-        GROUP BY DATE_TRUNC('month', i.sale_date)
+        GROUP BY DATE_TRUNC('month', sale_date)
         ORDER BY month
     """
     monthly_trends = await db.fetch(monthly_query, *params)
@@ -3623,7 +1862,7 @@ async def create_account(
         INSERT INTO accounts (
             account_code, account_name, account_type, account_subtype,
             currency, parent_account_id, description
-        ) VALUES ($1, $2, $3, $4, $5, $6)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *
     """
     
@@ -4082,7 +2321,7 @@ async def record_profit_distribution(
             INSERT INTO transactions (
                 transaction_date, description, reference_type, reference_id,
                 currency, created_by, reference_number
-            ) VALUES ($1, $2, $3, $4, $5, $6)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING transaction_id
         """
         
@@ -4354,6 +2593,9 @@ async def create_pre_inspection(inspection: PreInspectionCreate, db=Depends(get_
             passenger_capacity, wheelchair_capacity, engine_make, engine_model,
             engine_type, transmission, fuel_type, gvwr, length_feet,
             exterior_color, interior_color, title_status,
+            body_style, brake_system, air_conditioning, heater,
+            seat_belts, emergency_exits, fire_extinguisher, first_aid_kit,
+            ada_compliant, wheelchair_lift_ramp,
             inspection_location, seller_name, seller_asking_price, seller_contact,
             inspection_date, inspector_name,
             engine_condition, engine_starts, engine_oil_condition, engine_coolant_condition,
@@ -4375,7 +2617,8 @@ async def create_pre_inspection(inspection: PreInspectionCreate, db=Depends(get_
         $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28,
         $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41,
         $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54,
-        $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66
+        $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67,
+        $68, $69, $70, $71, $72, $73, $74
     )
         RETURNING *
     """
@@ -4388,6 +2631,9 @@ async def create_pre_inspection(inspection: PreInspectionCreate, db=Depends(get_
         inspection.engine_make, inspection.engine_model, inspection.engine_type,
         inspection.transmission, inspection.fuel_type, inspection.gvwr, inspection.length_feet,
         inspection.exterior_color, inspection.interior_color, inspection.title_status,
+        inspection.body_style, inspection.brake_system, inspection.air_conditioning, inspection.heater,
+        inspection.seat_belts, inspection.emergency_exits, inspection.fire_extinguisher, inspection.first_aid_kit,
+        inspection.ada_compliant, inspection.wheelchair_lift_ramp,
         inspection.inspection_location, inspection.seller_name, inspection.seller_asking_price,
         inspection.seller_contact, inspection.inspection_date, inspection.inspector_name,
         inspection.engine_condition, inspection.engine_starts, inspection.engine_oil_condition,
@@ -4515,17 +2761,22 @@ async def create_inventory_from_inspection(
             passenger_capacity, wheelchair_capacity,
             engine_make, engine_model, engine_type, transmission, fuel_type,
             gvwr, length_feet, exterior_color, interior_color, title_status,
+            body_style, brake_system, air_conditioning, heater,
+            emergency_exits, fire_extinguisher, first_aid_kit,
+            ada_compliant, wheelchair_lift_ramp,
             condition, purchase_location, pre_inspection_id, internal_notes,
             purchase_date, purchase_price_usd, supplier_id,
             current_location, status, created_by
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-            $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28
+            $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28,
+            $29, $30, $31, $32, $33, $34, $35
         )
         RETURNING *
     """
     
     # Execute the inventory creation
+    # Use .get() for fields that might not exist in inspection table
     inventory_row = await db.fetchrow(
         inventory_query,
         inspection['vin'],
@@ -4533,21 +2784,30 @@ async def create_inventory_from_inspection(
         inspection['year'],
         inspection['make'],
         inspection['model'],
-        inspection['odometer'],
-        inspection['passenger_capacity'],
-        inspection['wheelchair_capacity'],
-        inspection['engine_make'],
-        inspection['engine_model'],
-        inspection['engine_type'],
-        inspection['transmission'],
-        inspection['fuel_type'],
-        inspection['gvwr'],
-        inspection['length_feet'],
-        inspection['exterior_color'],
-        inspection['interior_color'],
-        inspection['title_status'],
+        inspection.get('odometer'),
+        inspection.get('passenger_capacity'),  # NULL if not in inspection
+        inspection.get('wheelchair_capacity'),  # NULL if not in inspection
+        inspection.get('engine_make'),  # NULL if not in inspection
+        inspection.get('engine_model'),  # NULL if not in inspection
+        inspection.get('engine_type'),  # NULL if not in inspection
+        inspection.get('transmission'),  # NULL if not in inspection
+        inspection.get('fuel_type'),  # NULL if not in inspection
+        inspection.get('gvwr'),  # NULL if not in inspection
+        inspection.get('length_feet'),  # NULL if not in inspection
+        inspection.get('exterior_color'),  # NULL if not in inspection
+        inspection.get('interior_color'),  # NULL if not in inspection
+        inspection.get('title_status'),  # NULL if not in inspection
+        inspection.get('body_style'),  # Body style
+        inspection.get('brake_system'),  # Brake system type
+        inspection.get('air_conditioning'),  # Has AC
+        inspection.get('heater'),  # Has heater
+        inspection.get('emergency_exits'),  # Number of emergency exits
+        inspection.get('fire_extinguisher'),  # Has fire extinguisher
+        inspection.get('first_aid_kit'),  # NEW: Has first aid kit
+        inspection.get('ada_compliant'),  # NEW: ADA compliant
+        inspection.get('wheelchair_lift_ramp'),  # NEW: Wheelchair lift/ramp type
         condition,
-        inspection['inspection_location'],
+        inspection.get('inspection_location'),
         inspection_id,
         summary,
         purchase_date,
@@ -4565,723 +2825,6 @@ async def create_inventory_from_inspection(
     )
     
     return dict(inventory_row)
-
-# ==================== FINANCIAL REPORTS ====================
-
-@app.get("/api/accounting/reports/income-statement")
-async def get_income_statement(
-    start_date: str,
-    end_date: str,
-    currency: str = "USD",
-    db=Depends(get_db),
-    user=Depends(get_current_user)
-):
-    """Generate Income Statement (Profit & Loss) for a date range"""
-    
-    from datetime import datetime
-    
-    # Convert date strings to date objects
-    start = datetime.strptime(start_date, '%Y-%m-%d').date()
-    end = datetime.strptime(end_date, '%Y-%m-%d').date()
-    
-    # Get exchange rate if needed
-    exchange_rate = 1.0
-    if currency == "USD":
-        # Converting MXN to USD: need MXN→USD rate
-        rate = await db.fetchval(
-            "SELECT rate FROM exchange_rates WHERE from_currency = 'MXN' AND to_currency = 'USD' ORDER BY created_at DESC LIMIT 1"
-        )
-        exchange_rate = float(rate) if rate else 0.057  # Default ~1/17.5
-    elif currency == "MXN":
-        # Converting USD to MXN: need USD→MXN rate
-        rate = await db.fetchval(
-            "SELECT rate FROM exchange_rates WHERE from_currency = 'USD' AND to_currency = 'MXN' ORDER BY created_at DESC LIMIT 1"
-        )
-        # If no USD→MXN rate exists, calculate from MXN→USD rate
-        if rate:
-            exchange_rate = float(rate)
-        else:
-            mxn_to_usd = await db.fetchval(
-                "SELECT rate FROM exchange_rates WHERE from_currency = 'MXN' AND to_currency = 'USD' ORDER BY created_at DESC LIMIT 1"
-            )
-            if mxn_to_usd:
-                exchange_rate = 1 / float(mxn_to_usd)  # Invert the rate
-            else:
-                exchange_rate = 17.50  # Default USD→MXN rate
-    
-    # Query account activity for the period
-    query = """
-        WITH account_activity AS (
-            SELECT 
-                a.account_id,
-                a.account_code,
-                a.account_name,
-                a.account_type,
-                a.account_subtype,
-                a.currency,
-                COALESCE(SUM(CASE WHEN tl.currency = 'USD' THEN tl.debit_amount ELSE 0 END), 0) as debit_usd,
-                COALESCE(SUM(CASE WHEN tl.currency = 'USD' THEN tl.credit_amount ELSE 0 END), 0) as credit_usd,
-                COALESCE(SUM(CASE WHEN tl.currency = 'MXN' THEN tl.debit_amount ELSE 0 END), 0) as debit_mxn,
-                COALESCE(SUM(CASE WHEN tl.currency = 'MXN' THEN tl.credit_amount ELSE 0 END), 0) as credit_mxn
-            FROM accounts a
-            LEFT JOIN transaction_lines tl ON a.account_id = tl.account_id
-            LEFT JOIN transactions t ON tl.transaction_id = t.transaction_id
-            WHERE t.transaction_date >= $1 AND t.transaction_date <= $2
-            GROUP BY a.account_id, a.account_code, a.account_name, a.account_type, a.account_subtype, a.currency
-        )
-        SELECT 
-            account_code,
-            account_name,
-            account_type,
-            account_subtype,
-            currency,
-            debit_usd,
-            credit_usd,
-            debit_mxn,
-            credit_mxn,
-            (credit_usd - debit_usd) as net_usd,
-            (credit_mxn - debit_mxn) as net_mxn,
-            (debit_usd - credit_usd) as expense_usd,
-            (debit_mxn - credit_mxn) as expense_mxn
-        FROM account_activity
-        WHERE account_type IN ('Income', 'Expense')
-        ORDER BY account_code
-    """
-    
-    rows = await db.fetch(query, start, end)
-    
-    # Organize data
-    revenue = {'USD': 0, 'MXN': 0, 'accounts': []}
-    cogs = {'USD': 0, 'MXN': 0, 'accounts': []}
-    operating_expenses = {'USD': 0, 'MXN': 0, 'accounts': []}
-    
-    cogs_codes = ['5000', '5100', '5200']
-    
-    for row in rows:
-        account_data = {
-            'code': row['account_code'],
-            'name': row['account_name'],
-            'amount_usd': 0,
-            'amount_mxn': 0
-        }
-        
-        if row['account_type'] == 'Income':
-            account_data['amount_usd'] = float(row['net_usd'])
-            account_data['amount_mxn'] = float(row['net_mxn'])
-            revenue['USD'] += account_data['amount_usd']
-            revenue['MXN'] += account_data['amount_mxn']
-            revenue['accounts'].append(account_data)
-            
-        elif row['account_type'] == 'Expense':
-            account_data['amount_usd'] = float(row['expense_usd'])
-            account_data['amount_mxn'] = float(row['expense_mxn'])
-            
-            if row['account_code'] in cogs_codes:
-                cogs['USD'] += account_data['amount_usd']
-                cogs['MXN'] += account_data['amount_mxn']
-                cogs['accounts'].append(account_data)
-            else:
-                operating_expenses['USD'] += account_data['amount_usd']
-                operating_expenses['MXN'] += account_data['amount_mxn']
-                operating_expenses['accounts'].append(account_data)
-    
-    # Calculate totals
-    gross_profit_usd = revenue['USD'] - cogs['USD']
-    gross_profit_mxn = revenue['MXN'] - cogs['MXN']
-    net_income_usd = gross_profit_usd - operating_expenses['USD']
-    net_income_mxn = gross_profit_mxn - operating_expenses['MXN']
-    
-    # Convert if needed
-    if currency == "USD":
-        # exchange_rate is MXN→USD (e.g., 0.057 means 1 MXN = 0.057 USD)
-        # To convert MXN to USD: multiply by the rate
-        revenue['USD'] += revenue['MXN'] * float(exchange_rate)
-        cogs['USD'] += cogs['MXN'] * float(exchange_rate)
-        operating_expenses['USD'] += operating_expenses['MXN'] * float(exchange_rate)
-        gross_profit = gross_profit_usd + (gross_profit_mxn * float(exchange_rate))
-        net_income = net_income_usd + (net_income_mxn * float(exchange_rate))
-        
-        for account in revenue['accounts'] + cogs['accounts'] + operating_expenses['accounts']:
-            account['amount_usd'] += account['amount_mxn'] * float(exchange_rate)
-            account['amount_mxn'] = 0
-        
-        return {
-            'start_date': start_date,
-            'end_date': end_date,
-            'currency': 'USD',
-            'exchange_rate': exchange_rate,
-            'revenue': {'total': revenue['USD'], 'accounts': revenue['accounts']},
-            'cogs': {'total': cogs['USD'], 'accounts': cogs['accounts']},
-            'gross_profit': gross_profit,
-            'operating_expenses': {'total': operating_expenses['USD'], 'accounts': operating_expenses['accounts']},
-            'net_income': net_income
-        }
-    
-    elif currency == "MXN":
-        revenue['MXN'] += revenue['USD'] * float(exchange_rate)
-        cogs['MXN'] += cogs['USD'] * float(exchange_rate)
-        operating_expenses['MXN'] += operating_expenses['USD'] * float(exchange_rate)
-        gross_profit = gross_profit_mxn + (gross_profit_usd * float(exchange_rate))
-        net_income = net_income_mxn + (net_income_usd * float(exchange_rate))
-        
-        for account in revenue['accounts'] + cogs['accounts'] + operating_expenses['accounts']:
-            # Only convert if there's actually USD amount (not zero)
-            if account['amount_usd'] != 0:
-                account['amount_mxn'] += account['amount_usd'] * float(exchange_rate)
-                account['amount_usd'] = 0
-        
-        return {
-            'start_date': start_date,
-            'end_date': end_date,
-            'currency': 'MXN',
-            'exchange_rate': exchange_rate,
-            'revenue': {'total': revenue['MXN'], 'accounts': revenue['accounts']},
-            'cogs': {'total': cogs['MXN'], 'accounts': cogs['accounts']},
-            'gross_profit': gross_profit,
-            'operating_expenses': {'total': operating_expenses['MXN'], 'accounts': operating_expenses['accounts']},
-            'net_income': net_income
-        }
-    
-    else:
-        return {
-            'start_date': start_date,
-            'end_date': end_date,
-            'currency': 'BOTH',
-            'exchange_rate': exchange_rate,
-            'revenue': {
-                'total_usd': revenue['USD'],
-                'total_mxn': revenue['MXN'],
-                'accounts': revenue['accounts']
-            },
-            'cogs': {
-                'total_usd': cogs['USD'],
-                'total_mxn': cogs['MXN'],
-                'accounts': cogs['accounts']
-            },
-            'gross_profit_usd': gross_profit_usd,
-            'gross_profit_mxn': gross_profit_mxn,
-            'operating_expenses': {
-                'total_usd': operating_expenses['USD'],
-                'total_mxn': operating_expenses['MXN'],
-                'accounts': operating_expenses['accounts']
-            },
-            'net_income_usd': net_income_usd,
-            'net_income_mxn': net_income_mxn
-        }
-
-@app.get("/api/accounting/reports/balance-sheet")
-async def get_balance_sheet(
-    as_of_date: str,
-    currency: str = "USD",
-    db=Depends(get_db),
-    user=Depends(get_current_user)
-):
-    """Generate Balance Sheet as of a specific date"""
-    
-    from datetime import datetime
-    
-    # Convert date string to date object
-    report_date = datetime.strptime(as_of_date, '%Y-%m-%d').date()
-    
-    # Get exchange rate if needed
-    exchange_rate = 1.0
-    if currency == "USD":
-        rate = await db.fetchval(
-            "SELECT rate FROM exchange_rates WHERE from_currency = 'MXN' AND to_currency = 'USD' ORDER BY created_at DESC LIMIT 1"
-        )
-        exchange_rate = float(rate) if rate else 0.057
-    elif currency == "MXN":
-        rate = await db.fetchval(
-            "SELECT rate FROM exchange_rates WHERE from_currency = 'USD' AND to_currency = 'MXN' ORDER BY created_at DESC LIMIT 1"
-        )
-        if rate:
-            exchange_rate = float(rate)
-        else:
-            mxn_to_usd = await db.fetchval(
-                "SELECT rate FROM exchange_rates WHERE from_currency = 'MXN' AND to_currency = 'USD' ORDER BY created_at DESC LIMIT 1"
-            )
-            if mxn_to_usd:
-                exchange_rate = 1 / float(mxn_to_usd)
-            else:
-                exchange_rate = 17.50
-    
-    # Query account balances as of the date
-    # Balance = sum of all transaction lines up to and including the date
-    query = """
-        WITH account_balances AS (
-            SELECT 
-                a.account_id,
-                a.account_code,
-                a.account_name,
-                a.account_type,
-                a.account_subtype,
-                a.currency,
-                COALESCE(SUM(CASE WHEN tl.currency = 'USD' THEN tl.debit_amount ELSE 0 END), 0) as debit_usd,
-                COALESCE(SUM(CASE WHEN tl.currency = 'USD' THEN tl.credit_amount ELSE 0 END), 0) as credit_usd,
-                COALESCE(SUM(CASE WHEN tl.currency = 'MXN' THEN tl.debit_amount ELSE 0 END), 0) as debit_mxn,
-                COALESCE(SUM(CASE WHEN tl.currency = 'MXN' THEN tl.credit_amount ELSE 0 END), 0) as credit_mxn
-            FROM accounts a
-            LEFT JOIN transaction_lines tl ON a.account_id = tl.account_id
-            LEFT JOIN transactions t ON tl.transaction_id = t.transaction_id
-            WHERE t.transaction_date IS NULL OR t.transaction_date <= $1
-            GROUP BY a.account_id, a.account_code, a.account_name, a.account_type, a.account_subtype, a.currency
-        )
-        SELECT 
-            account_code,
-            account_name,
-            account_type,
-            account_subtype,
-            currency,
-            debit_usd,
-            credit_usd,
-            debit_mxn,
-            credit_mxn,
-            -- Asset accounts: debit increases, credit decreases
-            CASE 
-                WHEN account_type = 'Asset' THEN (debit_usd - credit_usd)
-                WHEN account_type = 'Liability' THEN (credit_usd - debit_usd)
-                WHEN account_type = 'Equity' THEN (credit_usd - debit_usd)
-                ELSE 0
-            END as balance_usd,
-            CASE 
-                WHEN account_type = 'Asset' THEN (debit_mxn - credit_mxn)
-                WHEN account_type = 'Liability' THEN (credit_mxn - debit_mxn)
-                WHEN account_type = 'Equity' THEN (credit_mxn - debit_mxn)
-                ELSE 0
-            END as balance_mxn
-        FROM account_balances
-        WHERE account_type IN ('Asset', 'Liability', 'Equity')
-        ORDER BY account_type, account_code
-    """
-    
-    rows = await db.fetch(query, report_date)
-    
-    # Organize accounts
-    assets = {'USD': 0, 'MXN': 0, 'current': [], 'non_current': []}
-    liabilities = {'USD': 0, 'MXN': 0, 'current': [], 'non_current': []}
-    equity = {'USD': 0, 'MXN': 0, 'accounts': []}
-    
-    for row in rows:
-        account_data = {
-            'code': row['account_code'],
-            'name': row['account_name'],
-            'subtype': row['account_subtype'],
-            'balance_usd': float(row['balance_usd']),
-            'balance_mxn': float(row['balance_mxn'])
-        }
-        
-        if row['account_type'] == 'Asset':
-            assets['USD'] += account_data['balance_usd']
-            assets['MXN'] += account_data['balance_mxn']
-            # Current Assets: Bank, Cash, AR, Inventory
-            if row['account_subtype'] in ['Bank', 'Cash', 'AR', 'Inventory']:
-                assets['current'].append(account_data)
-            else:
-                assets['non_current'].append(account_data)
-                
-        elif row['account_type'] == 'Liability':
-            liabilities['USD'] += account_data['balance_usd']
-            liabilities['MXN'] += account_data['balance_mxn']
-            # Current Liabilities: AP, Credit Line
-            if row['account_subtype'] in ['AP', 'Credit Line']:
-                liabilities['current'].append(account_data)
-            else:
-                liabilities['non_current'].append(account_data)
-                
-        elif row['account_type'] == 'Equity':
-            equity['USD'] += account_data['balance_usd']
-            equity['MXN'] += account_data['balance_mxn']
-            equity['accounts'].append(account_data)
-    
-    # Convert if needed
-    if currency == "USD":
-        # Converting MXN to USD: multiply by MXN→USD rate (e.g., MXN * 0.057)
-        assets['USD'] += assets['MXN'] * float(exchange_rate)
-        liabilities['USD'] += liabilities['MXN'] * float(exchange_rate)
-        equity['USD'] += equity['MXN'] * float(exchange_rate)
-        
-        for account in assets['current'] + assets['non_current'] + liabilities['current'] + liabilities['non_current'] + equity['accounts']:
-            account['balance_usd'] += account['balance_mxn'] * float(exchange_rate)
-            account['balance_mxn'] = 0
-        
-        total_liabilities_equity = liabilities['USD'] + equity['USD']
-        is_balanced = abs(assets['USD'] - total_liabilities_equity) < 0.01
-        
-        return {
-            'as_of_date': as_of_date,
-            'currency': 'USD',
-            'exchange_rate': float(exchange_rate),
-            'assets': {
-                'current': assets['current'],
-                'non_current': assets['non_current'],
-                'total': assets['USD']
-            },
-            'liabilities': {
-                'current': liabilities['current'],
-                'non_current': liabilities['non_current'],
-                'total': liabilities['USD']
-            },
-            'equity': {
-                'accounts': equity['accounts'],
-                'total': equity['USD']
-            },
-            'total_liabilities_equity': total_liabilities_equity,
-            'is_balanced': is_balanced,
-            'balance_difference': assets['USD'] - total_liabilities_equity
-        }
-    
-    elif currency == "MXN":
-        assets['MXN'] += assets['USD'] * float(exchange_rate)
-        liabilities['MXN'] += liabilities['USD'] * float(exchange_rate)
-        equity['MXN'] += equity['USD'] * float(exchange_rate)
-        
-        for account in assets['current'] + assets['non_current'] + liabilities['current'] + liabilities['non_current'] + equity['accounts']:
-            account['balance_mxn'] += account['balance_usd'] * float(exchange_rate)
-            account['balance_usd'] = 0
-        
-        total_liabilities_equity = liabilities['MXN'] + equity['MXN']
-        is_balanced = abs(assets['MXN'] - total_liabilities_equity) < 0.01
-        
-        return {
-            'as_of_date': as_of_date,
-            'currency': 'MXN',
-            'exchange_rate': float(exchange_rate),
-            'assets': {
-                'current': assets['current'],
-                'non_current': assets['non_current'],
-                'total': assets['MXN']
-            },
-            'liabilities': {
-                'current': liabilities['current'],
-                'non_current': liabilities['non_current'],
-                'total': liabilities['MXN']
-            },
-            'equity': {
-                'accounts': equity['accounts'],
-                'total': equity['MXN']
-            },
-            'total_liabilities_equity': total_liabilities_equity,
-            'is_balanced': is_balanced,
-            'balance_difference': assets['MXN'] - total_liabilities_equity
-        }
-    
-    else:  # BOTH
-        total_liabilities_equity_usd = liabilities['USD'] + equity['USD']
-        total_liabilities_equity_mxn = liabilities['MXN'] + equity['MXN']
-        is_balanced = (abs(assets['USD'] - total_liabilities_equity_usd) < 0.01 and 
-                      abs(assets['MXN'] - total_liabilities_equity_mxn) < 0.01)
-        
-        return {
-            'as_of_date': as_of_date,
-            'currency': 'BOTH',
-            'exchange_rate': float(exchange_rate),
-            'assets': {
-                'current': assets['current'],
-                'non_current': assets['non_current'],
-                'total_usd': assets['USD'],
-                'total_mxn': assets['MXN']
-            },
-            'liabilities': {
-                'current': liabilities['current'],
-                'non_current': liabilities['non_current'],
-                'total_usd': liabilities['USD'],
-                'total_mxn': liabilities['MXN']
-            },
-            'equity': {
-                'accounts': equity['accounts'],
-                'total_usd': equity['USD'],
-                'total_mxn': equity['MXN']
-            },
-            'total_liabilities_equity_usd': total_liabilities_equity_usd,
-            'total_liabilities_equity_mxn': total_liabilities_equity_mxn,
-            'is_balanced': is_balanced,
-            'balance_difference_usd': assets['USD'] - total_liabilities_equity_usd,
-            'balance_difference_mxn': assets['MXN'] - total_liabilities_equity_mxn
-        }
-
-@app.post("/api/accounting/close-period")
-async def close_accounting_period(
-    period_data: dict,
-    db=Depends(get_db),
-    user=Depends(get_current_user)
-):
-    """
-    Close an accounting period by transferring Net Income to Retained Earnings
-    
-    Steps:
-    1. Calculate Net Income for the period (Revenue - Expenses)
-    2. Create closing entries to zero out all Revenue and Expense accounts
-    3. Transfer Net Income to Retained Earnings
-    """
-    
-    from datetime import datetime
-    
-    start_date = period_data.get('start_date')
-    end_date = period_data.get('end_date')
-    period_name = period_data.get('period_name', f"{start_date} to {end_date}")
-    
-    # Convert dates
-    start = datetime.strptime(start_date, '%Y-%m-%d').date()
-    end = datetime.strptime(end_date, '%Y-%m-%d').date()
-    
-    # Get exchange rate for conversions
-    exchange_rate_mxn_usd = await db.fetchval(
-        "SELECT rate FROM exchange_rates WHERE from_currency = 'MXN' AND to_currency = 'USD' ORDER BY created_at DESC LIMIT 1"
-    ) or 0.057
-    
-    # Query to get all revenue and expense account balances for the period
-    query = """
-        WITH period_activity AS (
-            SELECT 
-                a.account_id,
-                a.account_code,
-                a.account_name,
-                a.account_type,
-                COALESCE(SUM(CASE WHEN tl.currency = 'USD' THEN tl.debit_amount ELSE 0 END), 0) as debit_usd,
-                COALESCE(SUM(CASE WHEN tl.currency = 'USD' THEN tl.credit_amount ELSE 0 END), 0) as credit_usd,
-                COALESCE(SUM(CASE WHEN tl.currency = 'MXN' THEN tl.debit_amount ELSE 0 END), 0) as debit_mxn,
-                COALESCE(SUM(CASE WHEN tl.currency = 'MXN' THEN tl.credit_amount ELSE 0 END), 0) as credit_mxn
-            FROM accounts a
-            LEFT JOIN transaction_lines tl ON a.account_id = tl.account_id
-            LEFT JOIN transactions t ON tl.transaction_id = t.transaction_id
-            WHERE t.transaction_date >= $1 AND t.transaction_date <= $2
-            GROUP BY a.account_id, a.account_code, a.account_name, a.account_type
-        )
-        SELECT 
-            account_id,
-            account_code,
-            account_name,
-            account_type,
-            debit_usd,
-            credit_usd,
-            debit_mxn,
-            credit_mxn,
-            -- Income: credits - debits (revenue increases with credits)
-            -- Expense: debits - credits (expenses increase with debits)
-            CASE 
-                WHEN account_type = 'Income' THEN (credit_usd - debit_usd)
-                WHEN account_type = 'Expense' THEN (debit_usd - credit_usd)
-                ELSE 0
-            END as net_usd,
-            CASE 
-                WHEN account_type = 'Income' THEN (credit_mxn - debit_mxn)
-                WHEN account_type = 'Expense' THEN (debit_mxn - credit_mxn)
-                ELSE 0
-            END as net_mxn
-        FROM period_activity
-        WHERE account_type IN ('Income', 'Expense')
-          AND (debit_usd > 0 OR credit_usd > 0 OR debit_mxn > 0 OR credit_mxn > 0)
-        ORDER BY account_type, account_code
-    """
-    
-    rows = await db.fetch(query, start, end)
-    
-    # Calculate Net Income
-    total_revenue_usd = 0
-    total_revenue_mxn = 0
-    total_expenses_usd = 0
-    total_expenses_mxn = 0
-    
-    accounts_to_close = []
-    
-    for row in rows:
-        account_info = {
-            'account_id': row['account_id'],
-            'account_name': row['account_name'],
-            'account_type': row['account_type'],
-            'net_usd': float(row['net_usd']),
-            'net_mxn': float(row['net_mxn'])
-        }
-        accounts_to_close.append(account_info)
-        
-        if row['account_type'] == 'Income':
-            total_revenue_usd += account_info['net_usd']
-            total_revenue_mxn += account_info['net_mxn']
-        elif row['account_type'] == 'Expense':
-            total_expenses_usd += account_info['net_usd']
-            total_expenses_mxn += account_info['net_mxn']
-    
-    net_income_usd = total_revenue_usd - total_expenses_usd
-    net_income_mxn = total_revenue_mxn - total_expenses_mxn
-    
-    # Get Retained Earnings account
-    retained_earnings = await db.fetchrow(
-        "SELECT account_id FROM accounts WHERE account_name = 'Retained Earnings'"
-    )
-    
-    if not retained_earnings:
-        raise HTTPException(status_code=404, detail="Retained Earnings account not found")
-    
-    # Generate reference number
-    period_code = end.strftime('%Y%m')  # e.g., 202603 for March 2026
-    reference_number = f"CLOSE-{period_code}"
-    
-    # Check if period already closed
-    existing_close = await db.fetchval(
-        "SELECT transaction_id FROM transactions WHERE reference_number = $1",
-        reference_number
-    )
-    
-    if existing_close:
-        raise HTTPException(status_code=400, detail=f"Period {period_name} has already been closed")
-    
-    # Create closing transaction
-    transaction_id = await db.fetchval(
-        """
-        INSERT INTO transactions (transaction_date, description, reference_type, reference_number, currency, created_by, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, NOW())
-        RETURNING transaction_id
-        """,
-        end,  # Use last day of period as transaction date
-        f"Closing Entry - {period_name}",
-        "closing",
-        reference_number,
-        "USD",  # Default currency
-        user['username']
-    )
-    
-    # Create closing entries for each revenue and expense account
-    
-    # Close Revenue accounts (debit revenue, credit retained earnings)
-    for account in accounts_to_close:
-        if account['account_type'] == 'Income':
-            # Close USD revenue
-            if account['net_usd'] != 0:
-                await db.execute(
-                    """
-                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    """,
-                    transaction_id,
-                    account['account_id'],
-                    abs(account['net_usd']),  # Debit revenue to zero it out
-                    0,
-                    'USD',
-                    f"Close {account['account_name']} to Retained Earnings"
-                )
-            
-            # Close MXN revenue
-            if account['net_mxn'] != 0:
-                await db.execute(
-                    """
-                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    """,
-                    transaction_id,
-                    account['account_id'],
-                    abs(account['net_mxn']),  # Debit revenue to zero it out
-                    0,
-                    'MXN',
-                    f"Close {account['account_name']} to Retained Earnings"
-                )
-    
-    # Close Expense accounts (credit expense, debit retained earnings)
-    for account in accounts_to_close:
-        if account['account_type'] == 'Expense':
-            # Close USD expenses
-            if account['net_usd'] != 0:
-                await db.execute(
-                    """
-                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    """,
-                    transaction_id,
-                    account['account_id'],
-                    0,
-                    abs(account['net_usd']),  # Credit expense to zero it out
-                    'USD',
-                    f"Close {account['account_name']} to Retained Earnings"
-                )
-            
-            # Close MXN expenses
-            if account['net_mxn'] != 0:
-                await db.execute(
-                    """
-                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    """,
-                    transaction_id,
-                    account['account_id'],
-                    0,
-                    abs(account['net_mxn']),  # Credit expense to zero it out
-                    'MXN',
-                    f"Close {account['account_name']} to Retained Earnings"
-                )
-    
-    # Transfer Net Income to Retained Earnings
-    # If Net Income is positive (profit): Credit Retained Earnings
-    # If Net Income is negative (loss): Debit Retained Earnings
-    
-    if net_income_usd != 0:
-        if net_income_usd > 0:
-            # Profit: Credit Retained Earnings
-            await db.execute(
-                """
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                """,
-                transaction_id,
-                retained_earnings['account_id'],
-                0,
-                abs(net_income_usd),
-                'USD',
-                f"Net Income for {period_name}"
-            )
-        else:
-            # Loss: Debit Retained Earnings
-            await db.execute(
-                """
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                """,
-                transaction_id,
-                retained_earnings['account_id'],
-                abs(net_income_usd),
-                0,
-                'USD',
-                f"Net Loss for {period_name}"
-            )
-    
-    if net_income_mxn != 0:
-        if net_income_mxn > 0:
-            # Profit: Credit Retained Earnings
-            await db.execute(
-                """
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                """,
-                transaction_id,
-                retained_earnings['account_id'],
-                0,
-                abs(net_income_mxn),
-                'MXN',
-                f"Net Income for {period_name}"
-            )
-        else:
-            # Loss: Debit Retained Earnings
-            await db.execute(
-                """
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                """,
-                transaction_id,
-                retained_earnings['account_id'],
-                abs(net_income_mxn),
-                0,
-                'MXN',
-                f"Net Loss for {period_name}"
-            )
-    
-    return {
-        'success': True,
-        'transaction_id': transaction_id,
-        'reference_number': reference_number,
-        'period_name': period_name,
-        'net_income_usd': net_income_usd,
-        'net_income_mxn': net_income_mxn,
-        'accounts_closed': len(accounts_to_close),
-        'message': f"Successfully closed period {period_name}. Net Income: ${net_income_usd:,.2f} USD / MXN ${net_income_mxn:,.2f}"
-    }
     
 if __name__ == "__main__":
     import uvicorn
