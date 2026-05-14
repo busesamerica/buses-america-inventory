@@ -1736,13 +1736,14 @@ async def get_sales_analytics(
     # ========== MONTHLY TRENDS ==========
     monthly_query = f"""
         SELECT 
-            DATE_TRUNC('month', sale_date) as month,
+            DATE_TRUNC('month', i.sale_date) as month,
             COUNT(*) as sales_count,
-            SUM(CASE WHEN sale_currency = 'USD' THEN sale_price ELSE 0 END) as revenue_usd,
-            SUM(CASE WHEN sale_currency = 'MXN' THEN sale_price ELSE 0 END) as revenue_mxn
-        FROM inventory
+            SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as revenue_usd,
+            SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as revenue_mxn
+        FROM inventory i
+        LEFT JOIN clients c ON i.client_id = c.client_id
         WHERE {where_clause}
-        GROUP BY DATE_TRUNC('month', sale_date)
+        GROUP BY DATE_TRUNC('month', i.sale_date)
         ORDER BY month
     """
     monthly_trends = await db.fetch(monthly_query, *params)
@@ -2845,6 +2846,374 @@ async def create_inventory_from_inspection(
     )
     
     return dict(inventory_row)
+
+# ========================================
+# ACCOUNTING REPORTS ENDPOINTS
+# ========================================
+
+@app.get("/api/accounting/reports/income-statement")
+async def get_income_statement(
+    start_date: str,
+    end_date: str,
+    currency: str = "USD",
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Generate Income Statement (Profit & Loss) for a date range"""
+    
+    from datetime import datetime
+    
+    # Convert date strings to date objects
+    start = datetime.strptime(start_date, '%Y-%m-%d').date()
+    end = datetime.strptime(end_date, '%Y-%m-%d').date()
+    
+    # Get exchange rate
+    exchange_rate = await db.fetchval(
+        "SELECT rate FROM exchange_rates WHERE from_currency = 'MXN' AND to_currency = 'USD' ORDER BY created_at DESC LIMIT 1"
+    ) or 0.057
+    
+    # Query account activity for the period
+    query = """
+        WITH account_activity AS (
+            SELECT 
+                a.account_id,
+                a.account_code,
+                a.account_name,
+                a.account_type,
+                COALESCE(SUM(CASE WHEN tl.currency = 'USD' THEN tl.debit_amount ELSE 0 END), 0) as debit_usd,
+                COALESCE(SUM(CASE WHEN tl.currency = 'USD' THEN tl.credit_amount ELSE 0 END), 0) as credit_usd,
+                COALESCE(SUM(CASE WHEN tl.currency = 'MXN' THEN tl.debit_amount ELSE 0 END), 0) as debit_mxn,
+                COALESCE(SUM(CASE WHEN tl.currency = 'MXN' THEN tl.credit_amount ELSE 0 END), 0) as credit_mxn
+            FROM accounts a
+            LEFT JOIN transaction_lines tl ON a.account_id = tl.account_id
+            LEFT JOIN transactions t ON tl.transaction_id = t.transaction_id
+            WHERE t.transaction_date >= $1 AND t.transaction_date <= $2
+            GROUP BY a.account_id, a.account_code, a.account_name, a.account_type
+        )
+        SELECT 
+            account_code,
+            account_name,
+            account_type,
+            (credit_usd - debit_usd) as net_usd,
+            (credit_mxn - debit_mxn) as net_mxn,
+            (debit_usd - credit_usd) as expense_usd,
+            (debit_mxn - credit_mxn) as expense_mxn
+        FROM account_activity
+        WHERE account_type IN ('Income', 'Expense')
+        ORDER BY account_code
+    """
+    
+    rows = await db.fetch(query, start, end)
+    
+    # Organize data
+    revenue = {'USD': 0, 'MXN': 0, 'accounts': []}
+    cogs = {'USD': 0, 'MXN': 0, 'accounts': []}
+    operating_expenses = {'USD': 0, 'MXN': 0, 'accounts': []}
+    
+    cogs_codes = ['5000', '5100', '5200']
+    
+    for row in rows:
+        account_data = {
+            'code': row['account_code'],
+            'name': row['account_name'],
+            'amount_usd': 0,
+            'amount_mxn': 0
+        }
+        
+        if row['account_type'] == 'Income':
+            account_data['amount_usd'] = float(row['net_usd'])
+            account_data['amount_mxn'] = float(row['net_mxn'])
+            revenue['USD'] += account_data['amount_usd']
+            revenue['MXN'] += account_data['amount_mxn']
+            revenue['accounts'].append(account_data)
+            
+        elif row['account_type'] == 'Expense':
+            account_data['amount_usd'] = float(row['expense_usd'])
+            account_data['amount_mxn'] = float(row['expense_mxn'])
+            
+            if row['account_code'] in cogs_codes:
+                cogs['USD'] += account_data['amount_usd']
+                cogs['MXN'] += account_data['amount_mxn']
+                cogs['accounts'].append(account_data)
+            else:
+                operating_expenses['USD'] += account_data['amount_usd']
+                operating_expenses['MXN'] += account_data['amount_mxn']
+                operating_expenses['accounts'].append(account_data)
+    
+    gross_profit_usd = revenue['USD'] - cogs['USD']
+    gross_profit_mxn = revenue['MXN'] - cogs['MXN']
+    net_income_usd = gross_profit_usd - operating_expenses['USD']
+    net_income_mxn = gross_profit_mxn - operating_expenses['MXN']
+    
+    # Format response based on currency
+    if currency == "USD":
+        revenue['USD'] += revenue['MXN'] / float(exchange_rate)
+        cogs['USD'] += cogs['MXN'] / float(exchange_rate)
+        operating_expenses['USD'] += operating_expenses['MXN'] / float(exchange_rate)
+        
+        for account in revenue['accounts'] + cogs['accounts'] + operating_expenses['accounts']:
+            account['amount_usd'] += account['amount_mxn'] / float(exchange_rate)
+            account['amount_mxn'] = 0
+        
+        return {
+            'start_date': start_date,
+            'end_date': end_date,
+            'currency': 'USD',
+            'exchange_rate': float(exchange_rate),
+            'revenue': {'total': revenue['USD'], 'accounts': revenue['accounts']},
+            'cogs': {'total': cogs['USD'], 'accounts': cogs['accounts']},
+            'gross_profit': gross_profit_usd + (gross_profit_mxn / float(exchange_rate)),
+            'operating_expenses': {'total': operating_expenses['USD'], 'accounts': operating_expenses['accounts']},
+            'net_income': net_income_usd + (net_income_mxn / float(exchange_rate))
+        }
+    
+    elif currency == "MXN":
+        revenue['MXN'] += revenue['USD'] * float(exchange_rate)
+        cogs['MXN'] += cogs['USD'] * float(exchange_rate)
+        operating_expenses['MXN'] += operating_expenses['USD'] * float(exchange_rate)
+        
+        for account in revenue['accounts'] + cogs['accounts'] + operating_expenses['accounts']:
+            account['amount_mxn'] += account['amount_usd'] * float(exchange_rate)
+            account['amount_usd'] = 0
+        
+        return {
+            'start_date': start_date,
+            'end_date': end_date,
+            'currency': 'MXN',
+            'exchange_rate': float(exchange_rate),
+            'revenue': {'total': revenue['MXN'], 'accounts': revenue['accounts']},
+            'cogs': {'total': cogs['MXN'], 'accounts': cogs['accounts']},
+            'gross_profit': gross_profit_mxn + (gross_profit_usd * float(exchange_rate)),
+            'operating_expenses': {'total': operating_expenses['MXN'], 'accounts': operating_expenses['accounts']},
+            'net_income': net_income_mxn + (net_income_usd * float(exchange_rate))
+        }
+    
+    else:  # BOTH
+        return {
+            'start_date': start_date,
+            'end_date': end_date,
+            'currency': 'BOTH',
+            'exchange_rate': float(exchange_rate),
+            'revenue': {
+                'total_usd': revenue['USD'],
+                'total_mxn': revenue['MXN'],
+                'accounts': revenue['accounts']
+            },
+            'cogs': {
+                'total_usd': cogs['USD'],
+                'total_mxn': cogs['MXN'],
+                'accounts': cogs['accounts']
+            },
+            'gross_profit_usd': gross_profit_usd,
+            'gross_profit_mxn': gross_profit_mxn,
+            'operating_expenses': {
+                'total_usd': operating_expenses['USD'],
+                'total_mxn': operating_expenses['MXN'],
+                'accounts': operating_expenses['accounts']
+            },
+            'net_income_usd': net_income_usd,
+            'net_income_mxn': net_income_mxn
+        }
+
+@app.get("/api/accounting/reports/balance-sheet")
+async def get_balance_sheet(
+    as_of_date: str,
+    currency: str = "USD",
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Generate Balance Sheet as of a specific date"""
+    
+    from datetime import datetime
+    
+    report_date = datetime.strptime(as_of_date, '%Y-%m-%d').date()
+    
+    # Get exchange rate
+    exchange_rate = await db.fetchval(
+        "SELECT rate FROM exchange_rates WHERE from_currency = 'MXN' AND to_currency = 'USD' ORDER BY created_at DESC LIMIT 1"
+    ) or 0.057
+    
+    # Query account balances as of the date
+    query = """
+        WITH account_balances AS (
+            SELECT 
+                a.account_id,
+                a.account_code,
+                a.account_name,
+                a.account_type,
+                a.account_subtype,
+                COALESCE(SUM(CASE WHEN tl.currency = 'USD' THEN tl.debit_amount ELSE 0 END), 0) as debit_usd,
+                COALESCE(SUM(CASE WHEN tl.currency = 'USD' THEN tl.credit_amount ELSE 0 END), 0) as credit_usd,
+                COALESCE(SUM(CASE WHEN tl.currency = 'MXN' THEN tl.debit_amount ELSE 0 END), 0) as debit_mxn,
+                COALESCE(SUM(CASE WHEN tl.currency = 'MXN' THEN tl.credit_amount ELSE 0 END), 0) as credit_mxn
+            FROM accounts a
+            LEFT JOIN transaction_lines tl ON a.account_id = tl.account_id
+            LEFT JOIN transactions t ON tl.transaction_id = t.transaction_id AND t.transaction_date <= $1
+            GROUP BY a.account_id, a.account_code, a.account_name, a.account_type, a.account_subtype
+        )
+        SELECT 
+            account_code,
+            account_name,
+            account_type,
+            account_subtype,
+            CASE 
+                WHEN account_type = 'Asset' THEN (debit_usd - credit_usd)
+                WHEN account_type = 'Liability' THEN (credit_usd - debit_usd)
+                WHEN account_type = 'Equity' THEN (credit_usd - debit_usd)
+                ELSE 0
+            END as balance_usd,
+            CASE 
+                WHEN account_type = 'Asset' THEN (debit_mxn - credit_mxn)
+                WHEN account_type = 'Liability' THEN (credit_mxn - debit_mxn)
+                WHEN account_type = 'Equity' THEN (credit_mxn - debit_mxn)
+                ELSE 0
+            END as balance_mxn
+        FROM account_balances
+        WHERE account_type IN ('Asset', 'Liability', 'Equity')
+        ORDER BY account_type, account_code
+    """
+    
+    rows = await db.fetch(query, report_date)
+    
+    # Organize accounts
+    assets = {'USD': 0, 'MXN': 0, 'current': [], 'non_current': []}
+    liabilities = {'USD': 0, 'MXN': 0, 'current': [], 'non_current': []}
+    equity = {'USD': 0, 'MXN': 0, 'accounts': []}
+    
+    for row in rows:
+        account_data = {
+            'code': row['account_code'],
+            'name': row['account_name'],
+            'subtype': row['account_subtype'],
+            'balance_usd': float(row['balance_usd']),
+            'balance_mxn': float(row['balance_mxn'])
+        }
+        
+        if row['account_type'] == 'Asset':
+            assets['USD'] += account_data['balance_usd']
+            assets['MXN'] += account_data['balance_mxn']
+            if row['account_subtype'] in ['Cash & Cash Equivalents', 'Inventory', 'Current Asset']:
+                assets['current'].append(account_data)
+            else:
+                assets['non_current'].append(account_data)
+                
+        elif row['account_type'] == 'Liability':
+            liabilities['USD'] += account_data['balance_usd']
+            liabilities['MXN'] += account_data['balance_mxn']
+            if row['account_subtype'] in ['Current Liability', 'Line of Credit']:
+                liabilities['current'].append(account_data)
+            else:
+                liabilities['non_current'].append(account_data)
+                
+        elif row['account_type'] == 'Equity':
+            equity['USD'] += account_data['balance_usd']
+            equity['MXN'] += account_data['balance_mxn']
+            equity['accounts'].append(account_data)
+    
+    # Format based on currency
+    if currency == "USD":
+        assets['USD'] += assets['MXN'] / float(exchange_rate)
+        liabilities['USD'] += liabilities['MXN'] / float(exchange_rate)
+        equity['USD'] += equity['MXN'] / float(exchange_rate)
+        
+        for account in assets['current'] + assets['non_current'] + liabilities['current'] + liabilities['non_current'] + equity['accounts']:
+            account['balance_usd'] += account['balance_mxn'] / float(exchange_rate)
+            account['balance_mxn'] = 0
+        
+        total_liabilities_equity = liabilities['USD'] + equity['USD']
+        is_balanced = abs(assets['USD'] - total_liabilities_equity) < 0.01
+        
+        return {
+            'as_of_date': as_of_date,
+            'currency': 'USD',
+            'exchange_rate': float(exchange_rate),
+            'assets': {
+                'current': assets['current'],
+                'non_current': assets['non_current'],
+                'total': assets['USD']
+            },
+            'liabilities': {
+                'current': liabilities['current'],
+                'non_current': liabilities['non_current'],
+                'total': liabilities['USD']
+            },
+            'equity': {
+                'accounts': equity['accounts'],
+                'total': equity['USD']
+            },
+            'total_liabilities_equity': total_liabilities_equity,
+            'is_balanced': is_balanced,
+            'balance_difference': assets['USD'] - total_liabilities_equity
+        }
+    
+    elif currency == "MXN":
+        assets['MXN'] += assets['USD'] * float(exchange_rate)
+        liabilities['MXN'] += liabilities['USD'] * float(exchange_rate)
+        equity['MXN'] += equity['USD'] * float(exchange_rate)
+        
+        for account in assets['current'] + assets['non_current'] + liabilities['current'] + liabilities['non_current'] + equity['accounts']:
+            account['balance_mxn'] += account['balance_usd'] * float(exchange_rate)
+            account['balance_usd'] = 0
+        
+        total_liabilities_equity = liabilities['MXN'] + equity['MXN']
+        is_balanced = abs(assets['MXN'] - total_liabilities_equity) < 0.01
+        
+        return {
+            'as_of_date': as_of_date,
+            'currency': 'MXN',
+            'exchange_rate': float(exchange_rate),
+            'assets': {
+                'current': assets['current'],
+                'non_current': assets['non_current'],
+                'total': assets['MXN']
+            },
+            'liabilities': {
+                'current': liabilities['current'],
+                'non_current': liabilities['non_current'],
+                'total': liabilities['MXN']
+            },
+            'equity': {
+                'accounts': equity['accounts'],
+                'total': equity['MXN']
+            },
+            'total_liabilities_equity': total_liabilities_equity,
+            'is_balanced': is_balanced,
+            'balance_difference': assets['MXN'] - total_liabilities_equity
+        }
+    
+    else:  # BOTH
+        total_liabilities_equity_usd = liabilities['USD'] + equity['USD']
+        total_liabilities_equity_mxn = liabilities['MXN'] + equity['MXN']
+        is_balanced = (abs(assets['USD'] - total_liabilities_equity_usd) < 0.01 and 
+                      abs(assets['MXN'] - total_liabilities_equity_mxn) < 0.01)
+        
+        return {
+            'as_of_date': as_of_date,
+            'currency': 'BOTH',
+            'exchange_rate': float(exchange_rate),
+            'assets': {
+                'current': assets['current'],
+                'non_current': assets['non_current'],
+                'total_usd': assets['USD'],
+                'total_mxn': assets['MXN']
+            },
+            'liabilities': {
+                'current': liabilities['current'],
+                'non_current': liabilities['non_current'],
+                'total_usd': liabilities['USD'],
+                'total_mxn': liabilities['MXN']
+            },
+            'equity': {
+                'accounts': equity['accounts'],
+                'total_usd': equity['USD'],
+                'total_mxn': equity['MXN']
+            },
+            'total_liabilities_equity_usd': total_liabilities_equity_usd,
+            'total_liabilities_equity_mxn': total_liabilities_equity_mxn,
+            'is_balanced': is_balanced,
+            'balance_difference_usd': assets['USD'] - total_liabilities_equity_usd,
+            'balance_difference_mxn': assets['MXN'] - total_liabilities_equity_mxn
+        }
     
 if __name__ == "__main__":
     import uvicorn
