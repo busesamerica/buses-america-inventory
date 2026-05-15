@@ -1878,8 +1878,11 @@ async def get_sale_summary(
             payment_amount,
             payment_currency,
             payment_method,
-            notes,
-            created_at
+            payment_type,
+            reference_number,
+            payment_notes,
+            created_at,
+            created_by
         FROM payments
         WHERE inventory_id = $1
         ORDER BY payment_date DESC
