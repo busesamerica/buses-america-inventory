@@ -1795,6 +1795,149 @@ async def get_sales_analytics(
             'currency': currency or 'ALL'
         }
     }
+
+# ========================================
+# CLIENTS ENDPOINT
+# ========================================
+
+@app.get("/api/clients")
+async def get_clients(
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Get all clients"""
+    query = """
+        SELECT 
+            client_id,
+            client_name,
+            client_company,
+            client_location,
+            client_use_case,
+            client_phone,
+            client_email,
+            created_at
+        FROM clients
+        WHERE is_deleted = FALSE
+        ORDER BY client_name
+    """
+    
+    clients = await db.fetch(query)
+    return [dict(client) for client in clients]
+
+# ========================================
+# SALE SUMMARY ENDPOINT
+# ========================================
+
+@app.get("/api/sales/{inventory_id}/summary")
+async def get_sale_summary(
+    inventory_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Get detailed summary of a specific sale"""
+    
+    # Get sale info with client details
+    sale_query = """
+        SELECT 
+            i.inventory_id,
+            i.stock_number,
+            i.year,
+            i.make,
+            i.model,
+            i.vin,
+            i.sale_date,
+            i.sale_price,
+            i.sale_currency,
+            i.payment_status,
+            i.balance_due,
+            i.purchase_price_usd,
+            i.total_cost_usd,
+            i.total_cost_mxn,
+            c.client_id,
+            c.client_name,
+            c.client_company,
+            c.client_location,
+            c.client_phone,
+            c.client_email,
+            c.client_use_case
+        FROM inventory i
+        LEFT JOIN clients c ON i.client_id = c.client_id
+        WHERE i.inventory_id = $1 AND i.is_sold = TRUE
+    """
+    
+    sale = await db.fetchrow(sale_query, inventory_id)
+    
+    if not sale:
+        raise HTTPException(status_code=404, detail="Sale not found")
+    
+    # Get payment history
+    payments_query = """
+        SELECT 
+            payment_id,
+            payment_date,
+            amount,
+            currency,
+            payment_method,
+            notes,
+            created_at
+        FROM sale_payments
+        WHERE inventory_id = $1
+        ORDER BY payment_date DESC
+    """
+    payments = await db.fetch(payments_query, inventory_id)
+    
+    # Get cost breakdown
+    costs_query = """
+        SELECT 
+            cost_item_id,
+            cost_type,
+            description,
+            amount_usd,
+            amount_mxn,
+            paid_from_account_id,
+            payment_date,
+            notes
+        FROM cost_items
+        WHERE inventory_id = $1
+        ORDER BY payment_date
+    """
+    costs = await db.fetch(costs_query, inventory_id)
+    
+    # Calculate profit
+    sale_price = float(sale['sale_price'])
+    total_cost = float(sale['total_cost_usd'] or sale['purchase_price_usd'])
+    profit = sale_price - total_cost
+    profit_margin = (profit / sale_price * 100) if sale_price > 0 else 0
+    
+    # Get profit distribution if exists
+    distribution_query = """
+        SELECT 
+            distribution_id,
+            partner_name,
+            ownership_percentage,
+            profit_share_amount,
+            currency,
+            status,
+            created_at
+        FROM profit_distributions
+        WHERE inventory_id = $1
+        ORDER BY partner_name
+    """
+    distributions = await db.fetch(distribution_query, inventory_id)
+    
+    return {
+        'sale': dict(sale),
+        'payments': [dict(p) for p in payments],
+        'costs': [dict(c) for c in costs],
+        'profit_analysis': {
+            'sale_price': sale_price,
+            'total_cost': total_cost,
+            'profit': profit,
+            'profit_margin': profit_margin
+        },
+        'profit_distributions': [dict(d) for d in distributions]
+    }
+
     # ==================== ACCOUNTING MODULE BACKEND ENDPOINTS ====================
 
 from decimal import Decimal
