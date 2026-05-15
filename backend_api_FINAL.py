@@ -1875,12 +1875,12 @@ async def get_sale_summary(
         SELECT 
             payment_id,
             payment_date,
-            amount,
-            currency,
+            payment_amount,
+            payment_currency,
             payment_method,
             notes,
             created_at
-        FROM sale_payments
+        FROM payments
         WHERE inventory_id = $1
         ORDER BY payment_date DESC
     """
@@ -1910,20 +1910,23 @@ async def get_sale_summary(
     profit_margin = (profit / sale_price * 100) if sale_price > 0 else 0
     
     # Get profit distribution if exists
-    distribution_query = """
-        SELECT 
-            distribution_id,
-            partner_name,
-            ownership_percentage,
-            profit_share_amount,
-            currency,
-            status,
-            created_at
-        FROM profit_distributions
-        WHERE inventory_id = $1
-        ORDER BY partner_name
-    """
-    distributions = await db.fetch(distribution_query, inventory_id)
+    try:
+        distribution_query = """
+            SELECT 
+                distribution_id,
+                partner_name,
+                ownership_percentage,
+                profit_share_amount,
+                currency,
+                status,
+                created_at
+            FROM profit_distributions
+            WHERE inventory_id = $1
+            ORDER BY partner_name
+        """
+        distributions = await db.fetch(distribution_query, inventory_id)
+    except:
+        distributions = []
     
     return {
         'sale': dict(sale),
