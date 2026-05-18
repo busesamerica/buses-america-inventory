@@ -1274,12 +1274,8 @@ async def add_inventory_cost(
         # Update account balances
         await update_account_balances(db, trans_id)
         
-        # Update cost item with transaction reference
-        await db.execute(
-            "UPDATE cost_items SET notes = $1 WHERE cost_id = $2",
-            f"Accounting Ref: {reference_number}",
-            cost_row['cost_id']
-        )
+        # Note: cost_items table doesn't have a notes column
+        # Accounting reference is tracked in the transactions table via reference_number
         
         # Audit log
         await log_audit(
@@ -1892,17 +1888,19 @@ async def get_sale_summary(
     # Get cost breakdown
     costs_query = """
         SELECT 
-            cost_item_id,
-            cost_type,
+            cost_id,
+            cost_category,
             description,
-            amount_usd,
-            amount_mxn,
-            paid_from_account_id,
-            payment_date,
-            notes
+            amount,
+            currency,
+            vendor,
+            invoice_number,
+            date_incurred,
+            created_at,
+            created_by
         FROM cost_items
         WHERE inventory_id = $1
-        ORDER BY payment_date
+        ORDER BY date_incurred DESC, created_at DESC
     """
     costs = await db.fetch(costs_query, inventory_id)
     
