@@ -587,6 +587,51 @@ async def log_audit(
          json.dumps(new_values) if new_values else None,
          description)
 
+# ==================== EXCHANGE RATE HELPER ====================
+
+async def get_exchange_rate(db, from_curr: str, to_curr: str) -> float:
+    """
+    Get exchange rate from database, handling both directions
+    Standardizes all exchange rate lookups across the application
+    """
+    # Try to get the exact rate
+    rate = await db.fetchval(
+        "SELECT rate FROM exchange_rates WHERE from_currency = $1 AND to_currency = $2 AND is_active = true ORDER BY created_at DESC LIMIT 1",
+        from_curr, to_curr
+    )
+    
+    if rate:
+        return float(rate)
+    
+    # Try inverse rate
+    inverse_rate = await db.fetchval(
+        "SELECT rate FROM exchange_rates WHERE from_currency = $1 AND to_currency = $2 AND is_active = true ORDER BY created_at DESC LIMIT 1",
+        to_curr, from_curr
+    )
+    
+    if inverse_rate:
+        return 1.0 / float(inverse_rate)
+    
+    # Fallback to any active rate (convert through USD if needed)
+    any_rate = await db.fetchrow(
+        "SELECT from_currency, to_currency, rate FROM exchange_rates WHERE is_active = true ORDER BY created_at DESC LIMIT 1"
+    )
+    
+    if any_rate:
+        # If we have USD→MXN (17.5), and need MXN→USD, return 1/17.5
+        if any_rate['from_currency'] == to_curr and any_rate['to_currency'] == from_curr:
+            return 1.0 / float(any_rate['rate'])
+        elif any_rate['from_currency'] == from_curr and any_rate['to_currency'] == to_curr:
+            return float(any_rate['rate'])
+    
+    # Ultimate fallback based on standard USD→MXN rate of 17.5
+    if from_curr == 'USD' and to_curr == 'MXN':
+        return 17.5
+    elif from_curr == 'MXN' and to_curr == 'USD':
+        return 1.0 / 17.5  # 0.057142857
+    
+    return 1.0  # Same currency
+
 # ==================== ROOT ENDPOINT ====================
 
 @app.get("/")
@@ -1653,11 +1698,8 @@ async def get_sales_analytics(
         # Calculate total costs
         total_cost_usd = purchase_price + usd_costs
         
-        # Get current exchange rate for conversion
-        exchange_rate_row = await db.fetchrow(
-            "SELECT rate FROM exchange_rates ORDER BY created_at DESC LIMIT 1"
-        )
-        exchange_rate = float(exchange_rate_row['rate']) if exchange_rate_row else 17.50
+        # Get current exchange rate for conversion (MXN to USD)
+        exchange_rate = await get_exchange_rate(db, 'MXN', 'USD')
         
         # Calculate profit based on sale currency
         sale_price = float(sale['sale_price'] or 0)
@@ -1909,10 +1951,8 @@ async def get_sale_summary(
     sale_price = float(sale['sale_price'])
     sale_currency = sale['sale_currency']
     
-    # Get exchange rate
-    exchange_rate = await db.fetchval(
-        "SELECT rate FROM exchange_rates WHERE from_currency = 'MXN' AND to_currency = 'USD' ORDER BY created_at DESC LIMIT 1"
-    ) or 0.057
+    # Get exchange rate using helper function
+    exchange_rate = await get_exchange_rate(db, 'MXN', 'USD')
     
     # Convert purchase price to sale currency
     purchase_price_usd = float(sale['purchase_price_usd'] or 0)
@@ -3064,10 +3104,8 @@ async def get_income_statement(
     start = datetime.strptime(start_date, '%Y-%m-%d').date()
     end = datetime.strptime(end_date, '%Y-%m-%d').date()
     
-    # Get exchange rate
-    exchange_rate = await db.fetchval(
-        "SELECT rate FROM exchange_rates WHERE from_currency = 'MXN' AND to_currency = 'USD' ORDER BY created_at DESC LIMIT 1"
-    ) or 0.057
+    # Get exchange rate using helper function
+    exchange_rate = await get_exchange_rate(db, 'MXN', 'USD')
     
     # Query account activity for the period
     query = """
@@ -3225,10 +3263,8 @@ async def get_balance_sheet(
     
     report_date = datetime.strptime(as_of_date, '%Y-%m-%d').date()
     
-    # Get exchange rate
-    exchange_rate = await db.fetchval(
-        "SELECT rate FROM exchange_rates WHERE from_currency = 'MXN' AND to_currency = 'USD' ORDER BY created_at DESC LIMIT 1"
-    ) or 0.057
+    # Get exchange rate using helper function
+    exchange_rate = await get_exchange_rate(db, 'MXN', 'USD')
     
     # Query account balances as of the date
     query = """
