@@ -632,6 +632,99 @@ async def get_exchange_rate(db, from_curr: str, to_curr: str) -> float:
     
     return 1.0  # Same currency
 
+# ==================== CENTRALIZED COST CALCULATION ====================
+
+async def calculate_total_costs(db, inventory_id: int, target_currency: str = 'USD') -> dict:
+    """
+    SINGLE SOURCE OF TRUTH for cost calculations
+    
+    Calculates total costs for a vehicle in the specified currency
+    Returns: {
+        'purchase_price': float,
+        'additional_costs': float,
+        'total_cost': float,
+        'currency': str,
+        'breakdown': {
+            'purchase_price_original': float,
+            'purchase_currency': str,
+            'cost_items': [list of costs],
+            'exchange_rate_used': float
+        }
+    }
+    """
+    # Get inventory purchase info
+    inventory = await db.fetchrow(
+        "SELECT purchase_price_usd, purchase_currency FROM inventory WHERE inventory_id = $1",
+        inventory_id
+    )
+    
+    if not inventory:
+        return None
+    
+    # Get all cost items
+    costs = await db.fetch(
+        "SELECT cost_id, cost_category, description, amount, currency, vendor, date_incurred FROM cost_items WHERE inventory_id = $1",
+        inventory_id
+    )
+    
+    # Get exchange rate
+    exchange_rate = await get_exchange_rate(db, 'MXN', 'USD')
+    
+    # Purchase price (always stored in USD)
+    purchase_price_usd = float(inventory['purchase_price_usd'] or 0)
+    
+    # Convert purchase price to target currency
+    if target_currency == 'USD':
+        purchase_price_target = purchase_price_usd
+    else:  # MXN
+        purchase_price_target = purchase_price_usd / exchange_rate
+    
+    # Sum additional costs in target currency
+    additional_costs_target = 0
+    cost_breakdown = []
+    
+    for cost in costs:
+        cost_amount = float(cost['amount'])
+        cost_currency = cost['currency']
+        
+        # Convert to target currency
+        if cost_currency == target_currency:
+            cost_in_target = cost_amount
+        elif target_currency == 'USD' and cost_currency == 'MXN':
+            cost_in_target = cost_amount * exchange_rate
+        elif target_currency == 'MXN' and cost_currency == 'USD':
+            cost_in_target = cost_amount / exchange_rate
+        else:
+            cost_in_target = cost_amount
+        
+        additional_costs_target += cost_in_target
+        
+        cost_breakdown.append({
+            'cost_id': cost['cost_id'],
+            'category': cost['cost_category'],
+            'description': cost['description'],
+            'amount_original': cost_amount,
+            'currency_original': cost_currency,
+            'amount_in_target_currency': cost_in_target,
+            'vendor': cost['vendor'],
+            'date': cost['date_incurred']
+        })
+    
+    total_cost = purchase_price_target + additional_costs_target
+    
+    return {
+        'purchase_price': purchase_price_target,
+        'additional_costs': additional_costs_target,
+        'total_cost': total_cost,
+        'currency': target_currency,
+        'breakdown': {
+            'purchase_price_original': purchase_price_usd,
+            'purchase_currency': 'USD',
+            'cost_items': cost_breakdown,
+            'exchange_rate_used': exchange_rate
+        }
+    }
+
 # ==================== ROOT ENDPOINT ====================
 
 @app.get("/")
@@ -1160,6 +1253,24 @@ async def get_inventory_costs(
     rows = await db.fetch(query, inventory_id)
     return [dict(row) for row in rows]
 
+@app.get("/api/inventory/{inventory_id}/costs/summary")
+async def get_inventory_costs_summary(
+    inventory_id: int,
+    currency: str = 'USD',
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Get complete cost summary with breakdown
+    SINGLE SOURCE OF TRUTH for cost calculations
+    """
+    cost_data = await calculate_total_costs(db, inventory_id, currency)
+    
+    if not cost_data:
+        raise HTTPException(status_code=404, detail="Inventory not found or costs unavailable")
+    
+    return cost_data
+
 @app.post("/api/inventory/{inventory_id}/costs")
 async def add_inventory_cost(
     inventory_id: int,
@@ -1681,38 +1792,26 @@ async def get_sales_analytics(
     total_profit_mxn = 0
     
     for sale in sales_rows:
-        # Get additional costs from cost_items
-        costs_query = """
-            SELECT 
-                SUM(CASE WHEN currency = 'USD' THEN amount ELSE 0 END) as usd_costs,
-                SUM(CASE WHEN currency = 'MXN' THEN amount ELSE 0 END) as mxn_costs
-            FROM cost_items
-            WHERE inventory_id = $1
-        """
-        costs = await db.fetchrow(costs_query, sale['inventory_id'])
+        # Get costs using centralized calculation (SINGLE SOURCE OF TRUTH)
+        sale_currency = sale['sale_currency']
+        cost_data = await calculate_total_costs(db, sale['inventory_id'], sale_currency)
         
-        usd_costs = float(costs['usd_costs'] or 0)
-        mxn_costs = float(costs['mxn_costs'] or 0)
-        purchase_price = float(sale['purchase_price_usd'] or 0)
+        if not cost_data:
+            continue
         
-        # Calculate total costs
-        total_cost_usd = purchase_price + usd_costs
+        total_cost = cost_data['total_cost']
+        exchange_rate = cost_data['breakdown']['exchange_rate_used']
         
-        # Get current exchange rate for conversion (MXN to USD)
-        exchange_rate = await get_exchange_rate(db, 'MXN', 'USD')
-        
-        # Calculate profit based on sale currency
+        # Calculate profit
         sale_price = float(sale['sale_price'] or 0)
-        if sale['sale_currency'] == 'USD':
-            cost_in_sale_currency = total_cost_usd
-            profit = sale_price - cost_in_sale_currency
+        profit = sale_price - total_cost
+        profit_margin = (profit / sale_price * 100) if sale_price > 0 else 0
+        
+        # Track profit by currency
+        if sale_currency == 'USD':
             total_profit_usd += profit
         else:  # MXN
-            cost_in_sale_currency = (total_cost_usd * exchange_rate) + mxn_costs
-            profit = sale_price - cost_in_sale_currency
             total_profit_mxn += profit
-        
-        profit_margin = (profit / sale_price * 100) if sale_price > 0 else 0
         
         detailed_sales.append({
             'inventory_id': sale['inventory_id'],
@@ -1725,11 +1824,10 @@ async def get_sales_analytics(
             'client_location': sale['client_location'],
             'client_use_case': sale['client_use_case'],
             'sale_price': sale_price,
-            'sale_currency': sale['sale_currency'],
-            'purchase_price_usd': purchase_price,
-            'additional_costs_usd': usd_costs,
-            'additional_costs_mxn': mxn_costs,
-            'total_cost': cost_in_sale_currency,
+            'sale_currency': sale_currency,
+            'purchase_price': cost_data['purchase_price'],
+            'additional_costs': cost_data['additional_costs'],
+            'total_cost': total_cost,
             'profit': profit,
             'profit_margin': profit_margin,
             'payment_status': sale['payment_status'],
@@ -1951,31 +2049,16 @@ async def get_sale_summary(
     sale_price = float(sale['sale_price'])
     sale_currency = sale['sale_currency']
     
-    # Get exchange rate using helper function
-    exchange_rate = await get_exchange_rate(db, 'MXN', 'USD')
+    # Get costs using centralized calculation (SINGLE SOURCE OF TRUTH)
+    cost_data = await calculate_total_costs(db, inventory_id, sale_currency)
     
-    # Convert purchase price to sale currency
-    purchase_price_usd = float(sale['purchase_price_usd'] or 0)
-    if sale_currency == 'USD':
-        purchase_price_in_sale_currency = purchase_price_usd
-    else:  # MXN
-        purchase_price_in_sale_currency = purchase_price_usd / exchange_rate
+    if not cost_data:
+        raise HTTPException(status_code=404, detail="Could not calculate costs")
     
-    # Sum up all additional costs in sale currency
-    additional_costs_in_sale_currency = 0
-    for cost in costs:
-        cost_amount = float(cost['amount'])
-        cost_currency = cost['currency']
-        
-        if cost_currency == sale_currency:
-            additional_costs_in_sale_currency += cost_amount
-        elif sale_currency == 'USD' and cost_currency == 'MXN':
-            additional_costs_in_sale_currency += cost_amount * exchange_rate
-        elif sale_currency == 'MXN' and cost_currency == 'USD':
-            additional_costs_in_sale_currency += cost_amount / exchange_rate
+    total_cost = cost_data['total_cost']
+    exchange_rate = cost_data['breakdown']['exchange_rate_used']
     
-    # Calculate total cost and profit
-    total_cost = purchase_price_in_sale_currency + additional_costs_in_sale_currency
+    # Calculate profit
     profit = sale_price - total_cost
     profit_margin = (profit / sale_price * 100) if sale_price > 0 else 0
     
