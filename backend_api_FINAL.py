@@ -654,7 +654,7 @@ async def calculate_total_costs(db, inventory_id: int, target_currency: str = 'U
     """
     # Get inventory purchase info
     inventory = await db.fetchrow(
-        "SELECT purchase_price_usd, purchase_currency FROM inventory WHERE inventory_id = $1",
+        "SELECT purchase_price_usd FROM inventory WHERE inventory_id = $1",
         inventory_id
     )
     
