@@ -1904,9 +1904,37 @@ async def get_sale_summary(
     """
     costs = await db.fetch(costs_query, inventory_id)
     
-    # Calculate profit
+    # Calculate profit properly with currency conversion
     sale_price = float(sale['sale_price'])
-    total_cost = float(sale['total_cost_usd'] or sale['purchase_price_usd'])
+    sale_currency = sale['sale_currency']
+    
+    # Get exchange rate
+    exchange_rate = await db.fetchval(
+        "SELECT rate FROM exchange_rates WHERE from_currency = 'MXN' AND to_currency = 'USD' ORDER BY created_at DESC LIMIT 1"
+    ) or 0.057
+    
+    # Convert purchase price to sale currency
+    purchase_price_usd = float(sale['purchase_price_usd'] or 0)
+    if sale_currency == 'USD':
+        purchase_price_in_sale_currency = purchase_price_usd
+    else:  # MXN
+        purchase_price_in_sale_currency = purchase_price_usd / exchange_rate
+    
+    # Sum up all additional costs in sale currency
+    additional_costs_in_sale_currency = 0
+    for cost in costs:
+        cost_amount = float(cost['amount'])
+        cost_currency = cost['currency']
+        
+        if cost_currency == sale_currency:
+            additional_costs_in_sale_currency += cost_amount
+        elif sale_currency == 'USD' and cost_currency == 'MXN':
+            additional_costs_in_sale_currency += cost_amount * exchange_rate
+        elif sale_currency == 'MXN' and cost_currency == 'USD':
+            additional_costs_in_sale_currency += cost_amount / exchange_rate
+    
+    # Calculate total cost and profit
+    total_cost = purchase_price_in_sale_currency + additional_costs_in_sale_currency
     profit = sale_price - total_cost
     profit_margin = (profit / sale_price * 100) if sale_price > 0 else 0
     
@@ -1935,9 +1963,11 @@ async def get_sale_summary(
         'costs': [dict(c) for c in costs],
         'profit_analysis': {
             'sale_price': sale_price,
+            'sale_currency': sale_currency,
             'total_cost': total_cost,
             'profit': profit,
-            'profit_margin': profit_margin
+            'profit_margin': profit_margin,
+            'exchange_rate_used': float(exchange_rate)
         },
         'profit_distributions': [dict(d) for d in distributions]
     }
