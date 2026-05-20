@@ -1970,7 +1970,26 @@ async def get_sale_summary(
             'profit_margin': profit_margin,
             'exchange_rate_used': float(exchange_rate)
         },
-        'profit_distributions': [dict(d) for d in distributions]
+        'profit_distributions': [dict(d) for d in distributions],
+        # Top-level fields for frontend modal compatibility
+        'is_sold': True,
+        'stock_number': sale['stock_number'],
+        'sale_price': sale_price,
+        'currency': sale_currency,
+        'cogs': total_cost,
+        'gross_profit': profit,
+        'gross_profit_margin': profit_margin,
+        'payment_status': sale['payment_status'],
+        'total_payments_received': sum(float(p['payment_amount']) for p in payments if p['payment_currency'] == sale_currency),
+        'ar_balance': float(sale['balance_due']) if sale['balance_due'] else 0,
+        'payment_count': len(payments),
+        'client': {
+            'client_id': sale['client_id'],
+            'client_name': sale['client_name'],
+            'client_company': sale['client_company'],
+            'client_email': sale['client_email'],
+            'client_phone': sale['client_phone']
+        } if sale['client_id'] else None
     }
 
     # ==================== ACCOUNTING MODULE BACKEND ENDPOINTS ====================
