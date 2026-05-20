@@ -1017,9 +1017,9 @@ const SaleDetailsModal = ({ bus, onClose, onPaymentAdded, accounts }) => {
     );
   }
 
-  if (!summary || !summary.is_sold) {
-    return null;
-  }
+  if (!summary || !summary.sale || !summary.sale.is_sold) {
+  return null;
+}
 
   return (
     <div style={{
