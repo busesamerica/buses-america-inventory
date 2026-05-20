@@ -1849,6 +1849,7 @@ async def get_sale_summary(
             i.purchase_price_usd,
             i.total_cost_usd,
             i.total_cost_mxn,
+            i.is_sold,
             c.client_id,
             c.client_name,
             c.client_company,
