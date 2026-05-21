@@ -218,6 +218,53 @@ const api = (() => {
       const res = await fetch(`${API_URL}/exchange-rates/current`, { headers: headers() });
       if (!res.ok) throw new Error('Failed to fetch exchange rate');
       return res.json();
+    },
+    // CLIENT API METHODS
+    getClients: async (filters = {}) => {
+      try {
+        const params = new URLSearchParams(filters);
+        const res = await fetch(`${API_URL}/clients?${params}`, { headers: headers() });
+        return res.ok ? await res.json() : [];
+      } catch (e) {
+        console.error('Error fetching clients:', e);
+        return [];
+      }
+    },
+    getClientById: async (id) => {
+      const res = await fetch(`${API_URL}/clients/${id}`, { headers: headers() });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    createClient: async (data) => {
+      const res = await fetch(`${API_URL}/clients`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify(data)
+      });
+      if (!res.ok) throw new Error('Failed to create client');
+      return res.json();
+    },
+    updateClient: async (id, data) => {
+      const res = await fetch(`${API_URL}/clients/${id}`, {
+        method: 'PATCH',
+        headers: headers(),
+        body: JSON.stringify(data)
+      });
+      if (!res.ok) throw new Error('Failed to update client');
+      return res.json();
+    },
+    deleteClient: async (id) => {
+      const res = await fetch(`${API_URL}/clients/${id}`, {
+        method: 'DELETE',
+        headers: headers()
+      });
+      if (!res.ok) throw new Error('Failed to delete client');
+      return res.json();
+    },
+    getClientSales: async (clientId) => {
+      const res = await fetch(`${API_URL}/clients/${clientId}/sales`, { headers: headers() });
+      if (!res.ok) return [];
+      return res.json();
     }
   };
 })();
@@ -547,6 +594,7 @@ function InventoryApp() {
             {id:'suppliers',label:'Suppliers',icon:'🏢'},
             {id:'pre-inspections',label:'Pre-Inspections',icon:'🔍'},
             {id:'sales',label:'Sales Management',icon:'💰'},
+            {id:'clients',label:'Clients',icon:'👥'},
             {id:'accounting',label:'Accounting',icon:'💼'}
           ].map(item => (
             <button
@@ -592,6 +640,7 @@ function InventoryApp() {
             {view === 'sales' && 'Sales Management'}
             {view === 'pre-inspections' && 'Pre-Inspections'}
             {view === 'suppliers' && 'Suppliers'}
+            {view === 'clients' && 'Client Management'}
             {view === 'accounting' && 'Accounting Dashboard'}
           </h1>
           <UserDropdown />
@@ -810,6 +859,9 @@ function InventoryApp() {
               </div>
             </div>
           )}
+
+          {/* CLIENTS VIEW */}
+          {view === 'clients' && <ClientManagement />}
 
           {/* SALES REPORTS VIEW */}
           {view === 'sales' && <SalesManagement />}
