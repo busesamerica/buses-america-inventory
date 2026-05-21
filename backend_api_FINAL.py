@@ -578,13 +578,23 @@ async def log_audit(
     description: str = None
 ):
     """Log action to audit trail"""
+
+    def _serialize(obj):
+        """Custom serializer for types not supported by json.dumps by default.
+        Handles datetime, date, and Decimal — all common in asyncpg row dicts."""
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        if isinstance(obj, Decimal):
+            return float(obj)
+        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
     await db.execute("""
         INSERT INTO audit_log 
         (user_id, username, action, table_name, record_id, old_values, new_values, description)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    """, user_id, username, action, table_name, record_id, 
-         json.dumps(old_values) if old_values else None,
-         json.dumps(new_values) if new_values else None,
+    """, user_id, username, action, table_name, record_id,
+         json.dumps(old_values, default=_serialize) if old_values else None,
+         json.dumps(new_values, default=_serialize) if new_values else None,
          description)
 
 # ==================== EXCHANGE RATE HELPER ====================
@@ -923,7 +933,11 @@ async def get_current_exchange_rate(db=Depends(get_db)):
     return dict(row)
 
 @app.post("/api/exchange-rates", response_model=ExchangeRate)
-async def create_exchange_rate(rate: ExchangeRateCreate, db=Depends(get_db)):
+async def create_exchange_rate(
+    rate: ExchangeRateCreate,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
     """Add new exchange rate"""
     query = """
         INSERT INTO exchange_rates (from_currency, to_currency, rate, effective_date)
@@ -931,6 +945,14 @@ async def create_exchange_rate(rate: ExchangeRateCreate, db=Depends(get_db)):
         RETURNING *
     """
     row = await db.fetchrow(query, rate.from_currency, rate.to_currency, rate.rate, rate.effective_date)
+
+    await log_audit(
+        db, user['user_id'], user['username'],
+        'create', 'exchange_rates', row['rate_id'],
+        new_values=dict(row),
+        description=f"Set exchange rate: {rate.from_currency}/{rate.to_currency} = {rate.rate} (effective {rate.effective_date})"
+    )
+
     return dict(row)
 
 @app.get("/api/exchange-rates", response_model=List[ExchangeRate])
@@ -1112,6 +1134,13 @@ async def create_inventory(
                 row['inventory_id'], inventory.pre_inspection_id
             )
         
+        await log_audit(
+            db, current_user['user_id'], current_user['username'],
+            'create', 'inventory', row['inventory_id'],
+            new_values=dict(row),
+            description=f"Added bus to inventory: {inventory.stock_number} — {inventory.year} {inventory.make} {inventory.model}"
+        )
+
         return dict(row)
     except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=400, detail="VIN or Stock Number already exists")
@@ -1189,12 +1218,25 @@ async def get_inventory_item(inventory_id: int, db=Depends(get_db)):
     return dict(row)
 
 @app.patch("/api/inventory/{inventory_id}")
-async def update_inventory(inventory_id: int, updates: InventoryUpdate, db=Depends(get_db)):
+async def update_inventory(
+    inventory_id: int,
+    updates: InventoryUpdate,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db)
+):
     """Update inventory item"""
     update_dict = updates.dict(exclude_unset=True)
     if not update_dict:
         raise HTTPException(status_code=400, detail="No fields to update")
-    
+
+    # Fetch old values before update for audit trail
+    old_row = await db.fetchrow(
+        "SELECT * FROM inventory WHERE inventory_id = $1 AND is_deleted = FALSE",
+        inventory_id
+    )
+    if not old_row:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+
     set_clauses = []
     values = [inventory_id]
     param_count = 2
@@ -1214,6 +1256,30 @@ async def update_inventory(inventory_id: int, updates: InventoryUpdate, db=Depen
     row = await db.fetchrow(query, *values)
     if not row:
         raise HTTPException(status_code=404, detail="Inventory item not found")
+
+    # Determine if this is a sale event for a more descriptive log
+    if update_dict.get('is_sold'):
+        action_description = (
+            f"Marked as SOLD: {old_row['stock_number']} — "
+            f"{old_row['year']} {old_row['make']} {old_row['model']} "
+            f"@ {update_dict.get('sale_price')} {update_dict.get('sale_currency', '')}"
+        )
+    else:
+        changed_fields = ', '.join(update_dict.keys())
+        action_description = (
+            f"Updated inventory {old_row['stock_number']} — "
+            f"{old_row['year']} {old_row['make']} {old_row['model']}. "
+            f"Fields changed: {changed_fields}"
+        )
+
+    await log_audit(
+        db, current_user['user_id'], current_user['username'],
+        'update', 'inventory', inventory_id,
+        old_values=dict(old_row),
+        new_values=dict(row),
+        description=action_description
+    )
+
     return dict(row)
 
 @app.delete("/api/inventory/{inventory_id}")
@@ -1437,6 +1503,7 @@ async def add_inventory_cost(
         await log_audit(
             db, user['user_id'], user['username'],
             'create', 'cost_items', cost_row['cost_id'],
+            new_values=dict(cost_row),
             description=f"Added cost with accounting entry: {cost_data.get('description')} - {amount} {currency}"
         )
     
@@ -1463,6 +1530,7 @@ async def delete_inventory_cost(
     await log_audit(
         db, user['user_id'], user['username'],
         'delete', 'cost_items', cost_id,
+        old_values=dict(cost),
         description=f"Deleted cost: {cost['description']}"
     )
     
@@ -1526,7 +1594,18 @@ async def add_payment(
     
     # Update payment status and balance
     await update_payment_status(db, inventory_id, sale_currency, sale_price, exchange_rate)
-    
+
+    await log_audit(
+        db, user['user_id'], user['username'],
+        'create', 'payments', row['payment_id'],
+        new_values=dict(row),
+        description=(
+            f"Payment recorded on inventory #{inventory_id}: "
+            f"{payment.payment_amount} {payment.payment_currency} "
+            f"via {payment.payment_method} ({payment.payment_type})"
+        )
+    )
+
     return dict(row)
 
 async def update_payment_status(db, inventory_id: int, sale_currency: str, sale_price: float, exchange_rate: float):
@@ -1688,7 +1767,13 @@ async def delete_payment(
     
     # Recalculate payment status
     await update_payment_status(db, inventory_id, sale_currency, sale_price, exchange_rate)
-    
+
+    await log_audit(
+        db, user['user_id'], user['username'],
+        'delete', 'payments', payment_id,
+        description=f"Deleted payment #{payment_id} on inventory #{inventory_id}"
+    )
+
     return {"message": "Payment deleted successfully"}
 
 # ==================== SALES ANALYTICS ENDPOINT ====================
@@ -2655,6 +2740,21 @@ async def create_transaction(
         # Update account balances
         await update_account_balances(db, transaction_id)
     
+    await log_audit(
+        db, user['user_id'], user['username'],
+        'create', 'transactions', transaction_id,
+        new_values={
+            'transaction_id': transaction_id,
+            'transaction_date': transaction.transaction_date.isoformat(),
+            'description': transaction.description,
+            'reference_type': transaction.reference_type,
+            'reference_id': transaction.reference_id,
+            'currency': transaction.currency,
+            'total_amount': sum(float(l.debit_amount) for l in transaction.lines)
+        },
+        description=f"Journal entry posted: {transaction.description} — {transaction.currency}"
+    )
+
     return {
         "transaction": dict(trans_row),
         "lines": lines
@@ -3024,6 +3124,17 @@ async def record_profit_distribution(
             trans_id, dist_row['distribution_id']
         )
     
+    await log_audit(
+        db, user['user_id'], user['username'],
+        'create', 'profit_distributions', dist_row['distribution_id'],
+        new_values=dict(dist_row),
+        description=(
+            f"Profit distribution recorded: {distribution.total_profit} {distribution.currency} — "
+            f"Erick {distribution.erick_percentage}% (${erick_amount:.2f}), "
+            f"Omar {distribution.omar_percentage}% (${omar_amount:.2f})"
+        )
+    )
+
     return dict(dist_row)
 
 @app.get("/api/accounting/profit-distributions")
@@ -3299,7 +3410,24 @@ async def create_pre_inspection(inspection: PreInspectionCreate, db=Depends(get_
         inspection.road_test_notes, inspection.overall_rating, inspection.recommendation,
         inspection.estimated_repair_cost_usd, inspection.inspector_notes, user['username']
     )
-    
+
+    await log_audit(
+        db, user['user_id'], user['username'],
+        'create', 'pre_purchase_inspections', row['inspection_id'],
+        new_values={
+            'inspection_id': row['inspection_id'],
+            'vin': inspection.vin,
+            'year': inspection.year,
+            'make': inspection.make,
+            'model': inspection.model,
+            'inspection_date': inspection.inspection_date.isoformat(),
+            'inspector_name': inspection.inspector_name,
+            'overall_rating': inspection.overall_rating,
+            'recommendation': inspection.recommendation,
+        },
+        description=f"Pre-inspection created: {inspection.year} {inspection.make} {inspection.model} VIN {inspection.vin} — {inspection.recommendation}"
+    )
+
     return dict(row)
 
 @app.get("/api/pre-inspections", response_model=List[PreInspection])
@@ -3471,7 +3599,27 @@ async def create_inventory_from_inspection(
         "UPDATE pre_purchase_inspections SET purchased = true WHERE inspection_id = $1",
         inspection_id
     )
-    
+
+    await log_audit(
+        db, user['user_id'], user['username'],
+        'create', 'inventory', inventory_row['inventory_id'],
+        new_values={
+            'inventory_id': inventory_row['inventory_id'],
+            'stock_number': additional_data.get('stock_number'),
+            'vin': inspection['vin'],
+            'year': inspection['year'],
+            'make': inspection['make'],
+            'model': inspection['model'],
+            'purchase_price_usd': str(additional_data.get('purchase_price_usd', '')),
+            'source_inspection_id': inspection_id,
+        },
+        description=(
+            f"Inventory created from inspection #{inspection_id}: "
+            f"{inspection['year']} {inspection['make']} {inspection['model']} "
+            f"VIN {inspection['vin']} — Stock {additional_data.get('stock_number')}"
+        )
+    )
+
     return dict(inventory_row)
 
 # ========================================
