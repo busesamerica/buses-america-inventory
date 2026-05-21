@@ -1938,11 +1938,86 @@ async def get_sales_analytics(
 
 @app.get("/api/clients")
 async def get_clients(
+    include_analytics: bool = False,
     db=Depends(get_db),
     user=Depends(get_current_user)
 ):
-    """Get all clients"""
+    """Get all clients with optional analytics"""
+    
+    if not include_analytics:
+        # Simple list without analytics
+        query = """
+            SELECT 
+                client_id,
+                client_name,
+                client_company,
+                client_location,
+                client_use_case,
+                client_phone,
+                client_email,
+                billing_address,
+                tax_id,
+                contact_person,
+                notes,
+                credit_terms,
+                payment_reliability,
+                preferred_payment_method,
+                created_at,
+                updated_at
+            FROM clients
+            WHERE is_deleted = FALSE
+            ORDER BY client_name
+        """
+        clients = await db.fetch(query)
+        return [dict(client) for client in clients]
+    
+    # Full list with analytics
     query = """
+        SELECT 
+            c.client_id,
+            c.client_name,
+            c.client_company,
+            c.client_location,
+            c.client_use_case,
+            c.client_phone,
+            c.client_email,
+            c.billing_address,
+            c.tax_id,
+            c.contact_person,
+            c.notes,
+            c.credit_terms,
+            c.payment_reliability,
+            c.preferred_payment_method,
+            c.created_at,
+            c.updated_at,
+            COUNT(i.inventory_id) as total_purchases,
+            SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as total_spent_usd,
+            SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as total_spent_mxn,
+            MAX(i.sale_date) as last_purchase_date,
+            STRING_AGG(DISTINCT i.body_style, ', ') as favorite_bus_types
+        FROM clients c
+        LEFT JOIN inventory i ON c.client_id = i.client_id AND i.is_sold = TRUE
+        WHERE c.is_deleted = FALSE
+        GROUP BY c.client_id, c.client_name, c.client_company, c.client_location, 
+                 c.client_use_case, c.client_phone, c.client_email, c.billing_address,
+                 c.tax_id, c.contact_person, c.notes, c.credit_terms, c.payment_reliability,
+                 c.preferred_payment_method, c.created_at, c.updated_at
+        ORDER BY c.client_name
+    """
+    
+    clients = await db.fetch(query)
+    return [dict(client) for client in clients]
+
+@app.get("/api/clients/{client_id}")
+async def get_client_detail(
+    client_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Get detailed client information with purchase history"""
+    
+    # Get client info
+    client_query = """
         SELECT 
             client_id,
             client_name,
@@ -1951,14 +2026,246 @@ async def get_clients(
             client_use_case,
             client_phone,
             client_email,
-            created_at
+            billing_address,
+            tax_id,
+            contact_person,
+            notes,
+            credit_terms,
+            payment_reliability,
+            preferred_payment_method,
+            created_at,
+            updated_at
         FROM clients
-        WHERE is_deleted = FALSE
-        ORDER BY client_name
+        WHERE client_id = $1 AND is_deleted = FALSE
     """
     
-    clients = await db.fetch(query)
-    return [dict(client) for client in clients]
+    client = await db.fetchrow(client_query, client_id)
+    
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    # Get purchase history
+    purchases_query = """
+        SELECT 
+            i.inventory_id,
+            i.stock_number,
+            i.year,
+            i.make,
+            i.model,
+            i.body_style,
+            i.sale_date,
+            i.sale_price,
+            i.sale_currency,
+            i.payment_status
+        FROM inventory i
+        WHERE i.client_id = $1 AND i.is_sold = TRUE
+        ORDER BY i.sale_date DESC
+    """
+    
+    purchases = await db.fetch(purchases_query, client_id)
+    
+    # Calculate analytics
+    total_purchases = len(purchases)
+    total_spent_usd = sum(float(p['sale_price']) for p in purchases if p['sale_currency'] == 'USD')
+    total_spent_mxn = sum(float(p['sale_price']) for p in purchases if p['sale_currency'] == 'MXN')
+    
+    # Favorite bus types
+    bus_types = {}
+    for p in purchases:
+        body_style = p['body_style'] or 'Unknown'
+        bus_types[body_style] = bus_types.get(body_style, 0) + 1
+    
+    favorite_bus_type = max(bus_types.items(), key=lambda x: x[1])[0] if bus_types else None
+    
+    return {
+        'client': dict(client),
+        'analytics': {
+            'total_purchases': total_purchases,
+            'total_spent_usd': total_spent_usd,
+            'total_spent_mxn': total_spent_mxn,
+            'favorite_bus_type': favorite_bus_type,
+            'bus_type_breakdown': bus_types
+        },
+        'purchase_history': [dict(p) for p in purchases]
+    }
+
+@app.post("/api/clients")
+async def create_client(
+    client_data: dict,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Create a new client"""
+    
+    query = """
+        INSERT INTO clients (
+            client_name, client_company, client_location, client_use_case,
+            client_phone, client_email, billing_address, tax_id, contact_person,
+            notes, credit_terms, payment_reliability, preferred_payment_method,
+            created_at, updated_at, updated_by
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $14)
+        RETURNING client_id, client_name, client_company, client_location, client_use_case,
+                  client_phone, client_email, billing_address, tax_id, contact_person,
+                  notes, credit_terms, payment_reliability, preferred_payment_method, created_at
+    """
+    
+    client = await db.fetchrow(
+        query,
+        client_data.get('client_name'),
+        client_data.get('client_company'),
+        client_data.get('client_location'),
+        client_data.get('client_use_case'),
+        client_data.get('client_phone'),
+        client_data.get('client_email'),
+        client_data.get('billing_address'),
+        client_data.get('tax_id'),
+        client_data.get('contact_person'),
+        client_data.get('notes'),
+        client_data.get('credit_terms'),
+        client_data.get('payment_reliability', 'Not Rated'),
+        client_data.get('preferred_payment_method'),
+        user['username']
+    )
+    
+    # Log audit
+    await log_audit(
+        db=db,
+        user_id=user['user_id'],
+        username=user['username'],
+        action='CREATE',
+        table_name='clients',
+        record_id=client['client_id'],
+        new_values=dict(client),
+        description=f"Created client: {client['client_name']}"
+    )
+    
+    return dict(client)
+
+@app.put("/api/clients/{client_id}")
+async def update_client(
+    client_id: int,
+    client_data: dict,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Update an existing client"""
+    
+    # Get old values for audit
+    old_client = await db.fetchrow(
+        "SELECT * FROM clients WHERE client_id = $1 AND is_deleted = FALSE",
+        client_id
+    )
+    
+    if not old_client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    query = """
+        UPDATE clients
+        SET client_name = $1,
+            client_company = $2,
+            client_location = $3,
+            client_use_case = $4,
+            client_phone = $5,
+            client_email = $6,
+            billing_address = $7,
+            tax_id = $8,
+            contact_person = $9,
+            notes = $10,
+            credit_terms = $11,
+            payment_reliability = $12,
+            preferred_payment_method = $13,
+            updated_by = $14
+        WHERE client_id = $15 AND is_deleted = FALSE
+        RETURNING client_id, client_name, client_company, client_location, client_use_case,
+                  client_phone, client_email, billing_address, tax_id, contact_person,
+                  notes, credit_terms, payment_reliability, preferred_payment_method,
+                  created_at, updated_at
+    """
+    
+    updated_client = await db.fetchrow(
+        query,
+        client_data.get('client_name'),
+        client_data.get('client_company'),
+        client_data.get('client_location'),
+        client_data.get('client_use_case'),
+        client_data.get('client_phone'),
+        client_data.get('client_email'),
+        client_data.get('billing_address'),
+        client_data.get('tax_id'),
+        client_data.get('contact_person'),
+        client_data.get('notes'),
+        client_data.get('credit_terms'),
+        client_data.get('payment_reliability'),
+        client_data.get('preferred_payment_method'),
+        user['username'],
+        client_id
+    )
+    
+    # Log audit
+    await log_audit(
+        db=db,
+        user_id=user['user_id'],
+        username=user['username'],
+        action='UPDATE',
+        table_name='clients',
+        record_id=client_id,
+        old_values=dict(old_client),
+        new_values=dict(updated_client),
+        description=f"Updated client: {updated_client['client_name']}"
+    )
+    
+    return dict(updated_client)
+
+@app.delete("/api/clients/{client_id}")
+async def delete_client(
+    client_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Soft delete a client"""
+    
+    # Check if client has any sales
+    sales_count = await db.fetchval(
+        "SELECT COUNT(*) FROM inventory WHERE client_id = $1 AND is_sold = TRUE",
+        client_id
+    )
+    
+    if sales_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete client with {sales_count} existing sale(s). Client will be marked as deleted but preserved for historical records."
+        )
+    
+    # Get client for audit
+    client = await db.fetchrow(
+        "SELECT * FROM clients WHERE client_id = $1",
+        client_id
+    )
+    
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    # Soft delete
+    await db.execute(
+        "UPDATE clients SET is_deleted = TRUE, updated_at = CURRENT_TIMESTAMP, updated_by = $1 WHERE client_id = $2",
+        user['username'],
+        client_id
+    )
+    
+    # Log audit
+    await log_audit(
+        db=db,
+        user_id=user['user_id'],
+        username=user['username'],
+        action='DELETE',
+        table_name='clients',
+        record_id=client_id,
+        old_values=dict(client),
+        description=f"Deleted client: {client['client_name']}"
+    )
+    
+    return {"message": "Client deleted successfully"}
 
 # ========================================
 # SALE SUMMARY ENDPOINT
