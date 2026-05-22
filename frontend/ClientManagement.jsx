@@ -115,51 +115,43 @@ const ClientManagement = () => {
       {includeAnalytics && clients.length > 0 && (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
           gap: '1rem',
           marginBottom: '1.5rem'
         }}>
           <div style={{
-            padding: '1.25rem 1.5rem',
-            background: 'white',
+            padding: '1.5rem',
+            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
             borderRadius: '0.75rem',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-            borderLeft: '4px solid #3b82f6'
+            color: 'white',
+            boxShadow: '0 4px 6px rgba(59, 130, 246, 0.3)'
           }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-              Total Clients
-            </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: '700', color: '#111827' }}>
-              {clients.length}
-            </div>
+            <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>Total Clients</div>
+            <div style={{ fontSize: '2rem', fontWeight: '800' }}>{clients.length}</div>
           </div>
-
+          
           <div style={{
-            padding: '1.25rem 1.5rem',
-            background: 'white',
+            padding: '1.5rem',
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
             borderRadius: '0.75rem',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-            borderLeft: '4px solid #10b981'
+            color: 'white',
+            boxShadow: '0 4px 6px rgba(16, 185, 129, 0.3)'
           }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-              Active Buyers
-            </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: '700', color: '#111827' }}>
+            <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>Active Buyers</div>
+            <div style={{ fontSize: '2rem', fontWeight: '800' }}>
               {clients.filter(c => c.total_purchases > 0).length}
             </div>
           </div>
-
+          
           <div style={{
-            padding: '1.25rem 1.5rem',
-            background: 'white',
+            padding: '1.5rem',
+            background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
             borderRadius: '0.75rem',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-            borderLeft: '4px solid #F59E0B'
+            color: 'white',
+            boxShadow: '0 4px 6px rgba(245, 158, 11, 0.3)'
           }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-              Total Purchases
-            </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: '700', color: '#111827' }}>
+            <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>Total Purchases</div>
+            <div style={{ fontSize: '2rem', fontWeight: '800' }}>
               {clients.reduce((sum, c) => sum + (c.total_purchases || 0), 0)}
             </div>
           </div>
