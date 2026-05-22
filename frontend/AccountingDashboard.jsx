@@ -90,63 +90,57 @@ const AccountingDashboard = () => {
       {/* Cash Position Summary Cards */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
         gap: '1rem',
         marginBottom: '1.5rem'
       }}>
         {/* Total Cash (USD) */}
         <div style={{
-          padding: '1.25rem 1.5rem',
-          background: 'white',
+          padding: '1.5rem',
+          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
           borderRadius: '0.75rem',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-          borderLeft: '4px solid #10b981'
+          boxShadow: '0 4px 6px rgba(16,185,129,0.3)',
+          color: 'white'
         }}>
-          <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-            💵 Total USD
-          </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: '700', color: '#111827', marginBottom: '0.25rem' }}>
+          <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>💵 Total USD</div>
+          <div style={{ fontSize: '2rem', fontWeight: '800' }}>
             {formatCurrency(cashPosition?.totals?.usd || 0, 'USD')}
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+          <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '0.5rem' }}>
             {usdAccounts.length} account{usdAccounts.length !== 1 ? 's' : ''}
           </div>
         </div>
 
         {/* Total Cash (MXN) */}
         <div style={{
-          padding: '1.25rem 1.5rem',
-          background: 'white',
+          padding: '1.5rem',
+          background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
           borderRadius: '0.75rem',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-          borderLeft: '4px solid #8b5cf6'
+          boxShadow: '0 4px 6px rgba(139,92,246,0.3)',
+          color: 'white'
         }}>
-          <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-            💵 Total MXN
-          </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: '700', color: '#111827', marginBottom: '0.25rem' }}>
+          <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>💵 Total MXN</div>
+          <div style={{ fontSize: '2rem', fontWeight: '800' }}>
             {formatCurrency(cashPosition?.totals?.mxn || 0, 'MXN')}
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+          <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '0.5rem' }}>
             {mxnAccounts.length} account{mxnAccounts.length !== 1 ? 's' : ''}
           </div>
         </div>
 
         {/* USD Equivalent */}
         <div style={{
-          padding: '1.25rem 1.5rem',
-          background: 'white',
+          padding: '1.5rem',
+          background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
           borderRadius: '0.75rem',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-          borderLeft: '4px solid #3b82f6'
+          boxShadow: '0 4px 6px rgba(59,130,246,0.3)',
+          color: 'white'
         }}>
-          <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-            💰 Total Value (USD)
-          </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: '700', color: '#111827', marginBottom: '0.25rem' }}>
+          <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>💰 Total Value (USD)</div>
+          <div style={{ fontSize: '2rem', fontWeight: '800' }}>
             {formatCurrency(cashPosition?.totals?.usd_equivalent || 0, 'USD')}
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+          <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '0.5rem' }}>
             Rate: 1 USD = {cashPosition?.exchange_rate?.toFixed(2) || '17.50'} MXN
           </div>
         </div>
