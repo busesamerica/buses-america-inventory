@@ -1780,6 +1780,88 @@ async def delete_payment(
 
     return {"message": "Payment deleted successfully"}
 
+# ==================== SALES ROUTE ALIASES ====================
+# The SalesManagement frontend calls /api/sales/{id}/payment
+# These aliases forward to the existing inventory payment handlers
+
+@app.post("/api/sales/{inventory_id}/payment")
+async def add_sale_payment(
+    inventory_id: int,
+    payment: PaymentCreate,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Alias: Record a payment on a sale (forwards to inventory payments)"""
+    return await add_payment(inventory_id, payment, db, user)
+
+@app.post("/api/sales/{inventory_id}/import-payments")
+async def import_sale_payments(
+    inventory_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Import existing payments into accounting entries"""
+    # Get all payments for this sale
+    payments = await db.fetch(
+        "SELECT * FROM payments WHERE inventory_id = $1 ORDER BY payment_date",
+        inventory_id
+    )
+    
+    if not payments:
+        raise HTTPException(status_code=404, detail="No payments found to import")
+    
+    imported = 0
+    for payment in payments:
+        try:
+            # Check if an accounting entry already exists for this payment
+            existing = await db.fetchval(
+                "SELECT transaction_id FROM transactions WHERE reference_type = 'payment' AND reference_id = $1",
+                payment['payment_id']
+            )
+            if existing:
+                continue
+            
+            # Find bank account and AR account
+            bank_account_id = payment.get('payment_account_id')
+            ar_account = await db.fetchval(
+                "SELECT account_id FROM accounts WHERE account_subtype = 'Accounts Receivable' AND is_active = TRUE LIMIT 1"
+            )
+            
+            if not bank_account_id or not ar_account:
+                continue
+            
+            # Create journal entry: Debit Bank, Credit AR
+            trans_row = await db.fetchrow("""
+                INSERT INTO transactions (transaction_date, description, reference_type, reference_id, currency, created_by)
+                VALUES ($1, $2, 'payment', $3, $4, $5)
+                RETURNING transaction_id
+            """, payment['payment_date'],
+                f"Payment received for inventory #{inventory_id} — {payment['payment_method']}",
+                payment['payment_id'], payment['payment_currency'], user['username'])
+            
+            trans_id = trans_row['transaction_id']
+            
+            # Debit Bank
+            await db.execute("""
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, description)
+                VALUES ($1, $2, $3, 0, $4)
+            """, trans_id, bank_account_id, payment['payment_amount'],
+                f"Payment received — {payment['payment_method']}")
+            
+            # Credit AR
+            await db.execute("""
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, description)
+                VALUES ($1, $2, 0, $3, $4)
+            """, trans_id, ar_account, payment['payment_amount'],
+                f"AR reduction — payment on inventory #{inventory_id}")
+            
+            await update_account_balances(db, trans_id)
+            imported += 1
+        except Exception as e:
+            print(f"Warning: Could not import payment {payment['payment_id']}: {e}")
+    
+    return {"message": f"Imported {imported} of {len(payments)} payments into accounting"}
+
 # ==================== SALES ANALYTICS ENDPOINT ====================
 
 @app.get("/api/reports/sales-analytics")
