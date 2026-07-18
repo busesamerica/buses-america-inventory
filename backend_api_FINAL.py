@@ -1201,14 +1201,14 @@ async def record_purchase_payment(
     
     # Debit Inventory Asset
     await db.execute("""
-        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, description)
+        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, notes)
         VALUES ($1, $2, $3, 0, $4)
     """, trans_id, inventory_account, purchase_price,
         f"Inventory asset — {bus['stock_number']}")
     
     # Credit Bank
     await db.execute("""
-        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, description)
+        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, notes)
         VALUES ($1, $2, 0, $3, $4)
     """, trans_id, payment_data.payment_account_id, purchase_price,
         f"Payment for purchase of {bus['stock_number']}")
@@ -1938,14 +1938,14 @@ async def import_sale_payments(
             
             # Debit Bank
             await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, description)
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, notes)
                 VALUES ($1, $2, $3, 0, $4)
             """, trans_id, bank_account_id, payment['payment_amount'],
                 f"Payment received — {payment['payment_method']}")
             
             # Credit AR
             await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, description)
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, notes)
                 VALUES ($1, $2, 0, $3, $4)
             """, trans_id, ar_account, payment['payment_amount'],
                 f"AR reduction — payment on inventory #{inventory_id}")
@@ -2798,14 +2798,14 @@ async def record_sale(
 
             # Debit AR
             await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, description)
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, notes)
                 VALUES ($1, $2, $3, 0, $4)
             """, trans_id, ar_account, sale_data.sale_price,
                 f"AR for sale of {bus['stock_number']}")
 
             # Credit Revenue
             await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, description)
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, notes)
                 VALUES ($1, $2, 0, $3, $4)
             """, trans_id, revenue_account, sale_data.sale_price,
                 f"Revenue from sale of {bus['stock_number']}")
@@ -2828,14 +2828,14 @@ async def record_sale(
 
             # Debit COGS
             await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, description)
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, notes)
                 VALUES ($1, $2, $3, 0, $4)
             """, cogs_trans_id, cogs_account, Decimal(str(total_cost)),
                 f"COGS for {bus['stock_number']}")
 
             # Credit Inventory
             await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, description)
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, notes)
                 VALUES ($1, $2, 0, $3, $4)
             """, cogs_trans_id, inventory_account, Decimal(str(total_cost)),
                 f"Inventory reduction for sale of {bus['stock_number']}")
