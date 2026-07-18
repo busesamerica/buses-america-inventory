@@ -1141,6 +1141,101 @@ async def create_inventory(
     except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=400, detail="VIN or Stock Number already exists")
 
+# ========================================
+# RECORD PURCHASE PAYMENT (Accounting Entry)
+# ========================================
+
+class RecordPurchasePayment(BaseModel):
+    payment_account_id: int
+    payment_date: Optional[date] = None
+
+@app.post("/api/inventory/{inventory_id}/record-purchase-payment")
+async def record_purchase_payment(
+    inventory_id: int,
+    payment_data: RecordPurchasePayment,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Record the purchase payment as an accounting journal entry (Debit Inventory, Credit Bank)"""
+    
+    # Get inventory item
+    bus = await db.fetchrow(
+        "SELECT * FROM inventory WHERE inventory_id = $1 AND is_deleted = FALSE",
+        inventory_id
+    )
+    if not bus:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    
+    purchase_price = bus['purchase_price_usd']
+    if not purchase_price or float(purchase_price) == 0:
+        raise HTTPException(status_code=400, detail="No purchase price set for this inventory item")
+    
+    # Verify the bank account exists
+    bank_account = await db.fetchrow(
+        "SELECT account_id, account_name, currency FROM accounts WHERE account_id = $1 AND is_active = TRUE",
+        payment_data.payment_account_id
+    )
+    if not bank_account:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+    
+    # Find inventory asset account
+    inventory_account = await db.fetchval(
+        "SELECT account_id FROM accounts WHERE account_subtype = 'Inventory' AND is_active = TRUE LIMIT 1"
+    )
+    
+    if not inventory_account:
+        raise HTTPException(status_code=400, detail="No Inventory account found in chart of accounts")
+    
+    payment_dt = payment_data.payment_date or bus.get('purchase_date') or date.today()
+    
+    # Create journal entry: Debit Inventory Asset, Credit Bank
+    trans_row = await db.fetchrow("""
+        INSERT INTO transactions (transaction_date, description, reference_type, reference_id, currency, created_by)
+        VALUES ($1, $2, 'purchase', $3, $4, $5)
+        RETURNING transaction_id
+    """, payment_dt,
+        f"Purchase payment for {bus['stock_number']} — {bus['year']} {bus['make']} {bus['model']}",
+        inventory_id, 'USD', user['username'])
+    
+    trans_id = trans_row['transaction_id']
+    
+    # Debit Inventory Asset
+    await db.execute("""
+        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, description)
+        VALUES ($1, $2, $3, 0, $4)
+    """, trans_id, inventory_account, purchase_price,
+        f"Inventory asset — {bus['stock_number']}")
+    
+    # Credit Bank
+    await db.execute("""
+        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, description)
+        VALUES ($1, $2, 0, $3, $4)
+    """, trans_id, payment_data.payment_account_id, purchase_price,
+        f"Payment for purchase of {bus['stock_number']}")
+    
+    await update_account_balances(db, trans_id)
+    
+    await log_audit(
+        db, user['user_id'], user['username'],
+        'create', 'transactions', trans_id,
+        new_values={
+            'transaction_id': trans_id,
+            'inventory_id': inventory_id,
+            'stock_number': bus['stock_number'],
+            'amount': str(purchase_price),
+            'bank_account': bank_account['account_name'],
+        },
+        description=(
+            f"Purchase payment recorded: {bus['stock_number']} — "
+            f"${purchase_price} from {bank_account['account_name']}"
+        )
+    )
+    
+    return {
+        "message": f"Purchase payment of ${purchase_price} recorded for {bus['stock_number']}",
+        "transaction_id": trans_id
+    }
+
 @app.get("/api/inventory", response_model=List[Inventory])
 async def get_inventory(
     status: Optional[str] = None,
