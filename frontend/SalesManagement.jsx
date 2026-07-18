@@ -76,6 +76,16 @@ const SalesManagement = () => {
 
   return (
     <div style={{ background: '#f9fafb' }}>
+      {/* Header */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h1 style={{ margin: '0 0 0.25rem 0', fontSize: '1.5rem', fontWeight: '700', color: '#111827' }}>
+          💼 Sales Management
+        </h1>
+        <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>
+          Industry-standard sales workflow: Record → Track Payments → Analyze
+        </p>
+      </div>
+
       {/* Tabs */}
       <div style={{
         display: 'flex',
@@ -139,6 +149,7 @@ const SalesManagement = () => {
           inventory={inventory}
           clients={clients}
           onSaleRecorded={loadData}
+          onClientsChanged={loadData}
         />
       )}
 
@@ -175,7 +186,7 @@ const SalesManagement = () => {
 };
 
 // ============= RECORD SALE FORM =============
-const RecordSaleForm = ({ inventory, clients, onSaleRecorded }) => {
+const RecordSaleForm = ({ inventory, clients, onSaleRecorded, onClientsChanged }) => {
   const [formData, setFormData] = React.useState({
     inventory_id: '',
     sale_price: '',
@@ -186,6 +197,7 @@ const RecordSaleForm = ({ inventory, clients, onSaleRecorded }) => {
   });
   const [saving, setSaving] = React.useState(false);
   const [result, setResult] = React.useState(null);
+  const [showNewClientModal, setShowNewClientModal] = React.useState(false);
 
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
 
@@ -384,24 +396,43 @@ const RecordSaleForm = ({ inventory, clients, onSaleRecorded }) => {
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
               Client (Optional)
             </label>
-            <select
-              value={formData.client_id}
-              onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '1px solid #d1d5db',
-                borderRadius: '0.5rem',
-                fontSize: '1rem'
-              }}
-            >
-              <option value="">-- Select client (optional) --</option>
-              {clients.map(client => (
-                <option key={client.client_id} value={client.client_id}>
-                  {client.client_name} {client.client_company ? `- ${client.client_company}` : ''}
-                </option>
-              ))}
-            </select>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <select
+                value={formData.client_id}
+                onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
+                style={{
+                  flex: 1,
+                  padding: '0.75rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.5rem',
+                  fontSize: '1rem'
+                }}
+              >
+                <option value="">-- Select client (optional) --</option>
+                {clients.map(client => (
+                  <option key={client.client_id} value={client.client_id}>
+                    {client.client_name} {client.client_company ? `- ${client.client_company}` : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setShowNewClientModal(true)}
+                style={{
+                  padding: '0.75rem 1rem',
+                  background: '#F59E0B',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                + New
+              </button>
+            </div>
           </div>
 
           <div style={{ gridColumn: '1 / -1' }}>
@@ -463,6 +494,21 @@ const RecordSaleForm = ({ inventory, clients, onSaleRecorded }) => {
           {saving ? '⏳ Recording Sale...' : '💰 Record Sale'}
         </button>
       </form>
+
+      {/* New Client Modal */}
+      {showNewClientModal && (
+        <ClientFormModal
+          onClose={() => setShowNewClientModal(false)}
+          onSave={async (newClient) => {
+            setShowNewClientModal(false);
+            if (onClientsChanged) await onClientsChanged();
+            // Auto-select the new client after the list reloads
+            if (newClient && newClient.client_id) {
+              setFormData(prev => ({ ...prev, client_id: String(newClient.client_id) }));
+            }
+          }}
+        />
+      )}
     </div>
   );
 };
