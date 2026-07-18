@@ -2511,6 +2511,191 @@ async def get_sale_summary(
         } if sale['client_id'] else None
     }
 
+# ========================================
+# RECORD SALE ENDPOINT
+# ========================================
+
+class RecordSaleRequest(BaseModel):
+    inventory_id: int
+    sale_price: Decimal
+    sale_currency: str = 'USD'
+    sale_date: date
+    client_id: Optional[int] = None
+    sale_notes: Optional[str] = None
+
+@app.post("/api/sales/record")
+async def record_sale(
+    sale_data: RecordSaleRequest,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Record a sale: mark bus as sold, calculate profit, create accounting entries.
+    Returns sale summary with profit analysis for the frontend.
+    """
+    # 1. Validate the inventory item exists and is not already sold
+    bus = await db.fetchrow(
+        "SELECT * FROM inventory WHERE inventory_id = $1 AND is_deleted = FALSE",
+        sale_data.inventory_id
+    )
+    if not bus:
+        raise HTTPException(status_code=404, detail="Bus not found")
+    if bus['is_sold']:
+        raise HTTPException(status_code=400, detail="This bus is already marked as sold")
+
+    # 2. Get exchange rate
+    exchange_rate = await get_exchange_rate(db, 'MXN', 'USD')
+    sale_price = float(sale_data.sale_price)
+
+    # 3. Calculate total costs in sale currency
+    cost_data = await calculate_total_costs(db, sale_data.inventory_id, sale_data.sale_currency)
+    total_cost = cost_data['total_cost'] if cost_data else 0
+
+    # 4. Calculate profit
+    gross_profit = sale_price - total_cost
+    gross_profit_margin = round((gross_profit / sale_price * 100), 2) if sale_price > 0 else 0
+
+    # 5. Generate reference number
+    sale_count = await db.fetchval("SELECT COUNT(*) FROM inventory WHERE is_sold = TRUE")
+    reference_number = f"SALE-{(sale_count or 0) + 1:04d}"
+
+    # 6. Build update fields
+    update_fields = {
+        'is_sold': True,
+        'sale_price': sale_data.sale_price,
+        'sale_currency': sale_data.sale_currency,
+        'sale_date': sale_data.sale_date,
+        'balance_due': sale_data.sale_price,
+        'payment_status': 'Pending'
+    }
+    if sale_data.client_id:
+        update_fields['client_id'] = sale_data.client_id
+
+    # 7. Update inventory record
+    set_clauses = []
+    values = [sale_data.inventory_id]
+    param_count = 2
+    for field, value in update_fields.items():
+        set_clauses.append(f"{field} = ${param_count}")
+        values.append(value)
+        param_count += 1
+
+    updated_row = await db.fetchrow(f"""
+        UPDATE inventory
+        SET {', '.join(set_clauses)}
+        WHERE inventory_id = $1 AND is_deleted = FALSE
+        RETURNING *
+    """, *values)
+
+    if not updated_row:
+        raise HTTPException(status_code=500, detail="Failed to update inventory record")
+
+    # 8. Create accounting entries (Revenue + COGS)
+    try:
+        # Find or use default accounts
+        revenue_account = await db.fetchval(
+            "SELECT account_id FROM accounts WHERE account_type = 'Income' AND is_active = TRUE LIMIT 1"
+        )
+        ar_account = await db.fetchval(
+            "SELECT account_id FROM accounts WHERE account_subtype = 'Accounts Receivable' AND is_active = TRUE LIMIT 1"
+        )
+        cogs_account = await db.fetchval(
+            "SELECT account_id FROM accounts WHERE account_name ILIKE '%cost of goods%' OR account_name ILIKE '%COGS%' AND is_active = TRUE LIMIT 1"
+        )
+        inventory_account = await db.fetchval(
+            "SELECT account_id FROM accounts WHERE account_subtype = 'Inventory' AND is_active = TRUE LIMIT 1"
+        )
+
+        # Only create entries if accounts exist
+        if revenue_account and ar_account:
+            # Revenue entry: Debit AR, Credit Revenue
+            trans_row = await db.fetchrow("""
+                INSERT INTO transactions (transaction_date, description, reference_type, reference_id, currency, created_by)
+                VALUES ($1, $2, 'sale', $3, $4, $5)
+                RETURNING transaction_id
+            """, sale_data.sale_date,
+                f"Sale of {bus['stock_number']} — {bus['year']} {bus['make']} {bus['model']}",
+                sale_data.inventory_id, sale_data.sale_currency, user['username'])
+
+            trans_id = trans_row['transaction_id']
+
+            # Debit AR
+            await db.execute("""
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, description)
+                VALUES ($1, $2, $3, 0, $4)
+            """, trans_id, ar_account, sale_data.sale_price,
+                f"AR for sale of {bus['stock_number']}")
+
+            # Credit Revenue
+            await db.execute("""
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, description)
+                VALUES ($1, $2, 0, $3, $4)
+            """, trans_id, revenue_account, sale_data.sale_price,
+                f"Revenue from sale of {bus['stock_number']}")
+
+            # Update account balances
+            from decimal import Decimal as D
+            await update_account_balances(db, trans_id)
+
+        # COGS entry if accounts exist
+        if cogs_account and inventory_account and total_cost > 0:
+            cogs_trans = await db.fetchrow("""
+                INSERT INTO transactions (transaction_date, description, reference_type, reference_id, currency, created_by)
+                VALUES ($1, $2, 'cogs', $3, $4, $5)
+                RETURNING transaction_id
+            """, sale_data.sale_date,
+                f"COGS for {bus['stock_number']} — {bus['year']} {bus['make']} {bus['model']}",
+                sale_data.inventory_id, sale_data.sale_currency, user['username'])
+
+            cogs_trans_id = cogs_trans['transaction_id']
+
+            # Debit COGS
+            await db.execute("""
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, description)
+                VALUES ($1, $2, $3, 0, $4)
+            """, cogs_trans_id, cogs_account, Decimal(str(total_cost)),
+                f"COGS for {bus['stock_number']}")
+
+            # Credit Inventory
+            await db.execute("""
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, description)
+                VALUES ($1, $2, 0, $3, $4)
+            """, cogs_trans_id, inventory_account, Decimal(str(total_cost)),
+                f"Inventory reduction for sale of {bus['stock_number']}")
+
+            await update_account_balances(db, cogs_trans_id)
+
+    except Exception as e:
+        # Log but don't fail the sale if accounting entries fail
+        print(f"Warning: Could not create accounting entries for sale: {e}")
+
+    # 9. Audit log
+    await log_audit(
+        db, user['user_id'], user['username'],
+        'create', 'sales', sale_data.inventory_id,
+        old_values=dict(bus),
+        new_values=dict(updated_row),
+        description=(
+            f"Recorded sale: {bus['stock_number']} — {bus['year']} {bus['make']} {bus['model']} "
+            f"@ {sale_price} {sale_data.sale_currency}. "
+            f"Gross profit: {gross_profit:.2f} ({gross_profit_margin}%). Ref: {reference_number}"
+        )
+    )
+
+    # 10. Return response matching what the frontend expects
+    return {
+        'stock_number': bus['stock_number'],
+        'sale_price': sale_price,
+        'currency': sale_data.sale_currency,
+        'total_cost': total_cost,
+        'gross_profit': gross_profit,
+        'gross_profit_margin': gross_profit_margin,
+        'reference_number': reference_number,
+        'inventory_id': sale_data.inventory_id,
+        'is_sold': True,
+        'payment_status': 'Pending'
+    }
+
     # ==================== ACCOUNTING MODULE BACKEND ENDPOINTS ====================
 
 from decimal import Decimal
