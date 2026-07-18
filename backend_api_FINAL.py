@@ -1199,18 +1199,21 @@ async def record_purchase_payment(
     
     trans_id = trans_row['transaction_id']
     
+    # Determine currency from the bank account
+    line_currency = bank_account['currency'] or 'USD'
+    
     # Debit Inventory Asset
     await db.execute("""
-        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, notes)
-        VALUES ($1, $2, $3, 0, $4)
-    """, trans_id, inventory_account, purchase_price,
+        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+        VALUES ($1, $2, $3, 0, $4, $5)
+    """, trans_id, inventory_account, purchase_price, line_currency,
         f"Inventory asset — {bus['stock_number']}")
     
     # Credit Bank
     await db.execute("""
-        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, notes)
-        VALUES ($1, $2, 0, $3, $4)
-    """, trans_id, payment_data.payment_account_id, purchase_price,
+        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+        VALUES ($1, $2, 0, $3, $4, $5)
+    """, trans_id, payment_data.payment_account_id, purchase_price, line_currency,
         f"Payment for purchase of {bus['stock_number']}")
     
     await update_account_balances(db, trans_id)
@@ -1936,18 +1939,20 @@ async def import_sale_payments(
             
             trans_id = trans_row['transaction_id']
             
+            pay_currency = payment['payment_currency'] or 'USD'
+            
             # Debit Bank
             await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, notes)
-                VALUES ($1, $2, $3, 0, $4)
-            """, trans_id, bank_account_id, payment['payment_amount'],
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, $3, 0, $4, $5)
+            """, trans_id, bank_account_id, payment['payment_amount'], pay_currency,
                 f"Payment received — {payment['payment_method']}")
             
             # Credit AR
             await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, notes)
-                VALUES ($1, $2, 0, $3, $4)
-            """, trans_id, ar_account, payment['payment_amount'],
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, 0, $3, $4, $5)
+            """, trans_id, ar_account, payment['payment_amount'], pay_currency,
                 f"AR reduction — payment on inventory #{inventory_id}")
             
             await update_account_balances(db, trans_id)
@@ -2796,22 +2801,23 @@ async def record_sale(
 
             trans_id = trans_row['transaction_id']
 
+            sale_currency = sale_data.sale_currency
+
             # Debit AR
             await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, notes)
-                VALUES ($1, $2, $3, 0, $4)
-            """, trans_id, ar_account, sale_data.sale_price,
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, $3, 0, $4, $5)
+            """, trans_id, ar_account, sale_data.sale_price, sale_currency,
                 f"AR for sale of {bus['stock_number']}")
 
             # Credit Revenue
             await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, notes)
-                VALUES ($1, $2, 0, $3, $4)
-            """, trans_id, revenue_account, sale_data.sale_price,
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, 0, $3, $4, $5)
+            """, trans_id, revenue_account, sale_data.sale_price, sale_currency,
                 f"Revenue from sale of {bus['stock_number']}")
 
             # Update account balances
-            from decimal import Decimal as D
             await update_account_balances(db, trans_id)
 
         # COGS entry if accounts exist
@@ -2828,16 +2834,16 @@ async def record_sale(
 
             # Debit COGS
             await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, notes)
-                VALUES ($1, $2, $3, 0, $4)
-            """, cogs_trans_id, cogs_account, Decimal(str(total_cost)),
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, $3, 0, $4, $5)
+            """, cogs_trans_id, cogs_account, Decimal(str(total_cost)), sale_currency,
                 f"COGS for {bus['stock_number']}")
 
             # Credit Inventory
             await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, notes)
-                VALUES ($1, $2, 0, $3, $4)
-            """, cogs_trans_id, inventory_account, Decimal(str(total_cost)),
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, 0, $3, $4, $5)
+            """, cogs_trans_id, inventory_account, Decimal(str(total_cost)), sale_currency,
                 f"Inventory reduction for sale of {bus['stock_number']}")
 
             await update_account_balances(db, cogs_trans_id)
