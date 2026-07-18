@@ -241,14 +241,10 @@ class InventoryUpdate(BaseModel):
     # Supplier
     supplier_id: Optional[int] = None
     
+    # Client link (foreign key to clients table)
+    client_id: Optional[int] = None
+    
     # Sale info
-    client_name: Optional[str] = None
-    client_company: Optional[str] = None
-    client_location: Optional[str] = None
-    client_contact: Optional[str] = None
-    client_email: Optional[str] = None
-    client_phone: Optional[str] = None
-    client_use_case: Optional[str] = None
     sale_date: Optional[date] = None
     sale_price: Optional[Decimal] = None
     sale_price_usd: Optional[Decimal] = None
@@ -1226,6 +1222,14 @@ async def update_inventory(
 ):
     """Update inventory item"""
     update_dict = updates.dict(exclude_unset=True)
+    
+    # Safety: strip any fields that come from JOINed tables, not the inventory table itself
+    NON_INVENTORY_FIELDS = {
+        'client_name', 'client_company', 'client_location',
+        'client_contact', 'client_email', 'client_phone', 'client_use_case'
+    }
+    update_dict = {k: v for k, v in update_dict.items() if k not in NON_INVENTORY_FIELDS}
+    
     if not update_dict:
         raise HTTPException(status_code=400, detail="No fields to update")
 
