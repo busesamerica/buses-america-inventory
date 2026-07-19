@@ -1715,14 +1715,14 @@ async def add_payment(
         try:
             # Find AR account for this currency
             ar_account = await db.fetchval(
-                "SELECT account_id FROM accounts WHERE account_subtype = 'Accounts Receivable' AND currency = $1 AND is_active = TRUE LIMIT 1",
+                "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND currency = $1 AND is_active = TRUE LIMIT 1",
                 payment.payment_currency
             )
             print(f"DEBUG: AR account lookup for currency={payment.payment_currency} -> {ar_account}")
             # Fallback: any AR account
             if not ar_account:
                 ar_account = await db.fetchval(
-                    "SELECT account_id FROM accounts WHERE account_subtype = 'Accounts Receivable' AND is_active = TRUE LIMIT 1"
+                    "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND is_active = TRUE LIMIT 1"
                 )
 
             if ar_account:
@@ -1982,7 +1982,7 @@ async def import_sale_payments(
             # Find bank account and AR account
             bank_account_id = payment.get('payment_account_id')
             ar_account = await db.fetchval(
-                "SELECT account_id FROM accounts WHERE account_subtype = 'Accounts Receivable' AND is_active = TRUE LIMIT 1"
+                "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND is_active = TRUE LIMIT 1"
             )
             
             if not bank_account_id or not ar_account:
@@ -2852,7 +2852,7 @@ async def record_sale(
             "SELECT account_id FROM accounts WHERE account_type = 'Income' AND is_active = TRUE LIMIT 1"
         )
         ar_account = await db.fetchval(
-            "SELECT account_id FROM accounts WHERE account_subtype = 'Accounts Receivable' AND is_active = TRUE LIMIT 1"
+            "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND is_active = TRUE LIMIT 1"
         )
         cogs_account = await db.fetchval(
             "SELECT account_id FROM accounts WHERE account_name ILIKE '%cost of goods%' OR account_name ILIKE '%COGS%' AND is_active = TRUE LIMIT 1"
