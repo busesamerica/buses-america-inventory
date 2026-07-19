@@ -1710,7 +1710,6 @@ async def add_payment(
     )
 
     # Create accounting entry if bank account was specified
-    print(f"DEBUG: payment_account_id = {payment.payment_account_id} (type: {type(payment.payment_account_id)})")
     if payment.payment_account_id:
         try:
             # Find AR account for this currency
@@ -1718,7 +1717,6 @@ async def add_payment(
                 "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND currency = $1 AND is_active = TRUE LIMIT 1",
                 payment.payment_currency
             )
-            print(f"DEBUG: AR account lookup for currency={payment.payment_currency} -> {ar_account}")
             # Fallback: any AR account
             if not ar_account:
                 ar_account = await db.fetchval(
@@ -1759,7 +1757,6 @@ async def add_payment(
                     f"AR reduction — {payment.payment_type} for {bus_desc}")
 
                 await update_account_balances(db, trans_id)
-                print(f"INFO: Accounting entry created for payment {row['payment_id']} -> transaction {trans_id}")
         except Exception as e:
             print(f"Warning: Payment saved but accounting entry failed: {e}")
 
