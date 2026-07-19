@@ -2711,6 +2711,18 @@ async def get_sale_summary(
     except:
         distributions = []
     
+    # Check if payments have accounting entries
+    if payments:
+        payment_ids = [p['payment_id'] for p in payments]
+        accounting_count = await db.fetchval(
+            "SELECT COUNT(*) FROM transactions WHERE reference_type = 'payment' AND reference_id = ANY($1::int[])",
+            payment_ids
+        )
+        sale_recorded_in_accounting = accounting_count >= len(payments)
+    else:
+        # No payments yet — no warning needed
+        sale_recorded_in_accounting = True
+
     return {
         'sale': dict(sale),
         'payments': [dict(p) for p in payments],
@@ -2736,6 +2748,7 @@ async def get_sale_summary(
         'total_payments_received': sum(float(p['payment_amount']) for p in payments if p['payment_currency'] == sale_currency),
         'ar_balance': float(sale['balance_due']) if sale['balance_due'] else 0,
         'payment_count': len(payments),
+        'sale_recorded_in_accounting': sale_recorded_in_accounting,
         'client': {
             'client_id': sale['client_id'],
             'client_name': sale['client_name'],
