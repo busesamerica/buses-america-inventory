@@ -4086,7 +4086,7 @@ async def get_income_statement(
     end = datetime.strptime(end_date, '%Y-%m-%d').date()
     
     # Get exchange rate using helper function
-    exchange_rate = await get_exchange_rate(db, 'MXN', 'USD')
+    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')  # Returns ~17.50; divide MXN by this to get USD
     
     # Query account activity for the period
     query = """
@@ -4248,7 +4248,7 @@ async def get_balance_sheet(
     report_date = datetime.strptime(as_of_date, '%Y-%m-%d').date()
     
     # Get exchange rate using helper function
-    exchange_rate = await get_exchange_rate(db, 'MXN', 'USD')
+    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')  # Returns ~17.50; divide MXN by this to get USD
     
     # Query account balances as of the date
     query = """
