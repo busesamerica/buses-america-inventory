@@ -3203,55 +3203,56 @@ async def create_transaction(
     }
 
 async def update_account_balances(db, transaction_id: int):
-    """Update cached account balances after a transaction"""
-    # Get transaction date
-    trans = await db.fetchrow(
-        "SELECT transaction_date FROM transactions WHERE transaction_id = $1",
-        transaction_id
-    )
-    trans_date = trans['transaction_date']
-    
-    # Get all affected accounts
-    lines = await db.fetch(
-        """
-        SELECT account_id, currency, 
-               SUM(debit_amount) as total_debit,
-               SUM(credit_amount) as total_credit
-        FROM transaction_lines
-        WHERE transaction_id = $1
-        GROUP BY account_id, currency
-        """,
+    """
+    Update cached account balances after a transaction.
+    Recalculates cumulative totals from ALL transaction_lines for each affected account,
+    then writes a single row per account+currency dated today.
+    This ensures the dashboard always reads the correct total.
+    """
+    # Find which accounts are affected by this transaction
+    affected = await db.fetch(
+        "SELECT DISTINCT account_id, currency FROM transaction_lines WHERE transaction_id = $1",
         transaction_id
     )
     
-    for line in lines:
-        account_id = line['account_id']
-        currency = line['currency']
+    for row in affected:
+        account_id = row['account_id']
+        currency = row['currency']
         
-        # Get account type to determine normal balance
+        # Get account type to determine normal balance direction
         account = await db.fetchrow(
             "SELECT account_type FROM accounts WHERE account_id = $1",
             account_id
         )
         account_type = account['account_type']
         
-        # Calculate balance change
+        # Recalculate cumulative balance from ALL transaction_lines for this account+currency
+        totals = await db.fetchrow(
+            """
+            SELECT COALESCE(SUM(debit_amount), 0) as total_debit,
+                   COALESCE(SUM(credit_amount), 0) as total_credit
+            FROM transaction_lines
+            WHERE account_id = $1 AND currency = $2
+            """,
+            account_id, currency
+        )
+        
         # Assets & Expenses: Debit increases, Credit decreases
         # Liabilities, Equity, Income: Credit increases, Debit decreases
         if account_type in ['Asset', 'Expense']:
-            balance_change = float(line['total_debit']) - float(line['total_credit'])
+            cumulative_balance = float(totals['total_debit']) - float(totals['total_credit'])
         else:
-            balance_change = float(line['total_credit']) - float(line['total_debit'])
+            cumulative_balance = float(totals['total_credit']) - float(totals['total_debit'])
         
-        # Update or insert balance
+        # Upsert a single balance row dated today (replaces any previous value for today)
         await db.execute(
             """
             INSERT INTO account_balances (account_id, currency, balance, as_of_date)
-            VALUES ($1, $2, $3, $4)
+            VALUES ($1, $2, $3, CURRENT_DATE)
             ON CONFLICT (account_id, currency, as_of_date)
-            DO UPDATE SET balance = account_balances.balance + $3
+            DO UPDATE SET balance = $3
             """,
-            account_id, currency, balance_change, trans_date
+            account_id, currency, cumulative_balance
         )
 
 # ==================== CASH POSITION ====================
