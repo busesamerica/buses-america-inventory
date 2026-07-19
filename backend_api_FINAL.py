@@ -4096,6 +4096,7 @@ async def get_income_statement(
                 a.account_code,
                 a.account_name,
                 a.account_type,
+                a.account_subtype,
                 COALESCE(SUM(CASE WHEN tl.currency = 'USD' THEN tl.debit_amount ELSE 0 END), 0) as debit_usd,
                 COALESCE(SUM(CASE WHEN tl.currency = 'USD' THEN tl.credit_amount ELSE 0 END), 0) as credit_usd,
                 COALESCE(SUM(CASE WHEN tl.currency = 'MXN' THEN tl.debit_amount ELSE 0 END), 0) as debit_mxn,
@@ -4104,12 +4105,13 @@ async def get_income_statement(
             LEFT JOIN transaction_lines tl ON a.account_id = tl.account_id
             LEFT JOIN transactions t ON tl.transaction_id = t.transaction_id
             WHERE t.transaction_date >= $1 AND t.transaction_date <= $2
-            GROUP BY a.account_id, a.account_code, a.account_name, a.account_type
+            GROUP BY a.account_id, a.account_code, a.account_name, a.account_type, a.account_subtype
         )
         SELECT 
             account_code,
             account_name,
             account_type,
+            account_subtype,
             (credit_usd - debit_usd) as net_usd,
             (credit_mxn - debit_mxn) as net_mxn,
             (debit_usd - credit_usd) as expense_usd,
@@ -4126,7 +4128,8 @@ async def get_income_statement(
     cogs = {'USD': 0, 'MXN': 0, 'accounts': []}
     operating_expenses = {'USD': 0, 'MXN': 0, 'accounts': []}
     
-    cogs_codes = ['5000', '5100', '5200']
+    # COGS subtypes - actual cost of acquiring inventory
+    cogs_subtypes = {'Cost of Goods'}
     
     for row in rows:
         account_data = {
@@ -4147,7 +4150,7 @@ async def get_income_statement(
             account_data['amount_usd'] = float(row['expense_usd'])
             account_data['amount_mxn'] = float(row['expense_mxn'])
             
-            if row['account_code'] in cogs_codes:
+            if row['account_subtype'] in cogs_subtypes:
                 cogs['USD'] += account_data['amount_usd']
                 cogs['MXN'] += account_data['amount_mxn']
                 cogs['accounts'].append(account_data)
