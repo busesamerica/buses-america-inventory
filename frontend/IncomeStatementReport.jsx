@@ -4,9 +4,9 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
   const [loading, setLoading] = React.useState(false);
   const [reportData, setReportData] = React.useState(null);
   const [filters, setFilters] = React.useState({
-    start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0], // First day of current month
+    start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0], // January 1 of current year
     end_date: new Date().toISOString().split('T')[0], // Today
-    currency: 'USD'
+    currency: 'BOTH'
   });
 
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
