@@ -2844,21 +2844,36 @@ async def record_sale(
 
     # 8. Create accounting entries (Revenue + COGS)
     try:
-        # Find or use default accounts
+        sale_currency = sale_data.sale_currency
+
+        # Find currency-matched accounts
         revenue_account = await db.fetchval(
-            "SELECT account_id FROM accounts WHERE account_type = 'Income' AND is_active = TRUE LIMIT 1"
+            "SELECT account_id FROM accounts WHERE account_type = 'Income' AND account_subtype = 'Sales' AND currency = $1 AND is_active = TRUE LIMIT 1",
+            sale_currency
         )
+        # Fallback: any Sales Income account
+        if not revenue_account:
+            revenue_account = await db.fetchval(
+                "SELECT account_id FROM accounts WHERE account_type = 'Income' AND is_active = TRUE LIMIT 1"
+            )
+
         ar_account = await db.fetchval(
-            "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND is_active = TRUE LIMIT 1"
+            "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND currency = $1 AND is_active = TRUE LIMIT 1",
+            sale_currency
         )
+        if not ar_account:
+            ar_account = await db.fetchval(
+                "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND is_active = TRUE LIMIT 1"
+            )
+
         cogs_account = await db.fetchval(
-            "SELECT account_id FROM accounts WHERE account_name ILIKE '%cost of goods%' OR account_name ILIKE '%COGS%' AND is_active = TRUE LIMIT 1"
+            "SELECT account_id FROM accounts WHERE account_subtype = 'Cost of Goods' AND is_active = TRUE LIMIT 1"
         )
         inventory_account = await db.fetchval(
             "SELECT account_id FROM accounts WHERE account_subtype = 'Inventory' AND is_active = TRUE LIMIT 1"
         )
 
-        # Only create entries if accounts exist
+        # Only create revenue entries if accounts exist
         if revenue_account and ar_account:
             # Revenue entry: Debit AR, Credit Revenue
             trans_row = await db.fetchrow("""
@@ -2867,11 +2882,9 @@ async def record_sale(
                 RETURNING transaction_id
             """, sale_data.sale_date,
                 f"Sale of {bus['stock_number']} — {bus['year']} {bus['make']} {bus['model']}",
-                sale_data.inventory_id, sale_data.sale_currency, user['username'])
+                sale_data.inventory_id, sale_currency, user['username'])
 
             trans_id = trans_row['transaction_id']
-
-            sale_currency = sale_data.sale_currency
 
             # Debit AR
             await db.execute("""
@@ -2887,36 +2900,50 @@ async def record_sale(
             """, trans_id, revenue_account, sale_data.sale_price, sale_currency,
                 f"Revenue from sale of {bus['stock_number']}")
 
-            # Update account balances
             await update_account_balances(db, trans_id)
 
-        # COGS entry if accounts exist
-        if cogs_account and inventory_account and total_cost > 0:
-            cogs_trans = await db.fetchrow("""
-                INSERT INTO transactions (transaction_date, description, reference_type, reference_id, currency, created_by)
-                VALUES ($1, $2, 'cogs', $3, $4, $5)
-                RETURNING transaction_id
-            """, sale_data.sale_date,
-                f"COGS for {bus['stock_number']} — {bus['year']} {bus['make']} {bus['model']}",
-                sale_data.inventory_id, sale_data.sale_currency, user['username'])
+        # COGS entry: move everything capitalized to Bus Inventory for this bus
+        if cogs_account and inventory_account:
+            # Calculate COGS from what's ACTUALLY in Bus Inventory for this bus
+            # (purchase price + any costs capitalized to inventory like auction fees)
+            inventory_total = await db.fetchrow("""
+                SELECT 
+                    COALESCE(SUM(tl.debit_amount), 0) - COALESCE(SUM(tl.credit_amount), 0) as total_usd
+                FROM transaction_lines tl
+                JOIN transactions t ON tl.transaction_id = t.transaction_id
+                WHERE tl.account_id = $1
+                  AND t.reference_id = $2
+                  AND t.reference_type IN ('purchase', 'cost')
+            """, inventory_account, sale_data.inventory_id)
 
-            cogs_trans_id = cogs_trans['transaction_id']
+            cogs_amount = float(inventory_total['total_usd']) if inventory_total and inventory_total['total_usd'] else 0
 
-            # Debit COGS
-            await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                VALUES ($1, $2, $3, 0, $4, $5)
-            """, cogs_trans_id, cogs_account, Decimal(str(total_cost)), sale_currency,
-                f"COGS for {bus['stock_number']}")
+            if cogs_amount > 0:
+                cogs_trans = await db.fetchrow("""
+                    INSERT INTO transactions (transaction_date, description, reference_type, reference_id, currency, created_by)
+                    VALUES ($1, $2, 'cogs', $3, 'USD', $4)
+                    RETURNING transaction_id
+                """, sale_data.sale_date,
+                    f"COGS for {bus['stock_number']} — {bus['year']} {bus['make']} {bus['model']}",
+                    sale_data.inventory_id, user['username'])
 
-            # Credit Inventory
-            await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                VALUES ($1, $2, 0, $3, $4, $5)
-            """, cogs_trans_id, inventory_account, Decimal(str(total_cost)), sale_currency,
-                f"Inventory reduction for sale of {bus['stock_number']}")
+                cogs_trans_id = cogs_trans['transaction_id']
 
-            await update_account_balances(db, cogs_trans_id)
+                # Debit COGS (Bus Purchases)
+                await db.execute("""
+                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                    VALUES ($1, $2, $3, 0, 'USD', $4)
+                """, cogs_trans_id, cogs_account, Decimal(str(cogs_amount)),
+                    f"COGS for {bus['stock_number']}")
+
+                # Credit Inventory (remove from balance sheet)
+                await db.execute("""
+                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                    VALUES ($1, $2, 0, $3, 'USD', $4)
+                """, cogs_trans_id, inventory_account, Decimal(str(cogs_amount)),
+                    f"Inventory reduction for sale of {bus['stock_number']}")
+
+                await update_account_balances(db, cogs_trans_id)
 
     except Exception as e:
         # Log but don't fail the sale if accounting entries fail
