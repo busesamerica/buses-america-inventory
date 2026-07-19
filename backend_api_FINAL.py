@@ -68,6 +68,7 @@ class PaymentCreate(BaseModel):
     payment_type: str
     reference_number: Optional[str] = None
     payment_notes: Optional[str] = None
+    payment_account_id: Optional[int] = None
 
 class PrePurchaseInspectionCreate(BaseModel):
     vin: str
@@ -1707,6 +1708,57 @@ async def add_payment(
             f"via {payment.payment_method} ({payment.payment_type})"
         )
     )
+
+    # Create accounting entry if bank account was specified
+    if payment.payment_account_id:
+        try:
+            # Find AR account for this currency
+            ar_account = await db.fetchval(
+                "SELECT account_id FROM accounts WHERE account_subtype = 'Accounts Receivable' AND currency = $1 AND is_active = TRUE LIMIT 1",
+                payment.payment_currency
+            )
+            # Fallback: any AR account
+            if not ar_account:
+                ar_account = await db.fetchval(
+                    "SELECT account_id FROM accounts WHERE account_subtype = 'Accounts Receivable' AND is_active = TRUE LIMIT 1"
+                )
+
+            if ar_account:
+                # Get bus info for description
+                bus_info = await db.fetchrow(
+                    "SELECT stock_number, year, make, model FROM inventory WHERE inventory_id = $1",
+                    inventory_id
+                )
+                bus_desc = f"{bus_info['stock_number']} — {bus_info['year']} {bus_info['make']} {bus_info['model']}" if bus_info else f"inventory #{inventory_id}"
+
+                # Create journal entry: Debit Bank, Credit AR
+                trans_row = await db.fetchrow("""
+                    INSERT INTO transactions (transaction_date, description, reference_type, reference_id, currency, created_by)
+                    VALUES ($1, $2, 'payment', $3, $4, $5)
+                    RETURNING transaction_id
+                """, payment.payment_date,
+                    f"Payment received for {bus_desc} — {payment.payment_method} ({payment.payment_type})",
+                    row['payment_id'], payment.payment_currency, user['username'])
+
+                trans_id = trans_row['transaction_id']
+
+                # Debit Bank (cash in)
+                await db.execute("""
+                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                    VALUES ($1, $2, $3, 0, $4, $5)
+                """, trans_id, payment.payment_account_id, payment.payment_amount, payment.payment_currency,
+                    f"Payment received — {payment.payment_method}")
+
+                # Credit AR (reduce receivable)
+                await db.execute("""
+                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                    VALUES ($1, $2, 0, $3, $4, $5)
+                """, trans_id, ar_account, payment.payment_amount, payment.payment_currency,
+                    f"AR reduction — {payment.payment_type} for {bus_desc}")
+
+                await update_account_balances(db, trans_id)
+        except Exception as e:
+            print(f"Warning: Payment saved but accounting entry failed: {e}")
 
     return dict(row)
 
