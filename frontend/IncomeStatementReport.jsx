@@ -6,7 +6,7 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
   const [filters, setFilters] = React.useState({
     start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0], // January 1 of current year
     end_date: new Date().toISOString().split('T')[0], // Today
-    currency: 'BOTH'
+    currency: 'MXN'
   });
 
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
@@ -175,7 +175,6 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
               >
                 <option value="USD">USD</option>
                 <option value="MXN">MXN</option>
-                <option value="BOTH">Both</option>
               </select>
             </div>
 
