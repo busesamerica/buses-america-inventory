@@ -4314,24 +4314,57 @@ async def get_balance_sheet(
     
     rows = await db.fetch(query, report_date)
     
+    # Calculate current period net income (Income - Expenses) for the balance sheet
+    net_income_query = """
+        SELECT 
+            COALESCE(SUM(CASE 
+                WHEN a.account_type = 'Income' AND tl.currency = 'USD' THEN tl.credit_amount - tl.debit_amount
+                WHEN a.account_type = 'Expense' AND tl.currency = 'USD' THEN -(tl.debit_amount - tl.credit_amount)
+                ELSE 0 
+            END), 0) as net_income_usd,
+            COALESCE(SUM(CASE 
+                WHEN a.account_type = 'Income' AND tl.currency = 'MXN' THEN tl.credit_amount - tl.debit_amount
+                WHEN a.account_type = 'Expense' AND tl.currency = 'MXN' THEN -(tl.debit_amount - tl.credit_amount)
+                ELSE 0 
+            END), 0) as net_income_mxn
+        FROM transaction_lines tl
+        JOIN accounts a ON tl.account_id = a.account_id
+        JOIN transactions t ON tl.transaction_id = t.transaction_id
+        WHERE a.account_type IN ('Income', 'Expense')
+          AND t.transaction_date <= $1
+    """
+    net_income_row = await db.fetchrow(net_income_query, report_date)
+    net_income_usd = float(net_income_row['net_income_usd']) if net_income_row else 0
+    net_income_mxn = float(net_income_row['net_income_mxn']) if net_income_row else 0
+    
+    # Current asset subtypes — banks and cash are current assets
+    current_asset_subtypes = {'Cash', 'Bank', 'Inventory', 'AR'}
+    
     # Organize accounts
     assets = {'USD': 0, 'MXN': 0, 'current': [], 'non_current': []}
     liabilities = {'USD': 0, 'MXN': 0, 'current': [], 'non_current': []}
     equity = {'USD': 0, 'MXN': 0, 'accounts': []}
     
     for row in rows:
+        balance_usd = float(row['balance_usd'])
+        balance_mxn = float(row['balance_mxn'])
+        
+        # Skip accounts with zero balance in both currencies
+        if abs(balance_usd) < 0.01 and abs(balance_mxn) < 0.01:
+            continue
+        
         account_data = {
             'code': row['account_code'],
             'name': row['account_name'],
             'subtype': row['account_subtype'],
-            'balance_usd': float(row['balance_usd']),
-            'balance_mxn': float(row['balance_mxn'])
+            'balance_usd': balance_usd,
+            'balance_mxn': balance_mxn
         }
         
         if row['account_type'] == 'Asset':
             assets['USD'] += account_data['balance_usd']
             assets['MXN'] += account_data['balance_mxn']
-            if row['account_subtype'] in ['Cash & Cash Equivalents', 'Inventory', 'Current Asset']:
+            if row['account_subtype'] in current_asset_subtypes:
                 assets['current'].append(account_data)
             else:
                 assets['non_current'].append(account_data)
@@ -4339,7 +4372,7 @@ async def get_balance_sheet(
         elif row['account_type'] == 'Liability':
             liabilities['USD'] += account_data['balance_usd']
             liabilities['MXN'] += account_data['balance_mxn']
-            if row['account_subtype'] in ['Current Liability', 'Line of Credit']:
+            if row['account_subtype'] in ['AP', 'Current Liability', 'Line of Credit', 'Credit Line']:
                 liabilities['current'].append(account_data)
             else:
                 liabilities['non_current'].append(account_data)
@@ -4348,6 +4381,17 @@ async def get_balance_sheet(
             equity['USD'] += account_data['balance_usd']
             equity['MXN'] += account_data['balance_mxn']
             equity['accounts'].append(account_data)
+    
+    # Add current period net income to equity
+    equity['USD'] += net_income_usd
+    equity['MXN'] += net_income_mxn
+    equity['accounts'].append({
+        'code': '',
+        'name': 'Current Period Net Income',
+        'subtype': 'Net Income',
+        'balance_usd': net_income_usd,
+        'balance_mxn': net_income_mxn
+    })
     
     # Format based on currency
     if currency == "USD":
