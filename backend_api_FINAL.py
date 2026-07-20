@@ -1497,25 +1497,12 @@ async def add_inventory_cost(
         if payment_account_id:
             payment_account_id = int(payment_account_id)
         
-        # Map cost categories to expense accounts
-        category_to_account = {
-            # ASSET ACCOUNTS (adds to bus value)
-            'Purchase': '1200',                    # Bus Inventory
-            'Other Acquisition': '1200',           # Bus Inventory
-            'Initial Reconditioning': '1200',      # Bus Inventory
-            
-            # EXPENSE ACCOUNTS
-            'Transport to Stock': '5100',          # Transportation Costs
-            'Import': '5200',                      # Import/Customs Fees
-            'Customs': '5200',                     # Import/Customs Fees
-            'Regulatory': '5530',                  # Vehicle Registration & Permits
-            'Preventive Maintenance': '5520',      # Vehicle Repairs & Maintenance
-            'Transport to Client': '5100',         # Transportation Costs
-            'Repair': '5520',                      # Vehicle Repairs & Maintenance
-            'Other': '5900'                        # Other Expenses
-        }
+        # All costs tied to a specific bus are capitalized to Bus Inventory (GAAP).
+        # They become COGS only when the bus is sold, via record_sale.
+        # This ensures costs are matched to revenue in the same period.
+        INVENTORY_ACCOUNT_CODE = '1200'  # Bus Inventory
         
-        expense_account_code = category_to_account.get(cost_category, '5900')
+        expense_account_code = INVENTORY_ACCOUNT_CODE
         
         # Get account IDs
         expense_account_id = await db.fetchval(
@@ -2905,18 +2892,26 @@ async def record_sale(
         # COGS entry: move everything capitalized to Bus Inventory for this bus
         if cogs_account and inventory_account:
             # Calculate COGS from what's ACTUALLY in Bus Inventory for this bus
-            # (purchase price + any costs capitalized to inventory like auction fees)
+            # Includes: purchase payment, auction fees, transport, import, repairs — everything capitalized
+            # We match by: account = Bus Inventory AND (reference_id = inventory_id for purchase/cogs,
+            # OR the transaction references a cost_item that belongs to this bus)
             inventory_total = await db.fetchrow("""
-                SELECT 
-                    COALESCE(SUM(tl.debit_amount), 0) - COALESCE(SUM(tl.credit_amount), 0) as total_usd
+                SELECT COALESCE(SUM(tl.debit_amount), 0) - COALESCE(SUM(tl.credit_amount), 0) as total
                 FROM transaction_lines tl
                 JOIN transactions t ON tl.transaction_id = t.transaction_id
                 WHERE tl.account_id = $1
-                  AND t.reference_id = $2
-                  AND t.reference_type IN ('purchase', 'cost')
+                  AND (
+                    -- Purchase payments reference the inventory_id directly
+                    (t.reference_type = 'purchase' AND t.reference_id = $2)
+                    OR
+                    -- Cost items: reference_id is the cost_id, so we join to cost_items
+                    (t.reference_type = 'cost' AND t.reference_id IN (
+                        SELECT cost_id FROM cost_items WHERE inventory_id = $2
+                    ))
+                  )
             """, inventory_account, sale_data.inventory_id)
 
-            cogs_amount = float(inventory_total['total_usd']) if inventory_total and inventory_total['total_usd'] else 0
+            cogs_amount = float(inventory_total['total']) if inventory_total and inventory_total['total'] else 0
 
             if cogs_amount > 0:
                 cogs_trans = await db.fetchrow("""
