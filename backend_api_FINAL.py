@@ -68,7 +68,7 @@ class PaymentCreate(BaseModel):
     payment_type: str
     reference_number: Optional[str] = None
     payment_notes: Optional[str] = None
-    payment_account_id: Optional[int] = None
+    payment_account_id: int  # Required — which bank/cash account receives the payment
 
 class PrePurchaseInspectionCreate(BaseModel):
     vin: str
@@ -1494,14 +1494,17 @@ async def add_inventory_cost(
         payment_account_id = cost_data.get('payment_account_id')  # Bank/cash account paid from
         
         # Convert payment_account_id to int if it's a string
-        if payment_account_id:
+        if payment_account_id and str(payment_account_id).strip():
             payment_account_id = int(payment_account_id)
+        else:
+            raise HTTPException(
+                status_code=400, 
+                detail="Payment account is required. Please select which bank or cash account this cost was paid from."
+            )
         
         # All costs tied to a specific bus are capitalized to Bus Inventory (GAAP).
         # They become COGS only when the bus is sold, via record_sale.
-        # This ensures costs are matched to revenue in the same period.
         INVENTORY_ACCOUNT_CODE = '1200'  # Bus Inventory
-        
         expense_account_code = INVENTORY_ACCOUNT_CODE
         
         # Get account IDs
@@ -1509,19 +1512,6 @@ async def add_inventory_cost(
             "SELECT account_id FROM accounts WHERE account_code = $1",
             expense_account_code
         )
-        
-        # If no payment account specified, default to first cash account in same currency
-        if not payment_account_id:
-            payment_account_id = await db.fetchval(
-                """
-                SELECT account_id FROM accounts 
-                WHERE account_type = 'Asset' 
-                  AND account_subtype = 'Cash' 
-                  AND currency IN ('BOTH', $1)
-                LIMIT 1
-                """,
-                currency
-            )
         
         # Generate reference number
         reference_number = await generate_transaction_reference(
@@ -1696,56 +1686,57 @@ async def add_payment(
         )
     )
 
-    # Create accounting entry if bank account was specified
-    if payment.payment_account_id:
-        try:
-            # Find AR account for this currency
+    # Create accounting entry — Debit Bank, Credit AR
+    try:
+        # Find AR account for this currency
+        ar_account = await db.fetchval(
+            "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND currency = $1 AND is_active = TRUE LIMIT 1",
+            payment.payment_currency
+        )
+        # Fallback: any AR account
+        if not ar_account:
             ar_account = await db.fetchval(
-                "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND currency = $1 AND is_active = TRUE LIMIT 1",
-                payment.payment_currency
+                "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND is_active = TRUE LIMIT 1"
             )
-            # Fallback: any AR account
-            if not ar_account:
-                ar_account = await db.fetchval(
-                    "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND is_active = TRUE LIMIT 1"
-                )
 
-            if ar_account:
-                # Get bus info for description
-                bus_info = await db.fetchrow(
-                    "SELECT stock_number, year, make, model FROM inventory WHERE inventory_id = $1",
-                    inventory_id
-                )
-                bus_desc = f"{bus_info['stock_number']} — {bus_info['year']} {bus_info['make']} {bus_info['model']}" if bus_info else f"inventory #{inventory_id}"
+        if not ar_account:
+            print(f"Warning: No AR account found for currency {payment.payment_currency}")
+        else:
+            # Get bus info for description
+            bus_info = await db.fetchrow(
+                "SELECT stock_number, year, make, model FROM inventory WHERE inventory_id = $1",
+                inventory_id
+            )
+            bus_desc = f"{bus_info['stock_number']} — {bus_info['year']} {bus_info['make']} {bus_info['model']}" if bus_info else f"inventory #{inventory_id}"
 
-                # Create journal entry: Debit Bank, Credit AR
-                trans_row = await db.fetchrow("""
-                    INSERT INTO transactions (transaction_date, description, reference_type, reference_id, currency, created_by)
-                    VALUES ($1, $2, 'payment', $3, $4, $5)
-                    RETURNING transaction_id
-                """, payment.payment_date,
-                    f"Payment received for {bus_desc} — {payment.payment_method} ({payment.payment_type})",
-                    row['payment_id'], payment.payment_currency, user['username'])
+            # Create journal entry: Debit Bank, Credit AR
+            trans_row = await db.fetchrow("""
+                INSERT INTO transactions (transaction_date, description, reference_type, reference_id, currency, created_by)
+                VALUES ($1, $2, 'payment', $3, $4, $5)
+                RETURNING transaction_id
+            """, payment.payment_date,
+                f"Payment received for {bus_desc} — {payment.payment_method} ({payment.payment_type})",
+                row['payment_id'], payment.payment_currency, user['username'])
 
-                trans_id = trans_row['transaction_id']
+            trans_id = trans_row['transaction_id']
 
-                # Debit Bank (cash in)
-                await db.execute("""
-                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                    VALUES ($1, $2, $3, 0, $4, $5)
-                """, trans_id, payment.payment_account_id, payment.payment_amount, payment.payment_currency,
-                    f"Payment received — {payment.payment_method}")
+            # Debit Bank (cash in)
+            await db.execute("""
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, $3, 0, $4, $5)
+            """, trans_id, payment.payment_account_id, payment.payment_amount, payment.payment_currency,
+                f"Payment received — {payment.payment_method}")
 
-                # Credit AR (reduce receivable)
-                await db.execute("""
-                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                    VALUES ($1, $2, 0, $3, $4, $5)
-                """, trans_id, ar_account, payment.payment_amount, payment.payment_currency,
-                    f"AR reduction — {payment.payment_type} for {bus_desc}")
+            # Credit AR (reduce receivable)
+            await db.execute("""
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, 0, $3, $4, $5)
+            """, trans_id, ar_account, payment.payment_amount, payment.payment_currency,
+                f"AR reduction — {payment.payment_type} for {bus_desc}")
 
-                await update_account_balances(db, trans_id)
-        except Exception as e:
-            print(f"Warning: Payment saved but accounting entry failed: {e}")
+            await update_account_balances(db, trans_id)
+    except Exception as e:
+        print(f"Warning: Payment saved but accounting entry failed: {e}")
 
     result = dict(row)
     result['message'] = (
@@ -3554,30 +3545,33 @@ async def record_profit_distribution(
         await db.execute(
             """
             INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, currency
-            ) VALUES ($1, $2, $3, $4)
+                transaction_id, account_id, debit_amount, credit_amount, currency, notes
+            ) VALUES ($1, $2, $3, 0, $4, $5)
             """,
-            trans_id, retained_earnings, distribution.total_profit, distribution.currency
+            trans_id, retained_earnings, distribution.total_profit, distribution.currency,
+            f"Profit distribution — {distribution.notes or 'Distribution'}"
         )
         
         # Credit: Erick Distribution
         await db.execute(
             """
             INSERT INTO transaction_lines (
-                transaction_id, account_id, credit_amount, currency
-            ) VALUES ($1, $2, $3, $4)
+                transaction_id, account_id, debit_amount, credit_amount, currency, notes
+            ) VALUES ($1, $2, 0, $3, $4, $5)
             """,
-            trans_id, erick_dist, erick_amount, distribution.currency
+            trans_id, erick_dist, erick_amount, distribution.currency,
+            f"Distribution to Erick ({distribution.erick_percentage}%)"
         )
         
         # Credit: Omar Distribution
         await db.execute(
             """
             INSERT INTO transaction_lines (
-                transaction_id, account_id, credit_amount, currency
-            ) VALUES ($1, $2, $3, $4)
+                transaction_id, account_id, debit_amount, credit_amount, currency, notes
+            ) VALUES ($1, $2, 0, $3, $4, $5)
             """,
-            trans_id, omar_dist, omar_amount, distribution.currency
+            trans_id, omar_dist, omar_amount, distribution.currency,
+            f"Distribution to Omar ({distribution.omar_percentage}%)"
         )
         
         # Update balances
