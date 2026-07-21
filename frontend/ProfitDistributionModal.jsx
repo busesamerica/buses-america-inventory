@@ -9,14 +9,33 @@ const ProfitDistributionModal = ({ isOpen, onClose, onComplete }) => {
   const [distributionDate, setDistributionDate] = React.useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = React.useState('');
   const [error, setError] = React.useState('');
+  const [accounts, setAccounts] = React.useState([]);
+  const [erickPaymentAccountId, setErickPaymentAccountId] = React.useState('');
+  const [omarPaymentAccountId, setOmarPaymentAccountId] = React.useState('');
 
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
 
   React.useEffect(() => {
     if (isOpen) {
       loadSoldBuses();
+      loadAccounts();
     }
   }, [isOpen]);
+
+  const loadAccounts = async () => {
+    try {
+      const token = localStorage.getItem('session_token');
+      const response = await fetch(`${API_URL}/accounting/accounts`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAccounts(data.filter(a => ['Bank', 'Cash'].includes(a.account_subtype) && a.is_active));
+      }
+    } catch (error) {
+      console.error('Error loading accounts:', error);
+    }
+  };
 
   const loadSoldBuses = async () => {
     try {
@@ -83,7 +102,9 @@ const ProfitDistributionModal = ({ isOpen, onClose, onComplete }) => {
           currency: calculation.currency,
           erick_percentage: 60,
           omar_percentage: 40,
-          notes: notes
+          notes: notes,
+          erick_payment_account_id: erickPaymentAccountId ? parseInt(erickPaymentAccountId) : null,
+          omar_payment_account_id: omarPaymentAccountId ? parseInt(omarPaymentAccountId) : null
         })
       });
 
@@ -105,6 +126,8 @@ const ProfitDistributionModal = ({ isOpen, onClose, onComplete }) => {
     setCalculation(null);
     setNotes('');
     setError('');
+    setErickPaymentAccountId('');
+    setOmarPaymentAccountId('');
     onClose();
   };
 
@@ -356,6 +379,69 @@ const ProfitDistributionModal = ({ isOpen, onClose, onComplete }) => {
               </div>
             </div>
 
+            {/* Payout Accounts */}
+            <div style={{
+              padding: '1.5rem',
+              background: '#f9fafb',
+              borderRadius: '0.75rem',
+              marginBottom: '1.5rem',
+              border: '1px solid #e5e7eb'
+            }}>
+              <h4 style={{ margin: '0 0 1rem 0', fontSize: '1rem', fontWeight: '700', color: '#374151' }}>
+                🏦 Payout Accounts
+              </h4>
+              
+              <div style={{ display: 'grid', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
+                    Pay Erick from: *
+                  </label>
+                  <select
+                    value={erickPaymentAccountId}
+                    onChange={(e) => setErickPaymentAccountId(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.5rem',
+                      fontSize: '0.875rem'
+                    }}
+                  >
+                    <option value="">-- Select account --</option>
+                    {accounts.map(a => (
+                      <option key={a.account_id} value={a.account_id}>
+                        {a.account_name} ({a.currency})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
+                    Pay Omar from: *
+                  </label>
+                  <select
+                    value={omarPaymentAccountId}
+                    onChange={(e) => setOmarPaymentAccountId(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.5rem',
+                      fontSize: '0.875rem'
+                    }}
+                  >
+                    <option value="">-- Select account --</option>
+                    {accounts.map(a => (
+                      <option key={a.account_id} value={a.account_id}>
+                        {a.account_name} ({a.currency})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
             {/* Distribution Details */}
             <div style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
@@ -416,16 +502,16 @@ const ProfitDistributionModal = ({ isOpen, onClose, onComplete }) => {
               </button>
               <button
                 onClick={recordDistribution}
-                disabled={loading || calculation.profit <= 0}
+                disabled={loading || calculation.profit <= 0 || !erickPaymentAccountId || !omarPaymentAccountId}
                 style={{
                   padding: '0.75rem 1.5rem',
-                  background: calculation.profit <= 0 ? '#9ca3af' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  background: (calculation.profit <= 0 || !erickPaymentAccountId || !omarPaymentAccountId) ? '#9ca3af' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                   color: 'white',
                   border: 'none',
                   borderRadius: '0.5rem',
                   fontSize: '1rem',
                   fontWeight: '600',
-                  cursor: (loading || calculation.profit <= 0) ? 'not-allowed' : 'pointer',
+                  cursor: (loading || calculation.profit <= 0 || !erickPaymentAccountId || !omarPaymentAccountId) ? 'not-allowed' : 'pointer',
                   opacity: loading ? 0.5 : 1
                 }}
               >
