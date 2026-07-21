@@ -3003,6 +3003,8 @@ class ProfitDistributionCreate(BaseModel):
     erick_percentage: Decimal = 60.00
     omar_percentage: Decimal = 40.00
     notes: Optional[str] = None
+    erick_payment_account_id: Optional[int] = None
+    omar_payment_account_id: Optional[int] = None
 
 # ==================== CHART OF ACCOUNTS ====================
 
@@ -3576,6 +3578,47 @@ async def record_profit_distribution(
         
         # Update balances
         await update_account_balances(db, trans_id)
+        
+        # Create cash payout entries if bank accounts specified
+        # Debit Distributions (reduce what's owed), Credit Bank (money leaves)
+        if distribution.erick_payment_account_id and distribution.omar_payment_account_id:
+            payout_trans_id = await db.fetchval("""
+                INSERT INTO transactions (
+                    transaction_date, description, reference_type, reference_id,
+                    currency, created_by
+                ) VALUES ($1, $2, 'distribution_payout', $3, $4, $5)
+                RETURNING transaction_id
+            """, distribution.distribution_date,
+                f"Payout - {distribution.notes or 'Profit distribution'}",
+                dist_row['distribution_id'], distribution.currency, user['username'])
+            
+            # Erick payout: Debit Distributions - Erick, Credit Bank
+            await db.execute("""
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, $3, 0, $4, $5)
+            """, payout_trans_id, erick_dist, erick_amount, distribution.currency,
+                f"Payout to Erick ({distribution.erick_percentage}%)")
+            
+            await db.execute("""
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, 0, $3, $4, $5)
+            """, payout_trans_id, distribution.erick_payment_account_id, erick_amount, distribution.currency,
+                f"Erick distribution payout")
+            
+            # Omar payout: Debit Distributions - Omar, Credit Bank
+            await db.execute("""
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, $3, 0, $4, $5)
+            """, payout_trans_id, omar_dist, omar_amount, distribution.currency,
+                f"Payout to Omar ({distribution.omar_percentage}%)")
+            
+            await db.execute("""
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, 0, $3, $4, $5)
+            """, payout_trans_id, distribution.omar_payment_account_id, omar_amount, distribution.currency,
+                f"Omar distribution payout")
+            
+            await update_account_balances(db, payout_trans_id)
         
         # Update distribution with transaction_id
         await db.execute(
