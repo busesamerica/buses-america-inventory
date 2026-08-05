@@ -3087,12 +3087,12 @@ async def get_transactions(
     
     if start_date:
         where_clauses.append(f"transaction_date >= ${param_count}")
-        params.append(start_date)
+        params.append(datetime.strptime(start_date, '%Y-%m-%d').date())
         param_count += 1
     
     if end_date:
         where_clauses.append(f"transaction_date <= ${param_count}")
-        params.append(end_date)
+        params.append(datetime.strptime(end_date, '%Y-%m-%d').date())
         param_count += 1
     
     if reference_type:
