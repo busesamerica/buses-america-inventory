@@ -91,7 +91,7 @@ const TransactionJournal = ({ isOpen, onClose }) => {
   const totalDebits = { USD: 0, MXN: 0 };
   const totalCredits = { USD: 0, MXN: 0 };
   transactions.forEach(t => {
-    const lines = t.lines || [];
+    const lines = (t.lines || []).filter(l => l != null);
     lines.forEach(l => {
       const cur = l.currency || 'USD';
       totalDebits[cur] = (totalDebits[cur] || 0) + parseFloat(l.debit_amount || 0);
@@ -211,7 +211,7 @@ const TransactionJournal = ({ isOpen, onClose }) => {
               <tbody>
                 {transactions.map((t) => {
                   const isExpanded = expandedId === t.transaction_id;
-                  const lines = t.lines || [];
+                  const lines = (t.lines || []).filter(l => l != null);
                   return (
                     <React.Fragment key={t.transaction_id}>
                       {/* Transaction header row */}
