@@ -12,7 +12,10 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
     description: '',
     reference: '',
     fromAccount: '',
-    toAccount: ''
+    toAccount: '',
+    fromAmount: '',
+    toAmount: '',
+    exchangeRate: ''
   });
   
   const [accounts, setAccounts] = React.useState([]);
@@ -52,7 +55,10 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
       description: '',
       reference: '',
       fromAccount: '',
-      toAccount: ''
+      toAccount: '',
+      fromAmount: '',
+      toAmount: '',
+      exchangeRate: ''
     });
     setError('');
   };
@@ -64,6 +70,20 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
     if (transactionType === 'transfer' && formData.fromAccount === formData.toAccount) {
       setError('Cannot transfer to the same account');
       return;
+    }
+    if (transactionType === 'exchange') {
+      if (!formData.fromAccount || !formData.toAccount) {
+        setError('Please select both accounts');
+        return;
+      }
+      if (!formData.fromAmount || !formData.toAmount) {
+        setError('Please enter both amounts');
+        return;
+      }
+      if (formData.fromAccount === formData.toAccount) {
+        setError('Cannot exchange to the same account');
+        return;
+      }
     }
 
     setLoading(true);
@@ -86,6 +106,17 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
         lines = [
           { account_id: parseInt(formData.expenseAccount), debit_amount: parseFloat(formData.amount), credit_amount: 0, currency: formData.currency },
           { account_id: parseInt(formData.bankAccount), debit_amount: 0, credit_amount: parseFloat(formData.amount), currency: formData.currency }
+        ];
+      } else if (transactionType === 'exchange') {
+        // Currency exchange: MXN leaves one account, USD enters another (or vice versa)
+        const fromAccount = accounts.find(a => a.account_id === parseInt(formData.fromAccount));
+        const toAccount = accounts.find(a => a.account_id === parseInt(formData.toAccount));
+        const fromCurrency = fromAccount?.currency || 'MXN';
+        const toCurrency = toAccount?.currency || 'USD';
+        desc = `Exchange - ${formData.description || `${fromCurrency} to ${toCurrency}`} @ ${formData.exchangeRate}`;
+        lines = [
+          { account_id: parseInt(formData.toAccount), debit_amount: parseFloat(formData.toAmount), credit_amount: 0, currency: toCurrency },
+          { account_id: parseInt(formData.fromAccount), debit_amount: 0, credit_amount: parseFloat(formData.fromAmount), currency: fromCurrency }
         ];
       } else {
         desc = `Transfer - ${formData.description || 'Between accounts'}`;
@@ -145,8 +176,8 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
           {/* Type Selector */}
           <div style={{ marginBottom: '1.5rem' }}>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Transaction Type</label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-              {[{value: 'deposit', label: '💵 Deposit', color: '#10b981'}, {value: 'expense', label: '💸 Expense', color: '#ef4444'}, {value: 'transfer', label: '🔄 Transfer', color: '#3b82f6'}].map(type => (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+              {[{value: 'deposit', label: '💵 Deposit', color: '#10b981'}, {value: 'expense', label: '💸 Expense', color: '#ef4444'}, {value: 'transfer', label: '🔄 Transfer', color: '#3b82f6'}, {value: 'exchange', label: '💱 Exchange', color: '#8b5cf6'}].map(type => (
                 <button key={type.value} type="button" onClick={() => setTransactionType(type.value)} style={{ padding: '0.75rem', background: transactionType === type.value ? type.color : 'white', color: transactionType === type.value ? 'white' : '#374151', border: `2px solid ${type.color}`, borderRadius: '0.5rem', fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer' }}>{type.label}</button>
               ))}
             </div>
@@ -240,6 +271,89 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Description (Optional)</label>
                 <input type="text" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} placeholder="Reason for transfer" style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }} />
+              </div>
+            </>
+          )}
+
+          {transactionType === 'exchange' && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>From Account *</label>
+                  <select value={formData.fromAccount} onChange={(e) => setFormData({...formData, fromAccount: e.target.value})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
+                    <option value="">Select...</option>
+                    {bankAccounts.map(a => <option key={a.account_id} value={a.account_id}>{a.account_name} ({a.currency})</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>To Account *</label>
+                  <select value={formData.toAccount} onChange={(e) => setFormData({...formData, toAccount: e.target.value})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
+                    <option value="">Select...</option>
+                    {bankAccounts.map(a => <option key={a.account_id} value={a.account_id}>{a.account_name} ({a.currency})</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Amount Sent *</label>
+                  <input type="number" step="0.01" value={formData.fromAmount} onChange={(e) => {
+                    const fromAmt = e.target.value;
+                    const rate = formData.exchangeRate;
+                    const fromAcct = accounts.find(a => a.account_id === parseInt(formData.fromAccount));
+                    const toAcct = accounts.find(a => a.account_id === parseInt(formData.toAccount));
+                    let toAmt = formData.toAmount;
+                    if (fromAmt && rate) {
+                      if (fromAcct?.currency === 'MXN' && toAcct?.currency === 'USD') {
+                        toAmt = (parseFloat(fromAmt) / parseFloat(rate)).toFixed(2);
+                      } else if (fromAcct?.currency === 'USD' && toAcct?.currency === 'MXN') {
+                        toAmt = (parseFloat(fromAmt) * parseFloat(rate)).toFixed(2);
+                      }
+                    }
+                    setFormData({...formData, fromAmount: fromAmt, toAmount: toAmt});
+                  }} required placeholder="0.00" style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }} />
+                  {formData.fromAccount && (
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                      {accounts.find(a => a.account_id === parseInt(formData.fromAccount))?.currency || ''}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Amount Received *</label>
+                  <input type="number" step="0.01" value={formData.toAmount} onChange={(e) => setFormData({...formData, toAmount: e.target.value})} required placeholder="0.00" style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }} />
+                  {formData.toAccount && (
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                      {accounts.find(a => a.account_id === parseInt(formData.toAccount))?.currency || ''}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Exchange Rate (USD/MXN) *</label>
+                <input type="number" step="0.0001" value={formData.exchangeRate} onChange={(e) => {
+                  const rate = e.target.value;
+                  const fromAmt = formData.fromAmount;
+                  const fromAcct = accounts.find(a => a.account_id === parseInt(formData.fromAccount));
+                  const toAcct = accounts.find(a => a.account_id === parseInt(formData.toAccount));
+                  let toAmt = formData.toAmount;
+                  if (fromAmt && rate) {
+                    if (fromAcct?.currency === 'MXN' && toAcct?.currency === 'USD') {
+                      toAmt = (parseFloat(fromAmt) / parseFloat(rate)).toFixed(2);
+                    } else if (fromAcct?.currency === 'USD' && toAcct?.currency === 'MXN') {
+                      toAmt = (parseFloat(fromAmt) * parseFloat(rate)).toFixed(2);
+                    }
+                  }
+                  setFormData({...formData, exchangeRate: rate, toAmount: toAmt});
+                }} required placeholder="17.50" style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }} />
+                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                  e.g. 1 USD = 17.50 MXN
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Description (Optional)</label>
+                <input type="text" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} placeholder="Currency exchange details" style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }} />
               </div>
             </>
           )}
