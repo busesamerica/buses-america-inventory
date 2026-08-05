@@ -3139,14 +3139,24 @@ async def create_transaction(
     """Create a new transaction with lines (journal entry)"""
     
     # Validate: Debits must equal credits
+    # Only exchange transactions are exempt (different currencies can't balance numerically)
     total_debits = sum(float(line.debit_amount) for line in transaction.lines)
     total_credits = sum(float(line.credit_amount) for line in transaction.lines)
     
-    if abs(total_debits - total_credits) > 0.01:  # Allow for rounding
-        raise HTTPException(
-            status_code=400,
-            detail=f"Debits ({total_debits}) must equal credits ({total_credits})"
-        )
+    if transaction.reference_type == 'exchange':
+        # Exchange: just ensure we have at least one debit and one credit
+        if total_debits == 0 or total_credits == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Exchange transaction must have at least one debit and one credit"
+            )
+    else:
+        # All other types: strict debit = credit check
+        if abs(total_debits - total_credits) > 0.01:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Debits ({total_debits}) must equal credits ({total_credits})"
+            )
     
     async with db.transaction():
         # Create transaction header
