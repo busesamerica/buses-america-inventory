@@ -12,6 +12,7 @@ const AccountingDashboard = () => {
   const [showIncomeStatement, setShowIncomeStatement] = React.useState(false);
   const [showBalanceSheet, setShowBalanceSheet] = React.useState(false);
   const [showPeriodClosing, setShowPeriodClosing] = React.useState(false);
+  const [showTransactionJournal, setShowTransactionJournal] = React.useState(false);
 
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
 
@@ -87,6 +88,16 @@ const AccountingDashboard = () => {
 
   return (
     <div style={{ background: '#f9fafb' }}>
+      {/* Header */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h1 style={{ margin: '0 0 0.25rem 0', fontSize: '1.5rem', fontWeight: '700', color: '#111827' }}>
+          💼 Accounting Dashboard
+        </h1>
+        <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>
+          Real-time cash position and financial management
+        </p>
+      </div>
+
       {/* Cash Position Summary Cards */}
       <div style={{
         display: 'grid',
@@ -99,7 +110,7 @@ const AccountingDashboard = () => {
           padding: '1.5rem',
           background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
           borderRadius: '0.75rem',
-          boxShadow: '0 4px 6px rgba(16,185,129,0.3)',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
           color: 'white'
         }}>
           <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>💵 Total USD</div>
@@ -116,7 +127,7 @@ const AccountingDashboard = () => {
           padding: '1.5rem',
           background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
           borderRadius: '0.75rem',
-          boxShadow: '0 4px 6px rgba(139,92,246,0.3)',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
           color: 'white'
         }}>
           <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>💵 Total MXN</div>
@@ -133,7 +144,7 @@ const AccountingDashboard = () => {
           padding: '1.5rem',
           background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
           borderRadius: '0.75rem',
-          boxShadow: '0 4px 6px rgba(59,130,246,0.3)',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
           color: 'white'
         }}>
           <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>💰 Total Value (USD)</div>
@@ -331,6 +342,22 @@ const AccountingDashboard = () => {
             📊 Balance Sheet
           </button>
           <button
+            onClick={() => setShowTransactionJournal(true)}
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.5rem',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              boxShadow: '0 2px 4px rgba(99, 102, 241, 0.3)'
+            }}
+          >
+            📒 Transaction Journal
+          </button>
+          <button
             onClick={() => setShowPeriodClosing(true)}
             style={{
               padding: '0.75rem 1.5rem',
@@ -405,6 +432,11 @@ const AccountingDashboard = () => {
           loadCashPosition();
           loadAccounts();
         }}
+      />
+
+      <TransactionJournal
+        isOpen={showTransactionJournal}
+        onClose={() => setShowTransactionJournal(false)}
       />
     </div>
   );
