@@ -56,14 +56,38 @@ const TransactionJournal = ({ isOpen, onClose }) => {
   };
 
   // Determine if a debit/credit INCREASES or DECREASES the account
-  // Assets & Expenses: debit = increase, credit = decrease
-  // Liabilities, Equity, Income: credit = increase, debit = decrease
-  var getEffect = function(accountType, debit, credit) {
+  var getAccountNature = function(accountType, accountSubtype) {
+    // Primary: use account_type directly
+    if (accountType === 'Asset' || accountType === 'Expense') return 'debit';
+    if (accountType === 'Income' || accountType === 'Equity' || accountType === 'Liability') return 'credit';
+    // Fallback: infer from account_subtype
+    var sub = (accountSubtype || '').toLowerCase();
+    var debitSubs = ['bank','cash','inventory','ar','vehicle','operating','cost of goods','marketing',
+                     'office','professional','financial','transportation','other'];
+    var creditSubs = ['sales','service','other income','capital','retained earnings','distributions',
+                      'ap','credit line'];
+    if (debitSubs.some(function(s) { return sub.indexOf(s) >= 0; })) return 'debit';
+    if (creditSubs.some(function(s) { return sub.indexOf(s) >= 0; })) return 'credit';
+    return 'debit'; // default assumption
+  };
+
+  var getEffect = function(accountType, accountSubtype, debit, credit) {
     var d = sf(debit), c = sf(credit);
-    var isNaturalDebit = (accountType === 'Asset' || accountType === 'Expense');
-    if (d > 0) return isNaturalDebit ? 'increase' : 'decrease';
-    if (c > 0) return isNaturalDebit ? 'decrease' : 'increase';
+    var nature = getAccountNature(accountType, accountSubtype);
+    if (d > 0) return nature === 'debit' ? 'increase' : 'decrease';
+    if (c > 0) return nature === 'debit' ? 'decrease' : 'increase';
     return 'neutral';
+  };
+
+  var getTypeLabel = function(accountType, accountSubtype) {
+    if (accountType) return accountTypeLabels[accountType] || accountType;
+    // Fallback from subtype
+    var sub = (accountSubtype || '').toLowerCase();
+    if (['bank','cash','inventory','ar'].some(function(s) { return sub.indexOf(s) >= 0; })) return 'Asset';
+    if (['sales','service','other income'].some(function(s) { return sub.indexOf(s) >= 0; })) return 'Revenue';
+    if (['capital','retained earnings','distributions'].some(function(s) { return sub.indexOf(s) >= 0; })) return 'Equity';
+    if (['ap','credit line'].some(function(s) { return sub.indexOf(s) >= 0; })) return 'Liability';
+    return 'Expense';
   };
 
   var effectArrow = function(effect) {
@@ -179,9 +203,10 @@ const TransactionJournal = ({ isOpen, onClose }) => {
                         var credit = sf(line.credit_amount);
                         var isCredit = credit > 0 && debit === 0;
                         var acctType = line.account_type || '';
-                        var effect = getEffect(acctType, line.debit_amount, line.credit_amount);
+                        var acctSubtype = line.account_subtype || '';
+                        var effect = getEffect(acctType, acctSubtype, line.debit_amount, line.credit_amount);
                         var arrow = effectArrow(effect);
-                        var acctTypeLabel = accountTypeLabels[acctType] || acctType;
+                        var acctTypeLabel = getTypeLabel(acctType, acctSubtype);
 
                         rows.push(
                           h('tr', { key:'t'+t.transaction_id+'l'+lIdx, style:{borderBottom:'none'} },
