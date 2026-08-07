@@ -1,9 +1,10 @@
 // TransactionJournal.jsx - General Journal (Industry Standard Format)
-// With account type labels and effect indicators
+// Loads accounts separately for reliable type lookups
 
 const TransactionJournal = ({ isOpen, onClose }) => {
   var _s = React.useState, _e = React.useEffect;
   var _ts = _s([]), transactions = _ts[0], setTransactions = _ts[1];
+  var _as = _s({}), accountMap = _as[0], setAccountMap = _as[1];
   var _ls = _s(false), loading = _ls[0], setLoading = _ls[1];
   var _es = _s(''), error = _es[0], setError = _es[1];
   var _fs = _s({
@@ -14,7 +15,23 @@ const TransactionJournal = ({ isOpen, onClose }) => {
 
   var API_URL = window.API_BASE_URL ? window.API_BASE_URL + '/api' : 'https://buses-america.onrender.com/api';
 
-  _e(function() { if (isOpen) loadTransactions(); }, [isOpen]);
+  _e(function() {
+    if (isOpen) { loadAccounts(); loadTransactions(); }
+  }, [isOpen]);
+
+  var loadAccounts = function() {
+    var token = localStorage.getItem('session_token');
+    fetch(API_URL + '/accounting/accounts', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(function(r) { return r.ok ? r.json() : []; })
+    .then(function(data) {
+      var map = {};
+      (data || []).forEach(function(a) {
+        map[a.account_id] = { type: a.account_type, subtype: a.account_subtype, name: a.account_name };
+      });
+      setAccountMap(map);
+    })
+    .catch(function() {});
+  };
 
   var loadTransactions = function() {
     setLoading(true); setError('');
@@ -55,45 +72,33 @@ const TransactionJournal = ({ isOpen, onClose }) => {
     } catch(e) { return String(ds); }
   };
 
-  // Determine if a debit/credit INCREASES or DECREASES the account
-  var getAccountNature = function(accountType, accountSubtype) {
-    // Primary: use account_type directly
-    if (accountType === 'Asset' || accountType === 'Expense') return 'debit';
-    if (accountType === 'Income' || accountType === 'Equity' || accountType === 'Liability') return 'credit';
-    // Fallback: infer from account_subtype
-    var sub = (accountSubtype || '').toLowerCase();
-    var debitSubs = ['bank','cash','inventory','ar','vehicle','operating','cost of goods','marketing',
-                     'office','professional','financial','transportation','other'];
-    var creditSubs = ['sales','service','other income','capital','retained earnings','distributions',
-                      'ap','credit line'];
-    if (debitSubs.some(function(s) { return sub.indexOf(s) >= 0; })) return 'debit';
-    if (creditSubs.some(function(s) { return sub.indexOf(s) >= 0; })) return 'credit';
-    return 'debit'; // default assumption
+  // Look up account type from the separately loaded accounts map
+  var getAccountType = function(line) {
+    // First try the map (most reliable — comes directly from accounts table)
+    var acctId = line.account_id;
+    if (accountMap[acctId]) return accountMap[acctId].type;
+    // Fallback to json_build_object data
+    if (line.account_type) return line.account_type;
+    return null;
   };
 
-  var getEffect = function(accountType, accountSubtype, debit, credit) {
+  var getAccountTypeLabel = function(type) {
+    if (type === 'Asset') return 'ASSET';
+    if (type === 'Expense') return 'EXPENSE';
+    if (type === 'Income') return 'REVENUE';
+    if (type === 'Equity') return 'EQUITY';
+    if (type === 'Liability') return 'LIABILITY';
+    return '';
+  };
+
+  // Effect: does this line increase or decrease the account?
+  var getEffect = function(type, debit, credit) {
     var d = sf(debit), c = sf(credit);
-    var nature = getAccountNature(accountType, accountSubtype);
-    if (d > 0) return nature === 'debit' ? 'increase' : 'decrease';
-    if (c > 0) return nature === 'debit' ? 'decrease' : 'increase';
+    // Assets & Expenses are "debit-normal" — debits increase them
+    var isDebitNormal = (type === 'Asset' || type === 'Expense');
+    if (d > 0) return isDebitNormal ? 'increase' : 'decrease';
+    if (c > 0) return isDebitNormal ? 'decrease' : 'increase';
     return 'neutral';
-  };
-
-  var getTypeLabel = function(accountType, accountSubtype) {
-    if (accountType) return accountTypeLabels[accountType] || accountType;
-    // Fallback from subtype
-    var sub = (accountSubtype || '').toLowerCase();
-    if (['bank','cash','inventory','ar'].some(function(s) { return sub.indexOf(s) >= 0; })) return 'Asset';
-    if (['sales','service','other income'].some(function(s) { return sub.indexOf(s) >= 0; })) return 'Revenue';
-    if (['capital','retained earnings','distributions'].some(function(s) { return sub.indexOf(s) >= 0; })) return 'Equity';
-    if (['ap','credit line'].some(function(s) { return sub.indexOf(s) >= 0; })) return 'Liability';
-    return 'Expense';
-  };
-
-  var effectArrow = function(effect) {
-    if (effect === 'increase') return { symbol: '\u25B2', color: '#059669' }; // ▲ green
-    if (effect === 'decrease') return { symbol: '\u25BC', color: '#dc2626' }; // ▼ red
-    return { symbol: '', color: '#9ca3af' };
   };
 
   var typeLabels = {
@@ -101,11 +106,6 @@ const TransactionJournal = ({ isOpen, onClose }) => {
     payment: 'Payment Received', distribution: 'Profit Distribution',
     distribution_payout: 'Distribution Payout', deposit: 'Deposit',
     expense: 'Expense', transfer: 'Transfer', exchange: 'Currency Exchange'
-  };
-
-  var accountTypeLabels = {
-    Asset: 'Asset', Expense: 'Expense', Income: 'Revenue',
-    Equity: 'Equity', Liability: 'Liability'
   };
 
   if (!isOpen) return null;
@@ -133,20 +133,14 @@ const TransactionJournal = ({ isOpen, onClose }) => {
         h('button', { onClick:onClose, style: { padding:'0.5rem',background:'transparent',border:'none',fontSize:'1.25rem',cursor:'pointer',color:'#6b7280' } }, '\u2715')
       ),
 
-      // Legend bar
+      // Legend
       h('div', { style: { padding:'0.5rem 2rem',borderBottom:'1px solid #e5e7eb',background:'#f9fafb',display:'flex',gap:'1.5rem',alignItems:'center',flexShrink:0,fontSize:'0.7rem',color:'#6b7280' } },
         h('span', { style: { fontWeight:'600' } }, 'Effect:'),
         h('span', { style: { display:'flex',alignItems:'center',gap:'0.25rem' } },
-          h('span', { style: { color:'#059669',fontSize:'0.6rem' } }, '\u25B2'),
-          'Increases account'
-        ),
+          h('span', { style: { color:'#059669',fontSize:'0.6rem' } }, '\u25B2'), 'Increases account'),
         h('span', { style: { display:'flex',alignItems:'center',gap:'0.25rem' } },
-          h('span', { style: { color:'#dc2626',fontSize:'0.6rem' } }, '\u25BC'),
-          'Decreases account'
-        ),
-        h('span', { style: { borderLeft:'1px solid #d1d5db',paddingLeft:'1rem',display:'flex',alignItems:'center',gap:'0.5rem' } },
-          h('span', { style: { color:'#6b7280',fontStyle:'italic' } }, 'Indented accounts = credits')
-        )
+          h('span', { style: { color:'#dc2626',fontSize:'0.6rem' } }, '\u25BC'), 'Decreases account'),
+        h('span', { style: { borderLeft:'1px solid #d1d5db',paddingLeft:'1rem',fontStyle:'italic' } }, 'Indented = credits')
       ),
 
       // Filters
@@ -170,7 +164,7 @@ const TransactionJournal = ({ isOpen, onClose }) => {
             h('option',{value:'transfer'},'Transfers')
           )
         ),
-        h('button', { onClick:loadTransactions, style:{padding:'0.35rem 1rem',background:'#111827',color:'white',border:'none',borderRadius:'0.25rem',fontSize:'0.8rem',fontWeight:'600',cursor:'pointer'} }, 'Run Report'),
+        h('button', { onClick:function(){loadAccounts();loadTransactions();}, style:{padding:'0.35rem 1rem',background:'#111827',color:'white',border:'none',borderRadius:'0.25rem',fontSize:'0.8rem',fontWeight:'600',cursor:'pointer'} }, 'Run Report'),
         h('div', { style:{marginLeft:'auto',fontSize:'0.8rem',color:'#6b7280',fontWeight:'600'} }, transactions.length + ' entries')
       ),
 
@@ -193,7 +187,7 @@ const TransactionJournal = ({ isOpen, onClose }) => {
                     )
                   ),
                   h('tbody', null,
-                    transactions.map(function(t, tIdx) {
+                    transactions.map(function(t) {
                       var lines = t.lines || [];
                       var rows = [];
                       var typeLabel = typeLabels[t.reference_type] || t.reference_type || 'Entry';
@@ -202,42 +196,39 @@ const TransactionJournal = ({ isOpen, onClose }) => {
                         var debit = sf(line.debit_amount);
                         var credit = sf(line.credit_amount);
                         var isCredit = credit > 0 && debit === 0;
-                        var acctType = line.account_type || '';
-                        var acctSubtype = line.account_subtype || '';
-                        var effect = getEffect(acctType, acctSubtype, line.debit_amount, line.credit_amount);
-                        var arrow = effectArrow(effect);
-                        var acctTypeLabel = getTypeLabel(acctType, acctSubtype);
+
+                        // Get account type from the reliable lookup map
+                        var acctType = getAccountType(line);
+                        var acctTypeLabel = getAccountTypeLabel(acctType);
+                        var effect = getEffect(acctType, line.debit_amount, line.credit_amount);
+
+                        var arrowColor = effect === 'increase' ? '#059669' : effect === 'decrease' ? '#dc2626' : '#9ca3af';
+                        var arrowSymbol = effect === 'increase' ? '\u25B2' : effect === 'decrease' ? '\u25BC' : '';
 
                         rows.push(
                           h('tr', { key:'t'+t.transaction_id+'l'+lIdx, style:{borderBottom:'none'} },
-                            // Date
                             h('td', { style:{padding:'0.2rem 0',fontSize:'0.8rem',color:'#374151',verticalAlign:'top',whiteSpace:'nowrap'} },
                               lIdx === 0 ? fd(t.transaction_date) : ''
                             ),
-                            // Account name + type label
                             h('td', { style:{padding:'0.2rem 0',paddingLeft:isCredit?'2rem':'0'} },
                               h('div', { style:{fontSize:'0.85rem',color:'#111827',fontWeight:'500'} }, line.account_name || ''),
-                              h('div', { style:{fontSize:'0.6rem',color:'#9ca3af',marginTop:'0.05rem',textTransform:'uppercase',letterSpacing:'0.03em'} },
-                                acctTypeLabel + (line.currency ? ' \u00B7 ' + line.currency : '')
+                              h('div', { style:{fontSize:'0.6rem',color:'#9ca3af',marginTop:'0.05rem',letterSpacing:'0.03em'} },
+                                acctTypeLabel + (acctTypeLabel && line.currency ? ' \u00B7 ' : '') + (line.currency || '')
                               )
                             ),
-                            // Effect arrow
                             h('td', { style:{padding:'0.2rem 0',textAlign:'center',verticalAlign:'top',paddingTop:'0.3rem'} },
-                              h('span', { style:{fontSize:'0.55rem',color:arrow.color,fontWeight:'700'} }, arrow.symbol)
+                              h('span', { style:{fontSize:'0.55rem',color:arrowColor,fontWeight:'700'} }, arrowSymbol)
                             ),
-                            // Debit
-                            h('td', { style:{padding:'0.2rem 0',textAlign:'right',fontSize:'0.85rem',color: debit > 0 ? '#111827' : 'transparent',fontWeight: debit > 0 ? '600' : '400',verticalAlign:'top'} },
+                            h('td', { style:{padding:'0.2rem 0',textAlign:'right',fontSize:'0.85rem',color:debit>0?'#111827':'transparent',fontWeight:debit>0?'600':'400',verticalAlign:'top'} },
                               debit > 0 ? fc(debit, line.currency) : ''
                             ),
-                            // Credit
-                            h('td', { style:{padding:'0.2rem 0',textAlign:'right',fontSize:'0.85rem',color: credit > 0 ? '#111827' : 'transparent',fontWeight: credit > 0 ? '600' : '400',verticalAlign:'top'} },
+                            h('td', { style:{padding:'0.2rem 0',textAlign:'right',fontSize:'0.85rem',color:credit>0?'#111827':'transparent',fontWeight:credit>0?'600':'400',verticalAlign:'top'} },
                               credit > 0 ? fc(credit, line.currency) : ''
                             )
                           )
                         );
                       });
 
-                      // Memo row
                       rows.push(
                         h('tr', { key:'t'+t.transaction_id+'m', style:{borderBottom:'none'} },
                           h('td', null, ''),
@@ -247,7 +238,6 @@ const TransactionJournal = ({ isOpen, onClose }) => {
                         )
                       );
 
-                      // Separator
                       rows.push(
                         h('tr', { key:'t'+t.transaction_id+'s' },
                           h('td', { colSpan:5, style:{padding:0,borderBottom:'1px solid #e5e7eb'} })
