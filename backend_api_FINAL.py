@@ -1457,6 +1457,13 @@ async def add_inventory_cost(
     if not inv_check:
         raise HTTPException(status_code=404, detail="Inventory item not found")
     
+    # Get bus info for descriptions
+    bus_info = await db.fetchrow(
+        "SELECT stock_number, year, make, model FROM inventory WHERE inventory_id = $1",
+        inventory_id
+    )
+    bus_label = f"{bus_info['stock_number']} — {bus_info['year']} {bus_info['make']} {bus_info['model']}" if bus_info else f"Inventory #{inventory_id}"
+    
     # Convert date string to date object if needed
     from datetime import datetime
     date_incurred = cost_data.get('date_incurred')
@@ -1521,7 +1528,7 @@ async def add_inventory_cost(
         )
         
         # Create accounting transaction
-        trans_description = f"Cost - {cost_category} - {cost_data.get('description', 'Inventory cost')}"
+        trans_description = f"Cost - {cost_category} - {cost_data.get('description', 'Inventory cost')} ({bus_label})"
         
         trans_query = """
             INSERT INTO transactions (
@@ -1555,7 +1562,7 @@ async def add_inventory_cost(
             amount,
             0,
             currency,
-            f"{cost_category} - {cost_data.get('vendor', 'N/A')}"
+            f"{cost_category} - {cost_data.get('vendor', 'N/A')} — {bus_label}"
         )
         
         # Credit: Bank/Cash account (decreases cash)
@@ -1570,7 +1577,7 @@ async def add_inventory_cost(
             0,
             amount,
             currency,
-            f"Payment for {cost_category}"
+            f"Payment for {cost_category} — {bus_label}"
         )
         
         # Update account balances
@@ -3111,6 +3118,8 @@ async def get_transactions(
                     'account_id', tl.account_id,
                     'account_name', a.account_name,
                     'account_code', a.account_code,
+                    'account_type', a.account_type,
+                    'account_subtype', a.account_subtype,
                     'debit_amount', tl.debit_amount,
                     'credit_amount', tl.credit_amount,
                     'currency', tl.currency,
