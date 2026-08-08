@@ -118,6 +118,11 @@ const TransactionJournal = ({ isOpen, onClose }) => {
       totC[c] = (totC[c] || 0) + sf(l.credit_amount);
     });
   });
+  // Round to 2 decimal places to avoid floating-point accumulation errors
+  totD.USD = Math.round(totD.USD * 100) / 100;
+  totD.MXN = Math.round(totD.MXN * 100) / 100;
+  totC.USD = Math.round(totC.USD * 100) / 100;
+  totC.MXN = Math.round(totC.MXN * 100) / 100;
 
   var h = React.createElement;
 
@@ -276,7 +281,7 @@ const TransactionJournal = ({ isOpen, onClose }) => {
                   h('td', { style:{padding:'0.25rem 0',textAlign:'right'} }, '$' + totD.USD.toLocaleString('en-US',{minimumFractionDigits:2})),
                   h('td', { style:{padding:'0.25rem 0',textAlign:'right'} }, '$' + totC.USD.toLocaleString('en-US',{minimumFractionDigits:2})),
                   h('td', { style:{padding:'0.25rem 0',textAlign:'right',color: usdBal ? '#059669' : '#6b7280',fontWeight:'600'} },
-                    usdBal ? 'Balanced' : '$' + (totD.USD - totC.USD).toLocaleString('en-US',{minimumFractionDigits:2})
+                    usdBal ? 'Balanced' : '$' + Math.round((totD.USD - totC.USD) * 100) / 100
                   )
                 ),
                 h('tr', { style:{borderBottom:'1px solid #d1d5db'} },
@@ -284,7 +289,7 @@ const TransactionJournal = ({ isOpen, onClose }) => {
                   h('td', { style:{padding:'0.25rem 0',textAlign:'right'} }, 'MX$' + totD.MXN.toLocaleString('en-US',{minimumFractionDigits:2})),
                   h('td', { style:{padding:'0.25rem 0',textAlign:'right'} }, 'MX$' + totC.MXN.toLocaleString('en-US',{minimumFractionDigits:2})),
                   h('td', { style:{padding:'0.25rem 0',textAlign:'right',color: mxnBal ? '#059669' : '#6b7280',fontWeight:'600'} },
-                    mxnBal ? 'Balanced' : 'MX$' + (totD.MXN - totC.MXN).toLocaleString('en-US',{minimumFractionDigits:2})
+                    mxnBal ? 'Balanced' : 'MX$' + Math.round((totD.MXN - totC.MXN) * 100) / 100
                   )
                 )
               )
