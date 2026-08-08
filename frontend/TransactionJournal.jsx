@@ -214,7 +214,8 @@ const TransactionJournal = ({ isOpen, onClose }) => {
                               h('div', { style:{fontSize:'0.85rem',color:'#111827',fontWeight:'500'} }, line.account_name || ''),
                               h('div', { style:{fontSize:'0.6rem',color:'#9ca3af',marginTop:'0.05rem',letterSpacing:'0.03em'} },
                                 acctTypeLabel + (acctTypeLabel && line.currency ? ' \u00B7 ' : '') + (line.currency || '')
-                              )
+                              ),
+                              line.notes ? h('div', { style:{fontSize:'0.7rem',color:'#6b7280',marginTop:'0.1rem',fontStyle:'italic'} }, line.notes) : null
                             ),
                             h('td', { style:{padding:'0.2rem 0',textAlign:'center',verticalAlign:'top',paddingTop:'0.3rem'} },
                               h('span', { style:{fontSize:'0.55rem',color:arrowColor,fontWeight:'700'} }, arrowSymbol)
@@ -250,24 +251,54 @@ const TransactionJournal = ({ isOpen, onClose }) => {
                 )
       ),
 
-      // Footer
-      h('div', { style:{padding:'0.75rem 2rem',borderTop:'2px solid #111827',background:'#fafafa',flexShrink:0,fontSize:'0.75rem',color:'#374151',display:'flex',justifyContent:'space-between',alignItems:'center'} },
-        h('div', null, transactions.length + ' journal entries'),
-        h('div', { style:{display:'flex',gap:'2rem',fontFamily:'monospace',fontSize:'0.75rem'} },
-          h('div', null,
-            h('span',{style:{color:'#6b7280'}},'USD: '),
-            h('span',{style:{fontWeight:'600'}},'$'+totD.USD.toLocaleString('en-US',{minimumFractionDigits:2})),
-            h('span',{style:{color:'#d1d5db',margin:'0 0.25rem'}},'/'),
-            h('span',{style:{fontWeight:'600'}},'$'+totC.USD.toLocaleString('en-US',{minimumFractionDigits:2}))
+      // Footer — Trial Balance Summary
+      (function() {
+        var usdBal = Math.abs(totD.USD - totC.USD) < 0.01;
+        var mxnBal = Math.abs(totD.MXN - totC.MXN) < 0.01;
+        var bothBal = usdBal && mxnBal;
+        var hasExchange = !usdBal || !mxnBal;
+
+        return h('div', { style:{borderTop:'2px solid #111827',background:'#fafafa',flexShrink:0} },
+          // Totals table
+          h('div', { style:{padding:'0.75rem 2rem'} },
+            h('table', { style:{width:'100%',borderCollapse:'collapse',fontSize:'0.75rem',fontFamily:'monospace'} },
+              h('thead', null,
+                h('tr', { style:{borderBottom:'1px solid #d1d5db'} },
+                  h('th', { style:{textAlign:'left',padding:'0.25rem 0',color:'#6b7280',fontWeight:'600',fontSize:'0.65rem',textTransform:'uppercase',letterSpacing:'0.05em'} }, 'Currency'),
+                  h('th', { style:{textAlign:'right',padding:'0.25rem 0',color:'#6b7280',fontWeight:'600',fontSize:'0.65rem',textTransform:'uppercase',letterSpacing:'0.05em'} }, 'Total Debits'),
+                  h('th', { style:{textAlign:'right',padding:'0.25rem 0',color:'#6b7280',fontWeight:'600',fontSize:'0.65rem',textTransform:'uppercase',letterSpacing:'0.05em'} }, 'Total Credits'),
+                  h('th', { style:{textAlign:'right',padding:'0.25rem 0',color:'#6b7280',fontWeight:'600',fontSize:'0.65rem',textTransform:'uppercase',letterSpacing:'0.05em'} }, 'Difference')
+                )
+              ),
+              h('tbody', null,
+                h('tr', null,
+                  h('td', { style:{padding:'0.25rem 0',fontWeight:'600'} }, 'USD'),
+                  h('td', { style:{padding:'0.25rem 0',textAlign:'right'} }, '$' + totD.USD.toLocaleString('en-US',{minimumFractionDigits:2})),
+                  h('td', { style:{padding:'0.25rem 0',textAlign:'right'} }, '$' + totC.USD.toLocaleString('en-US',{minimumFractionDigits:2})),
+                  h('td', { style:{padding:'0.25rem 0',textAlign:'right',color: usdBal ? '#059669' : '#6b7280',fontWeight:'600'} },
+                    usdBal ? 'Balanced' : '$' + (totD.USD - totC.USD).toLocaleString('en-US',{minimumFractionDigits:2})
+                  )
+                ),
+                h('tr', { style:{borderBottom:'1px solid #d1d5db'} },
+                  h('td', { style:{padding:'0.25rem 0',fontWeight:'600'} }, 'MXN'),
+                  h('td', { style:{padding:'0.25rem 0',textAlign:'right'} }, 'MX$' + totD.MXN.toLocaleString('en-US',{minimumFractionDigits:2})),
+                  h('td', { style:{padding:'0.25rem 0',textAlign:'right'} }, 'MX$' + totC.MXN.toLocaleString('en-US',{minimumFractionDigits:2})),
+                  h('td', { style:{padding:'0.25rem 0',textAlign:'right',color: mxnBal ? '#059669' : '#6b7280',fontWeight:'600'} },
+                    mxnBal ? 'Balanced' : 'MX$' + (totD.MXN - totC.MXN).toLocaleString('en-US',{minimumFractionDigits:2})
+                  )
+                )
+              )
+            )
           ),
-          h('div', null,
-            h('span',{style:{color:'#6b7280'}},'MXN: '),
-            h('span',{style:{fontWeight:'600'}},'MX$'+totD.MXN.toLocaleString('en-US',{minimumFractionDigits:2})),
-            h('span',{style:{color:'#d1d5db',margin:'0 0.25rem'}},'/'),
-            h('span',{style:{fontWeight:'600'}},'MX$'+totC.MXN.toLocaleString('en-US',{minimumFractionDigits:2}))
+          // Status bar
+          h('div', { style:{padding:'0.5rem 2rem',borderTop:'1px solid #e5e7eb',display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:'0.7rem'} },
+            h('div', { style:{color:'#6b7280'} }, transactions.length + ' journal entries'),
+            bothBal
+              ? h('div', { style:{color:'#059669',fontWeight:'600'} }, '\u2713 All currencies balanced')
+              : h('div', { style:{color:'#6b7280',fontStyle:'italic'} }, 'Per-currency differences are expected when cross-currency transactions (exchanges) are present.')
           )
-        )
-      )
+        );
+      })()
     )
   );
 };
