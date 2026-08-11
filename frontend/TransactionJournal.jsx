@@ -114,11 +114,10 @@ const TransactionJournal = ({ isOpen, onClose }) => {
   transactions.forEach(function(t) {
     (t.lines || []).forEach(function(l) {
       var c = (l && l.currency) || 'USD';
-      totD[c] = (totD[c] || 0) + sf(l.debit_amount);
-      totC[c] = (totC[c] || 0) + sf(l.credit_amount);
+      totD[c] = (totD[c] || 0) + Math.round(sf(l.debit_amount) * 100) / 100;
+      totC[c] = (totC[c] || 0) + Math.round(sf(l.credit_amount) * 100) / 100;
     });
   });
-  // Round to 2 decimal places to avoid floating-point accumulation errors
   totD.USD = Math.round(totD.USD * 100) / 100;
   totD.MXN = Math.round(totD.MXN * 100) / 100;
   totC.USD = Math.round(totC.USD * 100) / 100;
