@@ -13,6 +13,11 @@ const AccountingDashboard = () => {
   const [showBalanceSheet, setShowBalanceSheet] = React.useState(false);
   const [showPeriodClosing, setShowPeriodClosing] = React.useState(false);
   const [showTransactionJournal, setShowTransactionJournal] = React.useState(false);
+  const [showExchangeRate, setShowExchangeRate] = React.useState(false);
+  const [newRate, setNewRate] = React.useState('');
+  const [rateDate, setRateDate] = React.useState(new Date().toISOString().split('T')[0]);
+  const [rateSaving, setRateSaving] = React.useState(false);
+  const [rateHistory, setRateHistory] = React.useState([]);
 
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
 
@@ -61,6 +66,55 @@ const AccountingDashboard = () => {
       }
     } catch (error) {
       console.error('Error loading accounts:', error);
+    }
+  };
+
+  const loadRateHistory = async () => {
+    try {
+      const token = localStorage.getItem('session_token');
+      const response = await fetch(`${API_URL}/exchange-rates?limit=10`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setRateHistory(data);
+      }
+    } catch (error) {
+      console.error('Error loading rate history:', error);
+    }
+  };
+
+  const saveExchangeRate = async () => {
+    if (!newRate || parseFloat(newRate) <= 0) {
+      alert('Please enter a valid exchange rate');
+      return;
+    }
+    setRateSaving(true);
+    try {
+      const token = localStorage.getItem('session_token');
+      const response = await fetch(`${API_URL}/exchange-rates`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from_currency: 'USD',
+          to_currency: 'MXN',
+          rate: parseFloat(newRate),
+          effective_date: rateDate
+        })
+      });
+      if (response.ok) {
+        alert('✅ Exchange rate updated successfully');
+        setNewRate('');
+        loadCashPosition();
+        loadRateHistory();
+      } else {
+        const err = await response.json();
+        alert('Error: ' + (err.detail || 'Failed to save rate'));
+      }
+    } catch (error) {
+      alert('Error: ' + error.message);
+    } finally {
+      setRateSaving(false);
     }
   };
 
@@ -358,6 +412,22 @@ const AccountingDashboard = () => {
             📒 Transaction Journal
           </button>
           <button
+            onClick={() => { setShowExchangeRate(true); loadRateHistory(); }}
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.5rem',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              boxShadow: '0 2px 4px rgba(245, 158, 11, 0.3)'
+            }}
+          >
+            💱 Exchange Rate
+          </button>
+          <button
             onClick={() => setShowPeriodClosing(true)}
             style={{
               padding: '0.75rem 1.5rem',
@@ -438,6 +508,136 @@ const AccountingDashboard = () => {
         isOpen={showTransactionJournal}
         onClose={() => setShowTransactionJournal(false)}
       />
+
+      {/* Exchange Rate Modal */}
+      {showExchangeRate && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, padding: '1rem'
+        }}>
+          <div style={{
+            background: 'white', borderRadius: '0.75rem',
+            maxWidth: '500px', width: '100%', maxHeight: '90vh',
+            overflow: 'auto', boxShadow: '0 20px 25px rgba(0,0,0,0.15)'
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+            }}>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '700', color: '#111827' }}>
+                💱 Exchange Rate Management
+              </h2>
+              <button onClick={() => setShowExchangeRate(false)} style={{
+                background: 'transparent', border: 'none', fontSize: '1.25rem',
+                cursor: 'pointer', color: '#6b7280'
+              }}>✕</button>
+            </div>
+
+            {/* Current Rate */}
+            <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                Current Rate
+              </div>
+              <div style={{ fontSize: '1.75rem', fontWeight: '700', color: '#111827' }}>
+                1 USD = {cashPosition?.exchange_rate?.toFixed(4) || '—'} MXN
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                Used for all cross-currency calculations
+              </div>
+            </div>
+
+            {/* Update Rate Form */}
+            <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#374151', marginBottom: '1rem' }}>
+                Set New Rate
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
+                    Rate (1 USD = ? MXN)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    value={newRate}
+                    onChange={(e) => setNewRate(e.target.value)}
+                    placeholder="17.5000"
+                    style={{
+                      width: '100%', padding: '0.6rem', border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem', fontSize: '0.9rem'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
+                    Effective Date
+                  </label>
+                  <input
+                    type="date"
+                    value={rateDate}
+                    onChange={(e) => setRateDate(e.target.value)}
+                    style={{
+                      width: '100%', padding: '0.6rem', border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem', fontSize: '0.9rem'
+                    }}
+                  />
+                </div>
+              </div>
+              <button
+                onClick={saveExchangeRate}
+                disabled={rateSaving || !newRate}
+                style={{
+                  width: '100%', padding: '0.6rem',
+                  background: (!newRate || rateSaving) ? '#9ca3af' : '#F59E0B',
+                  color: 'white', border: 'none', borderRadius: '0.375rem',
+                  fontSize: '0.875rem', fontWeight: '600',
+                  cursor: (!newRate || rateSaving) ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {rateSaving ? 'Saving...' : 'Update Exchange Rate'}
+              </button>
+            </div>
+
+            {/* Rate History */}
+            <div style={{ padding: '1.5rem' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#374151', marginBottom: '0.75rem' }}>
+                Rate History
+              </div>
+              {rateHistory.length === 0 ? (
+                <div style={{ color: '#9ca3af', fontSize: '0.85rem' }}>No rate history available</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                      <th style={{ textAlign: 'left', padding: '0.4rem 0', color: '#6b7280', fontWeight: '600' }}>Date</th>
+                      <th style={{ textAlign: 'left', padding: '0.4rem 0', color: '#6b7280', fontWeight: '600' }}>Pair</th>
+                      <th style={{ textAlign: 'right', padding: '0.4rem 0', color: '#6b7280', fontWeight: '600' }}>Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rateHistory.map((r, idx) => (
+                      <tr key={r.rate_id || idx} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '0.4rem 0', color: '#374151' }}>
+                          {r.effective_date ? new Date(r.effective_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                        </td>
+                        <td style={{ padding: '0.4rem 0', color: '#6b7280' }}>
+                          {r.from_currency}/{r.to_currency}
+                        </td>
+                        <td style={{ padding: '0.4rem 0', textAlign: 'right', fontWeight: '600', color: '#111827', fontFamily: 'monospace' }}>
+                          {parseFloat(r.rate).toFixed(4)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
