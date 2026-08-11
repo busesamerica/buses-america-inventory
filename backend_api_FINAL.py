@@ -3440,9 +3440,9 @@ async def calculate_profit_distribution(
     
     profit = sale_price - total_cost
     
-    # Calculate distributions
-    erick_amount = profit * 0.60
-    omar_amount = profit * 0.40
+    # Calculate distributions — round to ensure they sum to total
+    erick_amount = round(profit * 0.60, 2)
+    omar_amount = round(profit - erick_amount, 2)  # Remainder ensures exact total
     
     return {
         'inventory_id': inventory_id,
@@ -3472,8 +3472,8 @@ async def record_profit_distribution(
 ):
     """Record a profit distribution"""
     
-    erick_amount = float(distribution.total_profit) * float(distribution.erick_percentage) / 100
-    omar_amount = float(distribution.total_profit) * float(distribution.omar_percentage) / 100
+    erick_amount = round(float(distribution.total_profit) * float(distribution.erick_percentage) / 100, 2)
+    omar_amount = round(float(distribution.total_profit) - erick_amount, 2)  # Remainder ensures exact total
     
     async with db.transaction():
         # Get stock number for reference
