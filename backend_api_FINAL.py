@@ -631,13 +631,12 @@ async def get_exchange_rate(db, from_curr: str, to_curr: str) -> float:
         elif any_rate['from_currency'] == from_curr and any_rate['to_currency'] == to_curr:
             return float(any_rate['rate'])
     
-    # Ultimate fallback based on standard USD→MXN rate of 17.5
-    if from_curr == 'USD' and to_curr == 'MXN':
-        return 17.5
-    elif from_curr == 'MXN' and to_curr == 'USD':
-        return 1.0 / 17.5  # 0.057142857
-    
-    return 1.0  # Same currency
+    # Ultimate fallback — no rate found anywhere
+    # Log warning and raise error so the user knows to set up an exchange rate
+    raise HTTPException(
+        status_code=400,
+        detail=f"No exchange rate found for {from_curr}/{to_curr}. Please set an exchange rate in the Accounting module before performing cross-currency operations."
+    )
 
 # ==================== CENTRALIZED COST CALCULATION ====================
 
@@ -1652,10 +1651,7 @@ async def add_payment(
     sale_price = float(inventory['sale_price'])
     
     # Get current exchange rate
-    rate_row = await db.fetchrow(
-        "SELECT rate FROM exchange_rates ORDER BY created_at DESC LIMIT 1"
-    )
-    exchange_rate = float(rate_row['rate']) if rate_row else 17.50
+    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')
     
     # Insert payment
     query = """
@@ -1833,10 +1829,7 @@ async def get_payments(
     sale_currency = inventory['sale_currency']
     
     # Get exchange rate
-    rate_row = await db.fetchrow(
-        "SELECT rate FROM exchange_rates ORDER BY created_at DESC LIMIT 1"
-    )
-    exchange_rate = float(rate_row['rate']) if rate_row else 17.50
+    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')
     
     # Get payments
     query = """
@@ -1895,10 +1888,7 @@ async def delete_payment(
     sale_price = float(inventory['sale_price'])
     
     # Get exchange rate
-    rate_row = await db.fetchrow(
-        "SELECT rate FROM exchange_rates ORDER BY created_at DESC LIMIT 1"
-    )
-    exchange_rate = float(rate_row['rate']) if rate_row else 17.50
+    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')
     
     # Delete payment
     result = await db.execute(
@@ -3331,10 +3321,10 @@ async def get_cash_position(
     mxn_total = sum(float(acc['balance']) for acc in accounts if acc['currency'] == 'MXN')
     
     # Get current exchange rate
-    rate_row = await db.fetchrow(
-        "SELECT rate FROM exchange_rates ORDER BY created_at DESC LIMIT 1"
-    )
-    exchange_rate = float(rate_row['rate']) if rate_row else 17.50
+    try:
+        exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')
+    except:
+        exchange_rate = 17.50  # Cash position is a dashboard view — graceful fallback
     
     return {
         'accounts': accounts,
@@ -3437,10 +3427,7 @@ async def calculate_profit_distribution(
     total_cost_usd = purchase_price + usd_costs
     
     # Get exchange rate
-    rate_row = await db.fetchrow(
-        "SELECT rate FROM exchange_rates ORDER BY created_at DESC LIMIT 1"
-    )
-    exchange_rate = float(rate_row['rate']) if rate_row else 17.50
+    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')
     
     # Calculate profit in sale currency
     sale_price = float(sale['sale_price'])
@@ -4451,16 +4438,31 @@ async def get_balance_sheet(
     
     # Format based on currency
     if currency == "USD":
-        assets['USD'] += assets['MXN'] / float(exchange_rate)
-        liabilities['USD'] += liabilities['MXN'] / float(exchange_rate)
-        equity['USD'] += equity['MXN'] / float(exchange_rate)
+        # Convert MXN to USD for consolidated view
+        assets_total = assets['USD'] + assets['MXN'] / float(exchange_rate)
+        liabilities_total = liabilities['USD'] + liabilities['MXN'] / float(exchange_rate)
+        equity_total = equity['USD'] + equity['MXN'] / float(exchange_rate)
         
         for account in assets['current'] + assets['non_current'] + liabilities['current'] + liabilities['non_current'] + equity['accounts']:
             account['balance_usd'] += account['balance_mxn'] / float(exchange_rate)
             account['balance_mxn'] = 0
         
-        total_liabilities_equity = liabilities['USD'] + equity['USD']
-        is_balanced = abs(assets['USD'] - total_liabilities_equity) < 0.01
+        # Calculate FX gain/loss — the difference caused by converting at different rates
+        fx_gain_loss = assets_total - (liabilities_total + equity_total)
+        fx_gain_loss = round(fx_gain_loss, 2)
+        
+        if abs(fx_gain_loss) >= 0.01:
+            equity['accounts'].append({
+                'code': '',
+                'name': 'Unrealized FX Gain/Loss',
+                'subtype': 'FX Adjustment',
+                'balance_usd': fx_gain_loss,
+                'balance_mxn': 0
+            })
+            equity_total += fx_gain_loss
+        
+        total_liabilities_equity = liabilities_total + equity_total
+        is_balanced = abs(assets_total - total_liabilities_equity) < 0.01
         
         return {
             'as_of_date': as_of_date,
@@ -4469,33 +4471,48 @@ async def get_balance_sheet(
             'assets': {
                 'current': assets['current'],
                 'non_current': assets['non_current'],
-                'total': assets['USD']
+                'total': round(assets_total, 2)
             },
             'liabilities': {
                 'current': liabilities['current'],
                 'non_current': liabilities['non_current'],
-                'total': liabilities['USD']
+                'total': round(liabilities_total, 2)
             },
             'equity': {
                 'accounts': equity['accounts'],
-                'total': equity['USD']
+                'total': round(equity_total, 2)
             },
-            'total_liabilities_equity': total_liabilities_equity,
+            'total_liabilities_equity': round(total_liabilities_equity, 2),
             'is_balanced': is_balanced,
-            'balance_difference': assets['USD'] - total_liabilities_equity
+            'balance_difference': round(assets_total - total_liabilities_equity, 2)
         }
     
     elif currency == "MXN":
-        assets['MXN'] += assets['USD'] * float(exchange_rate)
-        liabilities['MXN'] += liabilities['USD'] * float(exchange_rate)
-        equity['MXN'] += equity['USD'] * float(exchange_rate)
+        # Convert USD to MXN for consolidated view
+        assets_total = assets['MXN'] + assets['USD'] * float(exchange_rate)
+        liabilities_total = liabilities['MXN'] + liabilities['USD'] * float(exchange_rate)
+        equity_total = equity['MXN'] + equity['USD'] * float(exchange_rate)
         
         for account in assets['current'] + assets['non_current'] + liabilities['current'] + liabilities['non_current'] + equity['accounts']:
             account['balance_mxn'] += account['balance_usd'] * float(exchange_rate)
             account['balance_usd'] = 0
         
-        total_liabilities_equity = liabilities['MXN'] + equity['MXN']
-        is_balanced = abs(assets['MXN'] - total_liabilities_equity) < 0.01
+        # Calculate FX gain/loss
+        fx_gain_loss = assets_total - (liabilities_total + equity_total)
+        fx_gain_loss = round(fx_gain_loss, 2)
+        
+        if abs(fx_gain_loss) >= 0.01:
+            equity['accounts'].append({
+                'code': '',
+                'name': 'Unrealized FX Gain/Loss',
+                'subtype': 'FX Adjustment',
+                'balance_usd': 0,
+                'balance_mxn': fx_gain_loss
+            })
+            equity_total += fx_gain_loss
+        
+        total_liabilities_equity = liabilities_total + equity_total
+        is_balanced = abs(assets_total - total_liabilities_equity) < 0.01
         
         return {
             'as_of_date': as_of_date,
@@ -4504,20 +4521,20 @@ async def get_balance_sheet(
             'assets': {
                 'current': assets['current'],
                 'non_current': assets['non_current'],
-                'total': assets['MXN']
+                'total': round(assets_total, 2)
             },
             'liabilities': {
                 'current': liabilities['current'],
                 'non_current': liabilities['non_current'],
-                'total': liabilities['MXN']
+                'total': round(liabilities_total, 2)
             },
             'equity': {
                 'accounts': equity['accounts'],
-                'total': equity['MXN']
+                'total': round(equity_total, 2)
             },
-            'total_liabilities_equity': total_liabilities_equity,
+            'total_liabilities_equity': round(total_liabilities_equity, 2),
             'is_balanced': is_balanced,
-            'balance_difference': assets['MXN'] - total_liabilities_equity
+            'balance_difference': round(assets_total - total_liabilities_equity, 2)
         }
     
     else:  # BOTH
