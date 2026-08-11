@@ -281,7 +281,7 @@ const TransactionJournal = ({ isOpen, onClose }) => {
                   h('td', { style:{padding:'0.25rem 0',textAlign:'right'} }, '$' + totD.USD.toLocaleString('en-US',{minimumFractionDigits:2})),
                   h('td', { style:{padding:'0.25rem 0',textAlign:'right'} }, '$' + totC.USD.toLocaleString('en-US',{minimumFractionDigits:2})),
                   h('td', { style:{padding:'0.25rem 0',textAlign:'right',color: usdBal ? '#059669' : '#6b7280',fontWeight:'600'} },
-                    usdBal ? 'Balanced' : '$' + Math.round((totD.USD - totC.USD) * 100) / 100
+                    usdBal ? 'Balanced' : '$' + (Math.round((totD.USD - totC.USD) * 100) / 100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
                   )
                 ),
                 h('tr', { style:{borderBottom:'1px solid #d1d5db'} },
@@ -289,7 +289,7 @@ const TransactionJournal = ({ isOpen, onClose }) => {
                   h('td', { style:{padding:'0.25rem 0',textAlign:'right'} }, 'MX$' + totD.MXN.toLocaleString('en-US',{minimumFractionDigits:2})),
                   h('td', { style:{padding:'0.25rem 0',textAlign:'right'} }, 'MX$' + totC.MXN.toLocaleString('en-US',{minimumFractionDigits:2})),
                   h('td', { style:{padding:'0.25rem 0',textAlign:'right',color: mxnBal ? '#059669' : '#6b7280',fontWeight:'600'} },
-                    mxnBal ? 'Balanced' : 'MX$' + Math.round((totD.MXN - totC.MXN) * 100) / 100
+                    mxnBal ? 'Balanced' : 'MX$' + (Math.round((totD.MXN - totC.MXN) * 100) / 100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
                   )
                 )
               )
