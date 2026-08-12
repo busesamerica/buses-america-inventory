@@ -167,7 +167,7 @@ const AccountingDashboard = () => {
           boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
           color: 'white'
         }}>
-          <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>💵 Total USD</div>
+          <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>💵 Cash (USD)</div>
           <div style={{ fontSize: '2rem', fontWeight: '800' }}>
             {formatCurrency(cashPosition?.totals?.usd || 0, 'USD')}
           </div>
@@ -184,7 +184,7 @@ const AccountingDashboard = () => {
           boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
           color: 'white'
         }}>
-          <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>💵 Total MXN</div>
+          <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>💵 Cash (MXN)</div>
           <div style={{ fontSize: '2rem', fontWeight: '800' }}>
             {formatCurrency(cashPosition?.totals?.mxn || 0, 'MXN')}
           </div>
@@ -201,7 +201,7 @@ const AccountingDashboard = () => {
           boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
           color: 'white'
         }}>
-          <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>💰 Total Value (USD)</div>
+          <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>💰 Consolidated Cash Position</div>
           <div style={{ fontSize: '2rem', fontWeight: '800' }}>
             {formatCurrency(cashPosition?.totals?.usd_equivalent || 0, 'USD')}
           </div>
