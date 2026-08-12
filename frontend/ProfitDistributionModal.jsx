@@ -40,13 +40,15 @@ const ProfitDistributionModal = ({ isOpen, onClose, onComplete }) => {
   const loadSoldBuses = async () => {
     try {
       const token = localStorage.getItem('session_token');
-      const response = await fetch(`${API_URL}/inventory`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        // Filter only sold buses
-        const sold = data.filter(bus => bus.is_sold === true);
+      const [invResponse, distResponse] = await Promise.all([
+        fetch(`${API_URL}/inventory`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_URL}/accounting/profit-distributions`, { headers: { 'Authorization': `Bearer ${token}` } })
+      ]);
+      if (invResponse.ok) {
+        const data = await invResponse.json();
+        const distributions = distResponse.ok ? await distResponse.json() : [];
+        const distributedIds = new Set(distributions.map(d => d.inventory_id));
+        const sold = data.filter(bus => bus.is_sold === true && !distributedIds.has(bus.inventory_id));
         setSoldBuses(sold);
       }
     } catch (error) {
