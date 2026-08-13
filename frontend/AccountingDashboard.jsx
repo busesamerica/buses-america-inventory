@@ -14,6 +14,10 @@ const AccountingDashboard = () => {
   const [showPeriodClosing, setShowPeriodClosing] = React.useState(false);
   const [showTransactionJournal, setShowTransactionJournal] = React.useState(false);
   const [showExchangeRate, setShowExchangeRate] = React.useState(false);
+  const [showAPManagement, setShowAPManagement] = React.useState(false);
+  const [apData, setApData] = React.useState(null);
+  const [apPaymentForm, setApPaymentForm] = React.useState({ vendor: '', payment_amount: '', payment_currency: 'USD', payment_date: new Date().toISOString().split('T')[0], payment_account_id: '', notes: '' });
+  const [apSaving, setApSaving] = React.useState(false);
   const [newRate, setNewRate] = React.useState('');
   const [rateDate, setRateDate] = React.useState(new Date().toISOString().split('T')[0]);
   const [rateSaving, setRateSaving] = React.useState(false);
@@ -115,6 +119,55 @@ const AccountingDashboard = () => {
       alert('Error: ' + error.message);
     } finally {
       setRateSaving(false);
+    }
+  };
+
+  const loadAPData = async () => {
+    try {
+      const token = localStorage.getItem('session_token');
+      const response = await fetch(`${API_URL}/accounting/ap-summary`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setApData(data);
+      }
+    } catch (error) {
+      console.error('Error loading AP data:', error);
+    }
+  };
+
+  const recordAPPayment = async () => {
+    if (!apPaymentForm.vendor || !apPaymentForm.payment_amount || !apPaymentForm.payment_account_id) {
+      alert('Please fill in vendor, amount, and payment account');
+      return;
+    }
+    setApSaving(true);
+    try {
+      const token = localStorage.getItem('session_token');
+      const response = await fetch(`${API_URL}/accounting/ap-payment`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...apPaymentForm,
+          payment_amount: parseFloat(apPaymentForm.payment_amount),
+          payment_account_id: parseInt(apPaymentForm.payment_account_id)
+        })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        alert('✅ ' + data.message);
+        setApPaymentForm({ vendor: '', payment_amount: '', payment_currency: 'USD', payment_date: new Date().toISOString().split('T')[0], payment_account_id: '', notes: '' });
+        loadAPData();
+        loadCashPosition();
+      } else {
+        const err = await response.json();
+        alert('Error: ' + (err.detail || 'Failed to record payment'));
+      }
+    } catch (error) {
+      alert('Error: ' + error.message);
+    } finally {
+      setApSaving(false);
     }
   };
 
@@ -428,6 +481,22 @@ const AccountingDashboard = () => {
             💱 Exchange Rate
           </button>
           <button
+            onClick={() => { setShowAPManagement(true); loadAPData(); }}
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.5rem',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              boxShadow: '0 2px 4px rgba(239, 68, 68, 0.3)'
+            }}
+          >
+            📋 Accounts Payable
+          </button>
+          <button
             onClick={() => setShowPeriodClosing(true)}
             style={{
               padding: '0.75rem 1.5rem',
@@ -634,6 +703,167 @@ const AccountingDashboard = () => {
                   </tbody>
                 </table>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AP Management Modal */}
+      {showAPManagement && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, padding: '1rem'
+        }}>
+          <div style={{
+            background: 'white', borderRadius: '0.75rem',
+            maxWidth: '700px', width: '100%', maxHeight: '90vh',
+            overflow: 'auto', boxShadow: '0 20px 25px rgba(0,0,0,0.15)'
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+            }}>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '700', color: '#111827' }}>
+                📋 Accounts Payable
+              </h2>
+              <button onClick={() => setShowAPManagement(false)} style={{
+                background: 'transparent', border: 'none', fontSize: '1.25rem',
+                cursor: 'pointer', color: '#6b7280'
+              }}>✕</button>
+            </div>
+
+            {/* Outstanding Payables */}
+            <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#374151', marginBottom: '1rem' }}>
+                Outstanding Payables
+              </div>
+              {!apData || (apData.payables && apData.payables.length === 0) ? (
+                <div style={{ padding: '1.5rem', textAlign: 'center', color: '#9ca3af', fontSize: '0.9rem' }}>
+                  No outstanding payables
+                </div>
+              ) : (
+                <div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                        <th style={{ textAlign: 'left', padding: '0.5rem 0', color: '#6b7280', fontWeight: '600' }}>Vendor</th>
+                        <th style={{ textAlign: 'left', padding: '0.5rem 0', color: '#6b7280', fontWeight: '600' }}>Currency</th>
+                        <th style={{ textAlign: 'right', padding: '0.5rem 0', color: '#6b7280', fontWeight: '600' }}>Balance Owed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(apData.payables || []).map((item, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                          <td style={{ padding: '0.5rem 0', color: '#111827', fontWeight: '500' }}>{item.vendor}</td>
+                          <td style={{ padding: '0.5rem 0', color: '#6b7280' }}>{item.currency}</td>
+                          <td style={{ padding: '0.5rem 0', textAlign: 'right', fontWeight: '600', color: '#dc2626' }}>
+                            {item.currency === 'MXN' ? 'MX$' : '$'}{parseFloat(item.balance).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {apData.totals && (
+                    <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#fef2f2', borderRadius: '0.5rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      <span style={{ fontWeight: '600', color: '#991b1b' }}>Total Owed:</span>
+                      <div>
+                        {apData.totals.USD ? <span style={{ fontWeight: '600', color: '#991b1b', marginRight: '1rem' }}>${parseFloat(apData.totals.USD).toLocaleString('en-US', { minimumFractionDigits: 2 })} USD</span> : null}
+                        {apData.totals.MXN ? <span style={{ fontWeight: '600', color: '#991b1b' }}>MX${parseFloat(apData.totals.MXN).toLocaleString('en-US', { minimumFractionDigits: 2 })} MXN</span> : null}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Record AP Payment */}
+            <div style={{ padding: '1.5rem' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#374151', marginBottom: '1rem' }}>
+                Record Payment
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Vendor *</label>
+                  {apData && apData.payables && apData.payables.length > 0 ? (
+                    <select
+                      value={apPaymentForm.vendor}
+                      onChange={(e) => {
+                        const selected = apData.payables.find(p => p.vendor === e.target.value);
+                        setApPaymentForm({
+                          ...apPaymentForm,
+                          vendor: e.target.value,
+                          payment_currency: selected ? selected.currency : apPaymentForm.payment_currency
+                        });
+                      }}
+                      style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.85rem' }}
+                    >
+                      <option value="">Select vendor...</option>
+                      {[...new Set(apData.payables.map(p => p.vendor))].map((v, idx) => (
+                        <option key={idx} value={v}>{v}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input type="text" value={apPaymentForm.vendor} onChange={(e) => setApPaymentForm({ ...apPaymentForm, vendor: e.target.value })}
+                      placeholder="Vendor name" style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.85rem' }} />
+                  )}
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Amount *</label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input type="number" step="0.01" value={apPaymentForm.payment_amount}
+                      onChange={(e) => setApPaymentForm({ ...apPaymentForm, payment_amount: e.target.value })}
+                      placeholder="0.00" style={{ flex: 1, padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.85rem' }} />
+                    <select value={apPaymentForm.payment_currency}
+                      onChange={(e) => setApPaymentForm({ ...apPaymentForm, payment_currency: e.target.value })}
+                      style={{ width: '80px', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.85rem' }}>
+                      <option value="USD">USD</option>
+                      <option value="MXN">MXN</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Payment Date *</label>
+                  <input type="date" value={apPaymentForm.payment_date}
+                    onChange={(e) => setApPaymentForm({ ...apPaymentForm, payment_date: e.target.value })}
+                    style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.85rem' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Pay From *</label>
+                  <select value={apPaymentForm.payment_account_id}
+                    onChange={(e) => setApPaymentForm({ ...apPaymentForm, payment_account_id: e.target.value })}
+                    style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.85rem' }}>
+                    <option value="">Select account...</option>
+                    {accounts.filter(a => ['Bank', 'Cash'].includes(a.account_subtype) && a.is_active).map(a => (
+                      <option key={a.account_id} value={a.account_id}>{a.account_name} ({a.currency})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Notes (Optional)</label>
+                <input type="text" value={apPaymentForm.notes}
+                  onChange={(e) => setApPaymentForm({ ...apPaymentForm, notes: e.target.value })}
+                  placeholder="Payment reference or notes"
+                  style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.85rem' }} />
+              </div>
+              <button
+                onClick={recordAPPayment}
+                disabled={apSaving || !apPaymentForm.vendor || !apPaymentForm.payment_amount || !apPaymentForm.payment_account_id}
+                style={{
+                  width: '100%', padding: '0.6rem',
+                  background: (!apPaymentForm.vendor || !apPaymentForm.payment_amount || !apPaymentForm.payment_account_id || apSaving) ? '#9ca3af' : '#dc2626',
+                  color: 'white', border: 'none', borderRadius: '0.375rem',
+                  fontSize: '0.875rem', fontWeight: '600',
+                  cursor: (!apPaymentForm.vendor || !apPaymentForm.payment_amount || !apPaymentForm.payment_account_id || apSaving) ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {apSaving ? 'Processing...' : 'Record AP Payment'}
+              </button>
             </div>
           </div>
         </div>
