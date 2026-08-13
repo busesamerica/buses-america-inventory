@@ -479,11 +479,27 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    // Validate all required fields
+    if (!formData.stock_number || !formData.stock_number.trim()) {
+      alert('Please enter a stock number');
+      return;
+    }
+    if (!formData.year || isNaN(parseInt(formData.year))) {
+      alert('Please enter a valid year');
+      return;
+    }
+    if (!formData.make || !formData.make.trim()) {
+      alert('Please enter the make');
+      return;
+    }
+    if (!formData.model || !formData.model.trim()) {
+      alert('Please enter the model');
+      return;
+    }
     if (!formData.purchase_price_usd || isNaN(parseFloat(formData.purchase_price_usd))) {
       alert('Please enter a valid purchase price');
       return;
     }
-    
     if (!bus && !formData.payment_account_id) {
       alert('Please select a payment account');
       return;
