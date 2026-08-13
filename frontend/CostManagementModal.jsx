@@ -137,7 +137,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
   };
 
   const handleDeleteCost = async (costId) => {
-    if (!window.confirm('Delete this cost entry?')) return;
+    if (!window.confirm('Delete this cost entry? This will also reverse its accounting entry.')) return;
     
     try {
       const token = localStorage.getItem('session_token');
@@ -153,7 +153,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
       }
 
       await loadCosts();
-      alert('Cost deleted successfully');
+      alert('✅ Cost deleted and accounting entry reversed');
     } catch (err) {
       alert('Error: ' + err.message);
     }
