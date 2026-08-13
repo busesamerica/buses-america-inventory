@@ -4,9 +4,9 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
   const [loading, setLoading] = React.useState(false);
   const [reportData, setReportData] = React.useState(null);
   const [filters, setFilters] = React.useState({
-    start_date: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0], // January 1 of current year
+    start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0], // First day of current month
     end_date: new Date().toISOString().split('T')[0], // Today
-    currency: 'MXN'
+    currency: 'USD'
   });
 
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
@@ -45,7 +45,9 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
   };
 
   const formatDate = (dateStr) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    if (!dateStr) return '';
+    const str = String(dateStr).split('T')[0];
+    return new Date(str + 'T00:00:00').toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
@@ -175,6 +177,7 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
               >
                 <option value="USD">USD</option>
                 <option value="MXN">MXN</option>
+                <option value="BOTH">Both</option>
               </select>
             </div>
 
