@@ -479,6 +479,11 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    if (!formData.purchase_price_usd || isNaN(parseFloat(formData.purchase_price_usd))) {
+      alert('Please enter a valid purchase price');
+      return;
+    }
+    
     if (!bus && !formData.payment_account_id) {
       alert('Please select a payment account');
       return;
