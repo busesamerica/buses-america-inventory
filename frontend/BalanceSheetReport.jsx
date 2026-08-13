@@ -44,7 +44,9 @@ const BalanceSheetReport = ({ isOpen, onClose }) => {
   };
 
   const formatDate = (dateStr) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    if (!dateStr) return '';
+    const str = String(dateStr).split('T')[0];
+    return new Date(str + 'T00:00:00').toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
@@ -156,6 +158,7 @@ const BalanceSheetReport = ({ isOpen, onClose }) => {
               >
                 <option value="USD">USD</option>
                 <option value="MXN">MXN</option>
+                <option value="BOTH">Both</option>
               </select>
             </div>
 
