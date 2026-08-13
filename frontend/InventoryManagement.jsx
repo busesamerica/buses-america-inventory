@@ -516,8 +516,10 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
         asking_currency: formData.asking_currency || 'USD',
         supplier_id: formData.supplier_id ? parseInt(formData.supplier_id) : null,
         engine_make: formData.engine_make || null,
-        engine_model: formData.engine_model || null
+        engine_model: formData.engine_model || null,
+        payment_account_id: formData.payment_account_id ? parseInt(formData.payment_account_id) : null
       };
+      console.log('Submitting inventory data:', JSON.stringify(data, null, 2));
       await onSave(data);
     } catch (error) {
       alert('Error: ' + error.message);
