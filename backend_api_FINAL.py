@@ -1625,8 +1625,7 @@ async def delete_inventory_cost(
     db=Depends(get_db),
     user=Depends(get_current_user)
 ):
-    """Delete a cost item"""
-    # Verify cost belongs to this inventory
+    """Delete a cost item and reverse its accounting entry"""
     cost = await db.fetchrow(
         "SELECT * FROM cost_items WHERE cost_id = $1 AND inventory_id = $2",
         cost_id, inventory_id
@@ -1634,7 +1633,32 @@ async def delete_inventory_cost(
     if not cost:
         raise HTTPException(status_code=404, detail="Cost item not found")
     
+    # Reverse accounting entry
+    trans = await db.fetchrow(
+        "SELECT transaction_id FROM transactions WHERE reference_type = 'cost' AND reference_id = $1",
+        cost_id
+    )
+    if trans:
+        await db.execute("DELETE FROM transaction_lines WHERE transaction_id = $1", trans['transaction_id'])
+        await db.execute("DELETE FROM transactions WHERE transaction_id = $1", trans['transaction_id'])
+    
     await db.execute("DELETE FROM cost_items WHERE cost_id = $1", cost_id)
+    
+    # Rebuild balances for affected accounts
+    if trans:
+        # Full rebuild since we deleted lines
+        await db.execute("DELETE FROM account_balances")
+        await db.execute("""
+            INSERT INTO account_balances (account_id, currency, balance, as_of_date)
+            SELECT tl.account_id, tl.currency,
+                SUM(CASE WHEN a.account_type IN ('Asset', 'Expense') THEN tl.debit_amount - tl.credit_amount
+                    ELSE tl.credit_amount - tl.debit_amount END),
+                CURRENT_DATE
+            FROM transaction_lines tl
+            JOIN accounts a ON tl.account_id = a.account_id
+            WHERE tl.currency IS NOT NULL
+            GROUP BY tl.account_id, tl.currency
+        """)
     
     await log_audit(
         db, user['user_id'], user['username'],
@@ -1643,7 +1667,133 @@ async def delete_inventory_cost(
         description=f"Deleted cost: {cost['description']}"
     )
     
-    return {"message": "Cost deleted successfully"}
+    return {"message": "Cost deleted and accounting entry reversed"}
+
+@app.patch("/api/inventory/{inventory_id}/costs/{cost_id}")
+async def update_inventory_cost(
+    inventory_id: int,
+    cost_id: int,
+    request: Request,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Update a cost item — deletes old accounting entry and creates new one"""
+    cost = await db.fetchrow(
+        "SELECT * FROM cost_items WHERE cost_id = $1 AND inventory_id = $2",
+        cost_id, inventory_id
+    )
+    if not cost:
+        raise HTTPException(status_code=404, detail="Cost item not found")
+    
+    updates = await request.json()
+    
+    # Update cost_items row
+    set_clauses = []
+    values = [cost_id]
+    param_count = 2
+    allowed_fields = ['cost_category', 'description', 'amount', 'currency', 'vendor', 'invoice_number', 'date_incurred']
+    
+    for field in allowed_fields:
+        if field in updates:
+            set_clauses.append(f"{field} = ${param_count}")
+            val = updates[field]
+            if field == 'date_incurred' and isinstance(val, str):
+                val = datetime.strptime(val, '%Y-%m-%d').date()
+            values.append(val)
+            param_count += 1
+    
+    if not set_clauses:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    updated_cost = await db.fetchrow(
+        f"UPDATE cost_items SET {', '.join(set_clauses)} WHERE cost_id = $1 RETURNING *",
+        *values
+    )
+    
+    # Delete old accounting entry
+    old_trans = await db.fetchrow(
+        "SELECT transaction_id FROM transactions WHERE reference_type = 'cost' AND reference_id = $1",
+        cost_id
+    )
+    if old_trans:
+        await db.execute("DELETE FROM transaction_lines WHERE transaction_id = $1", old_trans['transaction_id'])
+        await db.execute("DELETE FROM transactions WHERE transaction_id = $1", old_trans['transaction_id'])
+    
+    # Get bus info for descriptions
+    bus_info = await db.fetchrow(
+        "SELECT stock_number, year, make, model FROM inventory WHERE inventory_id = $1",
+        inventory_id
+    )
+    bus_label = f"{bus_info['stock_number']} — {bus_info['year']} {bus_info['make']} {bus_info['model']}" if bus_info else f"Inventory #{inventory_id}"
+    
+    # Create new accounting entry
+    cost_category = updated_cost['cost_category']
+    amount = float(updated_cost['amount'])
+    currency = updated_cost['currency']
+    date_incurred = updated_cost['date_incurred']
+    payment_status = updates.get('payment_status', 'on_credit')
+    payment_account_id = updates.get('payment_account_id')
+    
+    INVENTORY_ACCOUNT_CODE = '1200'
+    expense_account_id = await db.fetchval(
+        "SELECT account_id FROM accounts WHERE account_code = $1",
+        INVENTORY_ACCOUNT_CODE
+    )
+    
+    reference_number = await generate_transaction_reference(db, 'expense', date_incurred)
+    
+    trans_description = f"Cost - {cost_category} - {updated_cost['description']} ({bus_label})"
+    
+    trans_id = await db.fetchval("""
+        INSERT INTO transactions (transaction_date, description, reference_type, reference_id, currency, created_by, reference_number)
+        VALUES ($1, $2, 'cost', $3, $4, $5, $6)
+        RETURNING transaction_id
+    """, date_incurred, trans_description, cost_id, currency, user['username'], reference_number)
+    
+    # Debit: Bus Inventory
+    await db.execute("""
+        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+        VALUES ($1, $2, $3, 0, $4, $5)
+    """, trans_id, expense_account_id, amount, currency,
+        f"{cost_category} - {updated_cost['vendor'] or 'N/A'} — {bus_label}")
+    
+    if payment_status == 'on_credit':
+        ap_account_id = await db.fetchval(
+            "SELECT account_id FROM accounts WHERE account_subtype = 'AP' AND currency = $1 AND is_active = TRUE LIMIT 1",
+            currency
+        )
+        if not ap_account_id:
+            ap_account_id = await db.fetchval(
+                "SELECT account_id FROM accounts WHERE account_subtype = 'AP' AND is_active = TRUE LIMIT 1"
+            )
+        vendor_name = updated_cost['vendor'] or 'Unknown'
+        await db.execute("""
+            INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+            VALUES ($1, $2, 0, $3, $4, $5)
+        """, trans_id, ap_account_id, amount, currency,
+            f"AP — {vendor_name} — {cost_category} — {bus_label}")
+    else:
+        if payment_account_id:
+            payment_account_id = int(payment_account_id)
+        else:
+            raise HTTPException(status_code=400, detail="Payment account required when status is paid")
+        await db.execute("""
+            INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+            VALUES ($1, $2, 0, $3, $4, $5)
+        """, trans_id, payment_account_id, amount, currency,
+            f"Payment for {cost_category} — {bus_label}")
+    
+    await update_account_balances(db, trans_id)
+    
+    await log_audit(
+        db, user['user_id'], user['username'],
+        'update', 'cost_items', cost_id,
+        old_values=dict(cost),
+        new_values=dict(updated_cost),
+        description=f"Updated cost: {updated_cost['description']}"
+    )
+    
+    return dict(updated_cost)
 
 # ==================== PAYMENT ENDPOINTS ====================
 
@@ -3075,6 +3225,7 @@ async def get_ap_summary(
             COALESCE(
                 CASE 
                     WHEN tl.notes LIKE 'AP — %' THEN split_part(split_part(tl.notes, 'AP — ', 2), ' — ', 1)
+                    WHEN tl.notes LIKE 'AP payment — %' THEN split_part(tl.notes, 'AP payment — ', 2)
                     ELSE 'Unknown'
                 END, 
                 'Unknown'
