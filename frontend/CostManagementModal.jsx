@@ -82,7 +82,17 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
     try {
       // Parse amount and ensure 2 decimal places
       const amountValue = parseFloat(newCost.amount);
-      const formattedAmount = parseFloat(amountValue.toFixed(2));
+      if (isNaN(amountValue) || amountValue <= 0) {
+        setError('Please enter a valid amount');
+        setSaving(false);
+        return;
+      }
+      const formattedAmount = Math.round(amountValue * 100) / 100;
+      
+      // Verify amount matches what user entered
+      if (Math.abs(formattedAmount - amountValue) > 0.01) {
+        console.warn('Amount mismatch — entered:', newCost.amount, 'parsed:', amountValue, 'formatted:', formattedAmount);
+      }
       
       const token = localStorage.getItem('session_token');
       const response = await fetch(`${API_URL}/inventory/${bus.inventory_id}/costs`, {
