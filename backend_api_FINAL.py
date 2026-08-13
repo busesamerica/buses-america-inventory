@@ -1497,26 +1497,14 @@ async def add_inventory_cost(
         cost_category = cost_data.get('cost_category')
         amount = float(cost_data.get('amount'))
         currency = cost_data.get('currency', 'USD')
-        payment_account_id = cost_data.get('payment_account_id')  # Bank/cash account paid from
-        
-        # Convert payment_account_id to int if it's a string
-        if payment_account_id and str(payment_account_id).strip():
-            payment_account_id = int(payment_account_id)
-        else:
-            raise HTTPException(
-                status_code=400, 
-                detail="Payment account is required. Please select which bank or cash account this cost was paid from."
-            )
+        payment_account_id = cost_data.get('payment_account_id')
+        payment_status = cost_data.get('payment_status', 'paid')
         
         # All costs tied to a specific bus are capitalized to Bus Inventory (GAAP).
-        # They become COGS only when the bus is sold, via record_sale.
-        INVENTORY_ACCOUNT_CODE = '1200'  # Bus Inventory
-        expense_account_code = INVENTORY_ACCOUNT_CODE
-        
-        # Get account IDs
+        INVENTORY_ACCOUNT_CODE = '1200'
         expense_account_id = await db.fetchval(
             "SELECT account_id FROM accounts WHERE account_code = $1",
-            expense_account_code
+            INVENTORY_ACCOUNT_CODE
         )
         
         # Generate reference number
@@ -1548,8 +1536,7 @@ async def add_inventory_cost(
             reference_number
         )
         
-        # Create transaction lines
-        # Debit: Expense/Inventory account (increases expense or asset)
+        # Debit: Bus Inventory (capitalize cost) — same for both paid and on_credit
         await db.execute(
             """
             INSERT INTO transaction_lines (
@@ -1564,20 +1551,56 @@ async def add_inventory_cost(
             f"{cost_category} - {cost_data.get('vendor', 'N/A')} — {bus_label}"
         )
         
-        # Credit: Bank/Cash account (decreases cash)
-        await db.execute(
-            """
-            INSERT INTO transaction_lines (
-                transaction_id, account_id, debit_amount, credit_amount, currency, notes
-            ) VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            trans_id,
-            payment_account_id,
-            0,
-            amount,
-            currency,
-            f"Payment for {cost_category} — {bus_label}"
-        )
+        if payment_status == 'on_credit':
+            # Credit: Accounts Payable
+            ap_account_id = await db.fetchval(
+                "SELECT account_id FROM accounts WHERE account_subtype = 'AP' AND currency = $1 AND is_active = TRUE LIMIT 1",
+                currency
+            )
+            if not ap_account_id:
+                ap_account_id = await db.fetchval(
+                    "SELECT account_id FROM accounts WHERE account_subtype = 'AP' AND is_active = TRUE LIMIT 1"
+                )
+            if not ap_account_id:
+                raise HTTPException(status_code=400, detail="No Accounts Payable account found in chart of accounts.")
+            
+            vendor_name = cost_data.get('vendor', 'Unknown vendor')
+            await db.execute(
+                """
+                INSERT INTO transaction_lines (
+                    transaction_id, account_id, debit_amount, credit_amount, currency, notes
+                ) VALUES ($1, $2, $3, $4, $5, $6)
+                """,
+                trans_id,
+                ap_account_id,
+                0,
+                amount,
+                currency,
+                f"AP — {vendor_name} — {cost_category} — {bus_label}"
+            )
+        else:
+            # Credit: Bank/Cash account
+            if payment_account_id and str(payment_account_id).strip():
+                payment_account_id = int(payment_account_id)
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Payment account is required when paying immediately."
+                )
+            
+            await db.execute(
+                """
+                INSERT INTO transaction_lines (
+                    transaction_id, account_id, debit_amount, credit_amount, currency, notes
+                ) VALUES ($1, $2, $3, $4, $5, $6)
+                """,
+                trans_id,
+                payment_account_id,
+                0,
+                amount,
+                currency,
+                f"Payment for {cost_category} — {bus_label}"
+            )
         
         # Update account balances
         await update_account_balances(db, trans_id)
@@ -3037,6 +3060,123 @@ async def get_accounts(
     
     rows = await db.fetch(query, *params)
     return [dict(row) for row in rows]
+
+# ==================== ACCOUNTS PAYABLE ====================
+
+@app.get("/api/accounting/ap-summary")
+async def get_ap_summary(
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Get AP balances grouped by vendor"""
+    query = """
+        SELECT 
+            tl.currency,
+            COALESCE(
+                CASE 
+                    WHEN tl.notes LIKE 'AP — %' THEN split_part(split_part(tl.notes, 'AP — ', 2), ' — ', 1)
+                    ELSE 'Unknown'
+                END, 
+                'Unknown'
+            ) as vendor,
+            SUM(tl.credit_amount) - SUM(tl.debit_amount) as balance,
+            COUNT(DISTINCT t.transaction_id) as transaction_count
+        FROM transaction_lines tl
+        JOIN accounts a ON tl.account_id = a.account_id
+        JOIN transactions t ON tl.transaction_id = t.transaction_id
+        WHERE a.account_subtype = 'AP'
+        GROUP BY tl.currency, vendor
+        HAVING SUM(tl.credit_amount) - SUM(tl.debit_amount) > 0.01
+        ORDER BY tl.currency, vendor
+    """
+    rows = await db.fetch(query)
+    
+    # Also get total AP per currency
+    totals = {}
+    payables = []
+    for row in rows:
+        item = dict(row)
+        payables.append(item)
+        cur = item['currency']
+        totals[cur] = totals.get(cur, 0) + float(item['balance'])
+    
+    return {
+        'payables': payables,
+        'totals': totals
+    }
+
+class APPaymentCreate(BaseModel):
+    vendor: str
+    payment_amount: Decimal
+    payment_currency: str = 'USD'
+    payment_date: date
+    payment_account_id: int
+    notes: Optional[str] = None
+
+@app.post("/api/accounting/ap-payment")
+async def record_ap_payment(
+    payment: APPaymentCreate,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Record a payment against Accounts Payable for a vendor"""
+    
+    # Find AP account for this currency
+    ap_account_id = await db.fetchval(
+        "SELECT account_id FROM accounts WHERE account_subtype = 'AP' AND currency = $1 AND is_active = TRUE LIMIT 1",
+        payment.payment_currency
+    )
+    if not ap_account_id:
+        raise HTTPException(status_code=400, detail="No AP account found for this currency")
+    
+    # Verify bank account exists
+    bank_account = await db.fetchrow(
+        "SELECT account_id, account_name FROM accounts WHERE account_id = $1 AND is_active = TRUE",
+        payment.payment_account_id
+    )
+    if not bank_account:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+    
+    # Create transaction: Debit AP, Credit Bank
+    trans_row = await db.fetchrow("""
+        INSERT INTO transactions (transaction_date, description, reference_type, currency, created_by)
+        VALUES ($1, $2, 'ap_payment', $3, $4)
+        RETURNING transaction_id
+    """, payment.payment_date,
+        f"AP Payment to {payment.vendor}" + (f" — {payment.notes}" if payment.notes else ""),
+        payment.payment_currency, user['username'])
+    
+    trans_id = trans_row['transaction_id']
+    
+    # Debit AP (reduce what we owe)
+    await db.execute("""
+        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+        VALUES ($1, $2, $3, 0, $4, $5)
+    """, trans_id, ap_account_id, payment.payment_amount, payment.payment_currency,
+        f"AP payment — {payment.vendor}")
+    
+    # Credit Bank (money leaves)
+    await db.execute("""
+        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+        VALUES ($1, $2, 0, $3, $4, $5)
+    """, trans_id, payment.payment_account_id, payment.payment_amount, payment.payment_currency,
+        f"Payment to {payment.vendor} from {bank_account['account_name']}")
+    
+    await update_account_balances(db, trans_id)
+    
+    await log_audit(
+        db, user['user_id'], user['username'],
+        'create', 'ap_payment', trans_id,
+        new_values={
+            'vendor': payment.vendor,
+            'amount': str(payment.payment_amount),
+            'currency': payment.payment_currency,
+            'bank_account': bank_account['account_name']
+        },
+        description=f"AP payment to {payment.vendor}: {payment.payment_amount} {payment.payment_currency}"
+    )
+    
+    return {"message": f"Payment of {payment.payment_amount} {payment.payment_currency} to {payment.vendor} recorded", "transaction_id": trans_id}
 
 @app.post("/api/accounting/accounts")
 async def create_account(
