@@ -20,7 +20,8 @@ const formatCurrency = (amount, currency = 'USD') => {
 
 const formatDate = (dateString) => {
   if (!dateString) return 'N/A';
-  return new Date(dateString).toLocaleDateString('en-US', {
+  const str = String(dateString).split('T')[0];
+  return new Date(str + 'T00:00:00').toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric'
@@ -650,33 +651,33 @@ function InventoryApp() {
           {/* DASHBOARD VIEW */}
           {view === 'dashboard' && (
             <div style={{maxWidth:'1400px'}}>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:'1.5rem',marginBottom:'3rem'}}>
-                <div style={{padding:'1.5rem',borderRadius:'0.75rem',boxShadow:'0 4px 6px rgba(0,123,255,0.3)',background:'linear-gradient(135deg,#3b82f6 0%,#2563eb 100%)',color:'white'}}>
-                  <div style={{fontSize:'0.875rem',opacity:0.9,marginBottom:'0.5rem'}}>🇺🇸 US Inventory</div>
-                  <div style={{fontSize:'2.25rem',fontWeight:'800'}}>{stats?.us_inventory || 0}</div>
-                  <div style={{fontSize:'0.875rem',opacity:0.8,marginTop:'0.5rem'}}>units in stock</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))',gap:'1.5rem',marginBottom:'3rem'}}>
+                <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',borderLeft:'4px solid #007bff'}}>
+                  <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'0.5rem'}}>🇺🇸 US Inventory</div>
+                  <div style={{fontSize:'2rem',fontWeight:'700',color:'#333'}}>{stats?.us_inventory || 0}</div>
+                  <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.5rem'}}>units in stock</div>
                 </div>
-                <div style={{padding:'1.5rem',borderRadius:'0.75rem',boxShadow:'0 4px 6px rgba(220,53,69,0.3)',background:'linear-gradient(135deg,#ef4444 0%,#dc2626 100%)',color:'white'}}>
-                  <div style={{fontSize:'0.875rem',opacity:0.9,marginBottom:'0.5rem'}}>🇲🇽 Mexico Inventory</div>
-                  <div style={{fontSize:'2.25rem',fontWeight:'800'}}>{stats?.mexico_inventory || 0}</div>
-                  <div style={{fontSize:'0.875rem',opacity:0.8,marginTop:'0.5rem'}}>units in stock</div>
+                <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',borderLeft:'4px solid #dc3545'}}>
+                  <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'0.5rem'}}>🇲🇽 Mexico Inventory</div>
+                  <div style={{fontSize:'2rem',fontWeight:'700',color:'#333'}}>{stats?.mexico_inventory || 0}</div>
+                  <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.5rem'}}>units in stock</div>
                 </div>
-                <div style={{padding:'1.5rem',borderRadius:'0.75rem',boxShadow:'0 4px 6px rgba(16,185,129,0.3)',background:'linear-gradient(135deg,#10b981 0%,#059669 100%)',color:'white'}}>
-                  <div style={{fontSize:'0.875rem',opacity:0.9,marginBottom:'0.5rem'}}>✅ Available</div>
-                  <div style={{fontSize:'2.25rem',fontWeight:'800'}}>{stats?.available_for_sale || 0}</div>
-                  <div style={{fontSize:'0.875rem',opacity:0.8,marginTop:'0.5rem'}}>ready to sell</div>
+                <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',borderLeft:'4px solid #28a745'}}>
+                  <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'0.5rem'}}>✅ Available</div>
+                  <div style={{fontSize:'2rem',fontWeight:'700',color:'#333'}}>{stats?.available_for_sale || 0}</div>
+                  <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.5rem'}}>ready to sell</div>
                 </div>
-                <div style={{padding:'1.5rem',borderRadius:'0.75rem',boxShadow:'0 4px 6px rgba(245,158,11,0.3)',background:'linear-gradient(135deg,#f59e0b 0%,#d97706 100%)',color:'white'}}>
-                  <div style={{fontSize:'0.875rem',opacity:0.9,marginBottom:'0.5rem'}}>💰 Total Value</div>
-                  <div style={{fontSize:'2.25rem',fontWeight:'800'}}>{formatCurrency(stats?.total_inventory_value || 0)}</div>
-                  <div style={{fontSize:'0.875rem',opacity:0.8,marginTop:'0.5rem'}}>inventory value</div>
+                <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',borderLeft:'4px solid #ffc107'}}>
+                  <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'0.5rem'}}>💰 Total Value</div>
+                  <div style={{fontSize:'2rem',fontWeight:'700',color:'#333'}}>{formatCurrency(stats?.total_inventory_value || 0)}</div>
+                  <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.5rem'}}>inventory value</div>
                 </div>
               </div>
               
-              <div style={{background:'white',padding:'2rem',borderRadius:'0.75rem',boxShadow:'0 1px 3px rgba(0,0,0,0.1)'}}>
+              <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
-                  <h3 style={{margin:0,fontSize:'1.125rem',fontWeight:'700',color:'#111827'}}>Recent Inventory</h3>
-                  <button onClick={() => setView('inventory')} style={{padding:'0.5rem 1.25rem',background:'#F59E0B',color:'white',border:'none',borderRadius:'0.5rem',cursor:'pointer',fontWeight:'600',fontSize:'0.875rem'}}>
+                  <h3 style={{margin:0}}>Recent Inventory</h3>
+                  <button onClick={() => setView('inventory')} style={{padding:'0.5rem 1rem',background:'#007bff',color:'white',border:'none',borderRadius:'4px',cursor:'pointer'}}>
                     View All →
                   </button>
                 </div>
@@ -686,18 +687,18 @@ function InventoryApp() {
                     <div>No inventory yet</div>
                   </div>
                 ) : (
-                  <div style={{display:'grid',gap:'0.75rem'}}>
+                  <div style={{display:'grid',gap:'1rem'}}>
                     {inventory.slice(0, 5).map((bus) => (
-                      <div key={bus.inventory_id} style={{padding:'1rem 1.25rem',border:'1px solid #e5e7eb',borderRadius:'0.5rem',display:'flex',justifyContent:'space-between',alignItems:'center',background:'#f9fafb'}}>
+                      <div key={bus.inventory_id} style={{padding:'1rem',border:'1px solid #ddd',borderRadius:'6px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                         <div>
-                          <div style={{fontWeight:'700',fontSize:'1rem',color:'#111827'}}>{bus.year} {bus.make} {bus.model}</div>
-                          <div style={{color:'#6b7280',fontSize:'0.875rem',marginTop:'0.25rem'}}>
+                          <div style={{fontWeight:'600',fontSize:'1.1rem'}}>{bus.year} {bus.make} {bus.model}</div>
+                          <div style={{color:'#666',fontSize:'0.9rem',marginTop:'0.25rem'}}>
                             Stock: {bus.stock_number} | VIN: {bus.vin}
                           </div>
                         </div>
                         <div style={{textAlign:'right'}}>
-                          <div style={{fontWeight:'700',color:'#10b981',fontSize:'1rem'}}>{formatCurrency(bus.purchase_price_usd)}</div>
-                          <div style={{fontSize:'0.8rem',color:'#6b7280',marginTop:'0.25rem'}}>{bus.status}</div>
+                          <div style={{fontWeight:'600',color:'#28a745'}}>{formatCurrency(bus.purchase_price_usd)}</div>
+                          <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.25rem'}}>{bus.status}</div>
                         </div>
                       </div>
                     ))}
@@ -713,11 +714,11 @@ function InventoryApp() {
           {/* SUPPLIERS VIEW */}
           {view === 'suppliers' && (
             <div style={{maxWidth:'1400px'}}>
-              <div style={{background:'white',padding:'2rem',borderRadius:'0.75rem',boxShadow:'0 1px 3px rgba(0,0,0,0.1)'}}>
+              <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
-                  <h3 style={{margin:0,fontSize:'1.125rem',fontWeight:'700',color:'#111827'}}>Suppliers ({suppliers.length})</h3>
-                  <button onClick={() => setShowSupplierForm(true)} style={{padding:'0.75rem 1.5rem',background:'#F59E0B',color:'white',border:'none',borderRadius:'0.5rem',fontWeight:'600',cursor:'pointer',fontSize:'0.875rem'}}>
-                    + Add Supplier
+                  <h3 style={{margin:0}}>Suppliers ({suppliers.length})</h3>
+                  <button onClick={() => setShowSupplierForm(true)} style={{padding:'0.75rem 1.5rem',background:'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
+                    ➕ Add Supplier
                   </button>
                 </div>
                 
@@ -729,24 +730,24 @@ function InventoryApp() {
                 ) : (
                   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:'1.5rem'}}>
                     {suppliers.map((supplier) => (
-                      <div key={supplier.supplier_id} style={{padding:'1.5rem',border:'1px solid #e5e7eb',borderRadius:'0.75rem',background:'white',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
-                        <div style={{fontWeight:'700',fontSize:'1.1rem',color:'#111827',marginBottom:'0.5rem'}}>{supplier.company_name}</div>
-                        <div style={{marginBottom:'1rem'}}>
-                          <span style={{background:'#dbeafe',color:'#1e40af',padding:'0.25rem 0.625rem',borderRadius:'0.375rem',fontSize:'0.75rem',fontWeight:'600'}}>
+                      <div key={supplier.supplier_id} style={{padding:'1.5rem',border:'1px solid #ddd',borderRadius:'8px',background:'#fafafa'}}>
+                        <div style={{fontWeight:'700',fontSize:'1.1rem',marginBottom:'0.5rem'}}>{supplier.company_name}</div>
+                        <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'1rem'}}>
+                          <span style={{background:'#e3f2fd',color:'#1976d2',padding:'0.25rem 0.5rem',borderRadius:'4px',fontSize:'0.75rem'}}>
                             {supplier.supplier_type}
                           </span>
                         </div>
                         {supplier.contact_person && (
-                          <div style={{fontSize:'0.875rem',color:'#374151',marginBottom:'0.25rem'}}>👤 {supplier.contact_person}</div>
+                          <div style={{fontSize:'0.9rem',marginBottom:'0.25rem'}}>👤 {supplier.contact_person}</div>
                         )}
                         {supplier.email && (
-                          <div style={{fontSize:'0.875rem',color:'#374151',marginBottom:'0.25rem'}}>📧 {supplier.email}</div>
+                          <div style={{fontSize:'0.9rem',marginBottom:'0.25rem'}}>📧 {supplier.email}</div>
                         )}
                         {supplier.phone && (
-                          <div style={{fontSize:'0.875rem',color:'#374151',marginBottom:'0.25rem'}}>📞 {supplier.phone}</div>
+                          <div style={{fontSize:'0.9rem',marginBottom:'0.25rem'}}>📞 {supplier.phone}</div>
                         )}
                         {supplier.city && supplier.state && (
-                          <div style={{fontSize:'0.875rem',color:'#6b7280'}}>📍 {supplier.city}, {supplier.state}</div>
+                          <div style={{fontSize:'0.9rem',color:'#666'}}>📍 {supplier.city}, {supplier.state}</div>
                         )}
                       </div>
                     ))}
@@ -756,13 +757,14 @@ function InventoryApp() {
             </div>
           )}
 
+          {/* PRE-INSPECTIONS VIEW */}
           {view === 'pre-inspections' && (
             <div style={{maxWidth:'1400px'}}>
-              <div style={{background:'white',padding:'2rem',borderRadius:'0.75rem',boxShadow:'0 1px 3px rgba(0,0,0,0.1)'}}>
+              <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
-                  <h3 style={{margin:0,fontSize:'1.125rem',fontWeight:'700',color:'#111827'}}>Pre-Purchase Inspections ({inspections.length})</h3>
-                  <button onClick={() => setShowInspectionForm(true)} style={{padding:'0.75rem 1.5rem',background:'#F59E0B',color:'white',border:'none',borderRadius:'0.5rem',fontWeight:'600',cursor:'pointer',fontSize:'0.875rem'}}>
-                    + New Inspection
+                  <h3 style={{margin:0}}>Pre-Purchase Inspections ({inspections.length})</h3>
+                  <button onClick={() => setShowInspectionForm(true)} style={{padding:'0.75rem 1.5rem',background:'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
+                    ➕ New Inspection
                   </button>
                 </div>
                 
@@ -775,49 +777,76 @@ function InventoryApp() {
                 ) : (
                   <div style={{display:'grid',gap:'1rem'}}>
                     {inspections.map((insp) => (
-                      <div key={insp.inspection_id} style={{padding:'1.5rem',border:'1px solid #e5e7eb',borderRadius:'0.75rem',background:'white',boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+                      <div key={insp.inspection_id} style={{padding:'1.5rem',border:'1px solid #ddd',borderRadius:'8px',background:'white'}}>
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'start'}}>
                           <div style={{flex:1}}>
-                            <div style={{fontWeight:'700',fontSize:'1.125rem',color:'#111827',marginBottom:'0.5rem'}}>
+                            <div style={{fontWeight:'700',fontSize:'1.2rem',marginBottom:'0.5rem'}}>
                               {insp.year} {insp.make} {insp.model}
                             </div>
-                            <div style={{color:'#6b7280',fontSize:'0.875rem',marginBottom:'0.75rem'}}>
+                            <div style={{color:'#666',fontSize:'0.9rem',marginBottom:'0.75rem'}}>
                               VIN: {insp.vin}
                             </div>
-                            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:'0.5rem',fontSize:'0.875rem',color:'#6b7280'}}>
-                              <div>📅 Inspected: <strong style={{color:'#374151'}}>{formatDate(insp.inspection_date)}</strong></div>
-                              <div>👤 Inspector: <strong style={{color:'#374151'}}>{insp.inspector_name || 'N/A'}</strong></div>
-                              <div>⭐ Rating: <strong style={{color:'#374151'}}>{insp.overall_rating || 'N/A'}</strong></div>
-                              <div>💰 Repair Est: <strong style={{color:'#374151'}}>{formatCurrency(insp.estimated_repair_cost_usd)}</strong></div>
+                            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:'0.5rem',fontSize:'0.875rem',color:'#666'}}>
+                              <div>📅 Inspected: <strong>{formatDate(insp.inspection_date)}</strong></div>
+                              <div>👤 Inspector: <strong>{insp.inspector_name || 'N/A'}</strong></div>
+                              <div>⭐ Rating: <strong>{insp.overall_rating || 'N/A'}</strong></div>
+                              <div>💰 Repair Est: <strong>{formatCurrency(insp.estimated_repair_cost_usd)}</strong></div>
                             </div>
                           </div>
-                          <div style={{textAlign:'right',marginLeft:'1rem',display:'flex',flexDirection:'column',gap:'0.5rem'}}>
+                          <div style={{textAlign:'right',marginLeft:'1rem'}}>
                             <div style={{
                               padding:'0.5rem 1rem',
                               borderRadius:'0.5rem',
                               fontWeight:'600',
                               fontSize:'0.875rem',
-                              background: insp.recommendation === 'Approve' ? 'linear-gradient(135deg,#10b981,#059669)' : insp.recommendation === 'Reject' ? 'linear-gradient(135deg,#ef4444,#dc2626)' : 'linear-gradient(135deg,#f59e0b,#d97706)',
-                              color: 'white',
-                              textAlign:'center'
+                              background: insp.recommendation === 'Approve' ? '#10b981' : insp.recommendation === 'Reject' ? '#ef4444' : '#f59e0b',
+                              color: 'white'
                             }}>
                               {insp.recommendation === 'Approve' ? '✅ Approved' : insp.recommendation === 'Reject' ? '❌ Rejected' : '⚠️ Conditional'}
                             </div>
                             {insp.purchased && (
-                              <div style={{fontSize:'0.75rem',color:'#3730a3',background:'#e0e7ff',padding:'0.25rem 0.5rem',borderRadius:'0.375rem',textAlign:'center'}}>
+                              <div style={{marginTop:'0.5rem',fontSize:'0.75rem',color:'#3730a3',background:'#e0e7ff',padding:'0.25rem 0.5rem',borderRadius:'0.25rem'}}>
                                 ✓ Purchased
                               </div>
                             )}
                             <button 
-                              onClick={() => { setSelectedInspection(insp); setShowInspectionReport(true); }}
-                              style={{padding:'0.5rem 1rem',background:'#3b82f6',color:'white',border:'none',borderRadius:'0.375rem',cursor:'pointer',fontSize:'0.875rem',fontWeight:'600'}}
-                            >
+                              onClick={() => {
+                                setSelectedInspection(insp);
+                                 setShowInspectionReport(true);
+                              }}
+                              style={{
+                                width:'100%',
+                                padding:'0.5rem 1rem',
+                                background:'#3b82f6',
+                                color:'white',
+                                border:'none',
+                                borderRadius:'4px',
+                                cursor:'pointer',
+                                fontSize:'0.875rem',
+                                fontWeight:'600',
+                                marginTop:'0.75rem'
+                              }}
+                           >
                               📄 View Report
                             </button>
                             {insp.recommendation === 'Approve' && !insp.purchased && (
                               <button 
-                                onClick={() => { setSelectedInspection(insp); setShowCreateInventoryModal(true); }}
-                                style={{padding:'0.5rem 1rem',background:'linear-gradient(135deg,#10b981,#059669)',color:'white',border:'none',borderRadius:'0.375rem',cursor:'pointer',fontSize:'0.875rem',fontWeight:'600'}}
+                                onClick={() => {
+                                  setSelectedInspection(insp);
+                                  setShowCreateInventoryModal(true);
+                                }}
+                                style={{
+                                  width:'100%',
+                                  padding:'0.5rem 1rem',
+                                  background:'#10b981',
+                                  color:'white',
+                                  border:'none',
+                                  borderRadius:'4px',
+                                  cursor:'pointer',
+                                  fontSize:'0.875rem',
+                                  fontWeight:'600',
+                                  marginTop:'0.5rem'
+                                }}
                               >
                                 🚌 Create Inventory
                               </button>
