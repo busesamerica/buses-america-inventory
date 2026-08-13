@@ -8,6 +8,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
   const [costs, setCosts] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [bankAccounts, setBankAccounts] = React.useState([]);
+  const [exchangeRate, setExchangeRate] = React.useState(currentExchangeRate || 17.50);
   
   // Form for adding new cost
   const [newCost, setNewCost] = React.useState({
@@ -28,7 +29,25 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
   React.useEffect(() => {
     loadCosts();
     loadBankAccounts();
+    loadExchangeRate();
   }, []);
+
+  const loadExchangeRate = async () => {
+    try {
+      const token = localStorage.getItem('session_token');
+      const response = await fetch(`${API_URL}/exchange-rates/current`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.rate) {
+          setExchangeRate(parseFloat(data.rate));
+        }
+      }
+    } catch (error) {
+      console.error('Error loading exchange rate:', error);
+    }
+  };
 
   const loadBankAccounts = async () => {
     try {
@@ -200,8 +219,8 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
   let grandTotalCurrency = 'USD';
   
   if (hasMXNCosts) {
-    const exchangeRate = currentExchangeRate || 17.50;
-    grandTotal = (totalUSD * exchangeRate) + mxnCosts;
+    const grandExchangeRate = exchangeRate || 17.50;
+    grandTotal = (totalUSD * grandExchangeRate) + mxnCosts;
     grandTotalCurrency = 'MXN';
   } else {
     grandTotal = totalUSD;
@@ -774,7 +793,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                       fontSize: '0.875rem'
                     }}>
                       <span style={{ color: '#92400e', fontWeight: '600' }}>Exchange Rate Used:</span>
-                      <span style={{ fontWeight: '700', color: '#92400e' }}>1 USD = {currentExchangeRate || 17.50} MXN</span>
+                      <span style={{ fontWeight: '700', color: '#92400e' }}>1 USD = {exchangeRate || 17.50} MXN</span>
                     </div>
                   )}
                 </div>
