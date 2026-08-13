@@ -76,6 +76,10 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
       setError('Description and amount are required');
       return;
     }
+    if (!newCost.vendor || !newCost.vendor.trim()) {
+      setError('Vendor is required');
+      return;
+    }
     
     setSaving(true);
     setError('');
@@ -547,7 +551,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
 
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
-                  Vendor (Optional)
+                  Vendor *
                 </label>
                 <input
                   type="text"
