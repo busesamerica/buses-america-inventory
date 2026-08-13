@@ -18,7 +18,8 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
     vendor: '',
     invoice_number: '',
     date_incurred: new Date().toISOString().split('T')[0],
-    payment_account_id: ''
+    payment_account_id: '',
+    payment_status: 'paid'
   });
 
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
@@ -120,7 +121,8 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
         vendor: '',
         invoice_number: '',
         date_incurred: new Date().toISOString().split('T')[0],
-        payment_account_id: ''
+        payment_account_id: '',
+        payment_status: 'paid'
       });
 
       // Reload costs
@@ -467,34 +469,80 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
 
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
-                  Paid From *
+                  Payment Status *
                 </label>
-                <select
-                  value={newCost.payment_account_id}
-                  onChange={(e) => setNewCost({ ...newCost, payment_account_id: e.target.value })}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '0.5rem',
-                    fontSize: '1rem'
-                  }}
-                >
-                  <option value="">Select account...</option>
-                  {bankAccounts.map(account => (
-                    <option key={account.account_id} value={account.account_id}>
-                      {account.account_name}
-                    </option>
-                  ))}
-                </select>
-                <div style={{ 
-                  fontSize: '0.75rem', 
-                  color: '#6b7280', 
-                  marginTop: '0.25rem' 
-                }}>
-                  Which bank/cash account did you pay this from?
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setNewCost({ ...newCost, payment_status: 'paid', payment_account_id: '' })}
+                    style={{
+                      flex: 1,
+                      padding: '0.6rem',
+                      border: newCost.payment_status === 'paid' ? '2px solid #059669' : '1px solid #d1d5db',
+                      borderRadius: '0.5rem',
+                      background: newCost.payment_status === 'paid' ? '#d1fae5' : 'white',
+                      color: newCost.payment_status === 'paid' ? '#065f46' : '#374151',
+                      fontWeight: '600',
+                      fontSize: '0.85rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    💵 Paid
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewCost({ ...newCost, payment_status: 'on_credit', payment_account_id: '' })}
+                    style={{
+                      flex: 1,
+                      padding: '0.6rem',
+                      border: newCost.payment_status === 'on_credit' ? '2px solid #d97706' : '1px solid #d1d5db',
+                      borderRadius: '0.5rem',
+                      background: newCost.payment_status === 'on_credit' ? '#fef3c7' : 'white',
+                      color: newCost.payment_status === 'on_credit' ? '#92400e' : '#374151',
+                      fontWeight: '600',
+                      fontSize: '0.85rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    📋 On Credit
+                  </button>
                 </div>
+
+                {newCost.payment_status === 'paid' && (
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
+                      Paid From *
+                    </label>
+                    <select
+                      value={newCost.payment_account_id}
+                      onChange={(e) => setNewCost({ ...newCost, payment_account_id: e.target.value })}
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.5rem',
+                        fontSize: '1rem'
+                      }}
+                    >
+                      <option value="">Select account...</option>
+                      {bankAccounts.map(account => (
+                        <option key={account.account_id} value={account.account_id}>
+                          {account.account_name}
+                        </option>
+                      ))}
+                    </select>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                      Which bank/cash account did you pay this from?
+                    </div>
+                  </div>
+                )}
+
+                {newCost.payment_status === 'on_credit' && (
+                  <div style={{ padding: '0.75rem', background: '#fef3c7', borderRadius: '0.5rem', fontSize: '0.8rem', color: '#92400e' }}>
+                    This cost will be recorded as Accounts Payable. You can pay it later from the Accounting module.
+                  </div>
+                )}
               </div>
 
               <div>
