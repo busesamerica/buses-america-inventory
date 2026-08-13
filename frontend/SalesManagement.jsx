@@ -528,7 +528,7 @@ const ManageSales = ({ soldBuses, accounts, onPaymentRecorded, onViewDetails }) 
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
+    const str = String(dateString).split("T")[0]; return new Date(str + "T00:00:00").toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
@@ -1019,7 +1019,7 @@ const SaleDetailsModal = ({ bus, onClose, onPaymentAdded, accounts }) => {
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
+    const str = String(dateString).split("T")[0]; return new Date(str + "T00:00:00").toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
