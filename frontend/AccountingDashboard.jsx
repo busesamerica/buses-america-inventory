@@ -776,8 +776,7 @@ const AccountingDashboard = () => {
                               <tr style={{ background: '#fef2f2' }}>
                                 <th style={{ padding: '0.4rem 1rem', textAlign: 'left', color: '#991b1b', fontWeight: '600', fontSize: '0.65rem', textTransform: 'uppercase' }}>Date</th>
                                 <th style={{ padding: '0.4rem 0.5rem', textAlign: 'left', color: '#991b1b', fontWeight: '600', fontSize: '0.65rem', textTransform: 'uppercase' }}>Description</th>
-                                <th style={{ padding: '0.4rem 1rem', textAlign: 'right', color: '#991b1b', fontWeight: '600', fontSize: '0.65rem', textTransform: 'uppercase' }}>Charged</th>
-                                <th style={{ padding: '0.4rem 1rem', textAlign: 'right', color: '#991b1b', fontWeight: '600', fontSize: '0.65rem', textTransform: 'uppercase' }}>Paid</th>
+                                <th style={{ padding: '0.4rem 1rem', textAlign: 'right', color: '#991b1b', fontWeight: '600', fontSize: '0.65rem', textTransform: 'uppercase' }}>Amount</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -789,11 +788,8 @@ const AccountingDashboard = () => {
                                   <td style={{ padding: '0.4rem 0.5rem', color: '#374151' }}>
                                     {d.description}
                                   </td>
-                                  <td style={{ padding: '0.4rem 1rem', textAlign: 'right', color: d.credit > 0 ? '#dc2626' : '#d1d5db', fontWeight: d.credit > 0 ? '600' : '400' }}>
-                                    {d.credit > 0 ? (d.currency === 'MXN' ? 'MX$' : '$') + d.credit.toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
-                                  </td>
-                                  <td style={{ padding: '0.4rem 1rem', textAlign: 'right', color: d.debit > 0 ? '#059669' : '#d1d5db', fontWeight: d.debit > 0 ? '600' : '400' }}>
-                                    {d.debit > 0 ? (d.currency === 'MXN' ? 'MX$' : '$') + d.debit.toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
+                                  <td style={{ padding: '0.4rem 1rem', textAlign: 'right', color: '#dc2626', fontWeight: '600' }}>
+                                    {(d.currency === 'MXN' ? 'MX$' : '$') + d.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                   </td>
                                 </tr>
                               ))}
