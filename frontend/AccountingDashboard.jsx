@@ -15,6 +15,7 @@ const AccountingDashboard = () => {
   const [showTransactionJournal, setShowTransactionJournal] = React.useState(false);
   const [showExchangeRate, setShowExchangeRate] = React.useState(false);
   const [showAPManagement, setShowAPManagement] = React.useState(false);
+  const [expandedVendor, setExpandedVendor] = React.useState(null);
   const [apData, setApData] = React.useState(null);
   const [apPaymentForm, setApPaymentForm] = React.useState({ vendor: '', payment_amount: '', payment_currency: 'USD', payment_date: new Date().toISOString().split('T')[0], payment_account_id: '', notes: '' });
   const [apSaving, setApSaving] = React.useState(false);
@@ -746,26 +747,63 @@ const AccountingDashboard = () => {
                 </div>
               ) : (
                 <div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                        <th style={{ textAlign: 'left', padding: '0.5rem 0', color: '#6b7280', fontWeight: '600' }}>Vendor</th>
-                        <th style={{ textAlign: 'left', padding: '0.5rem 0', color: '#6b7280', fontWeight: '600' }}>Currency</th>
-                        <th style={{ textAlign: 'right', padding: '0.5rem 0', color: '#6b7280', fontWeight: '600' }}>Balance Owed</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(apData.payables || []).map((item, idx) => (
-                        <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                          <td style={{ padding: '0.5rem 0', color: '#111827', fontWeight: '500' }}>{item.vendor}</td>
-                          <td style={{ padding: '0.5rem 0', color: '#6b7280' }}>{item.currency}</td>
-                          <td style={{ padding: '0.5rem 0', textAlign: 'right', fontWeight: '600', color: '#dc2626' }}>
-                            {item.currency === 'MXN' ? 'MX$' : '$'}{parseFloat(item.balance).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  {(apData.payables || []).map((item, idx) => (
+                    <div key={idx} style={{ marginBottom: '0.5rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', overflow: 'hidden' }}>
+                      {/* Vendor header row — clickable */}
+                      <div
+                        onClick={() => setExpandedVendor(expandedVendor === item.vendor + item.currency ? null : item.vendor + item.currency)}
+                        style={{
+                          padding: '0.75rem 1rem',
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          cursor: 'pointer', background: expandedVendor === item.vendor + item.currency ? '#fef2f2' : '#f9fafb'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>{expandedVendor === item.vendor + item.currency ? '▼' : '▶'}</span>
+                          <span style={{ fontWeight: '600', color: '#111827' }}>{item.vendor}</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>({item.currency})</span>
+                        </div>
+                        <span style={{ fontWeight: '700', color: '#dc2626' }}>
+                          {item.currency === 'MXN' ? 'MX$' : '$'}{parseFloat(item.balance).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+
+                      {/* Detail lines — expanded */}
+                      {expandedVendor === item.vendor + item.currency && item.details && (
+                        <div style={{ borderTop: '1px solid #e5e7eb' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                            <thead>
+                              <tr style={{ background: '#fef2f2' }}>
+                                <th style={{ padding: '0.4rem 1rem', textAlign: 'left', color: '#991b1b', fontWeight: '600', fontSize: '0.65rem', textTransform: 'uppercase' }}>Date</th>
+                                <th style={{ padding: '0.4rem 0.5rem', textAlign: 'left', color: '#991b1b', fontWeight: '600', fontSize: '0.65rem', textTransform: 'uppercase' }}>Description</th>
+                                <th style={{ padding: '0.4rem 1rem', textAlign: 'right', color: '#991b1b', fontWeight: '600', fontSize: '0.65rem', textTransform: 'uppercase' }}>Charged</th>
+                                <th style={{ padding: '0.4rem 1rem', textAlign: 'right', color: '#991b1b', fontWeight: '600', fontSize: '0.65rem', textTransform: 'uppercase' }}>Paid</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {item.details.map((d, dIdx) => (
+                                <tr key={dIdx} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                  <td style={{ padding: '0.4rem 1rem', color: '#374151', whiteSpace: 'nowrap' }}>
+                                    {d.date ? new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                                  </td>
+                                  <td style={{ padding: '0.4rem 0.5rem', color: '#374151' }}>
+                                    {d.description}
+                                  </td>
+                                  <td style={{ padding: '0.4rem 1rem', textAlign: 'right', color: d.credit > 0 ? '#dc2626' : '#d1d5db', fontWeight: d.credit > 0 ? '600' : '400' }}>
+                                    {d.credit > 0 ? (d.currency === 'MXN' ? 'MX$' : '$') + d.credit.toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
+                                  </td>
+                                  <td style={{ padding: '0.4rem 1rem', textAlign: 'right', color: d.debit > 0 ? '#059669' : '#d1d5db', fontWeight: d.debit > 0 ? '600' : '400' }}>
+                                    {d.debit > 0 ? (d.currency === 'MXN' ? 'MX$' : '$') + d.debit.toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
                   {apData.totals && (
                     <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#fef2f2', borderRadius: '0.5rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                       <span style={{ fontWeight: '600', color: '#991b1b' }}>Total Owed:</span>
