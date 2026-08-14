@@ -3,7 +3,7 @@ Buses America - Complete Inventory Management API
 Final version matching actual business operation
 """
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Query
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field, EmailStr
@@ -3218,7 +3218,8 @@ async def get_ap_summary(
     db=Depends(get_db),
     user=Depends(get_current_user)
 ):
-    """Get AP balances grouped by vendor"""
+    """Get AP balances grouped by vendor with detail lines"""
+    # Summary by vendor
     query = """
         SELECT 
             tl.currency,
@@ -3242,11 +3243,55 @@ async def get_ap_summary(
     """
     rows = await db.fetch(query)
     
-    # Also get total AP per currency
+    # Detail lines — individual AP entries (credits = costs on credit, debits = payments)
+    detail_query = """
+        SELECT 
+            t.transaction_id,
+            t.transaction_date,
+            t.description,
+            t.reference_type,
+            tl.currency,
+            tl.credit_amount,
+            tl.debit_amount,
+            tl.notes,
+            COALESCE(
+                CASE 
+                    WHEN tl.notes LIKE 'AP — %' THEN split_part(split_part(tl.notes, 'AP — ', 2), ' — ', 1)
+                    WHEN tl.notes LIKE 'AP payment — %' THEN split_part(tl.notes, 'AP payment — ', 2)
+                    ELSE 'Unknown'
+                END, 
+                'Unknown'
+            ) as vendor
+        FROM transaction_lines tl
+        JOIN accounts a ON tl.account_id = a.account_id
+        JOIN transactions t ON tl.transaction_id = t.transaction_id
+        WHERE a.account_subtype = 'AP'
+        ORDER BY t.transaction_date DESC
+    """
+    detail_rows = await db.fetch(detail_query)
+    
+    # Organize details by vendor
+    vendor_details = {}
+    for row in detail_rows:
+        vendor = row['vendor']
+        if vendor not in vendor_details:
+            vendor_details[vendor] = []
+        vendor_details[vendor].append({
+            'transaction_id': row['transaction_id'],
+            'date': str(row['transaction_date']),
+            'description': row['description'],
+            'type': row['reference_type'],
+            'currency': row['currency'],
+            'credit': float(row['credit_amount']),
+            'debit': float(row['debit_amount']),
+            'notes': row['notes']
+        })
+    
     totals = {}
     payables = []
     for row in rows:
         item = dict(row)
+        item['details'] = vendor_details.get(item['vendor'], [])
         payables.append(item)
         cur = item['currency']
         totals[cur] = totals.get(cur, 0) + float(item['balance'])
