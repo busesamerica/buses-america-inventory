@@ -3707,16 +3707,33 @@ async def generate_transaction_reference(
         reference = f"{type_code}-{date_str}-{clean_stock}"
     else:
         # For other types, get next sequence number for that day
-        existing_count = await db.fetchval(
-            """
-            SELECT COUNT(*) FROM transactions 
-            WHERE reference_number LIKE $1
-            """,
-            f"{type_code}-{date_str}-%"
-        )
+        prefix = f"{type_code}-{date_str}-%"
+        try:
+            max_seq = await db.fetchval(
+                """
+                SELECT MAX(CAST(split_part(reference_number, '-', 3) AS INTEGER))
+                FROM transactions 
+                WHERE reference_number LIKE $1
+                  AND split_part(reference_number, '-', 3) ~ '^[0-9]+$'
+                """,
+                prefix
+            )
+        except Exception:
+            max_seq = None
         
-        sequence = (existing_count or 0) + 1
+        sequence = (max_seq or 0) + 1
         reference = f"{type_code}-{date_str}-{sequence:03d}"
+        
+        # Verify uniqueness — if collision, increment until unique
+        for _ in range(10):
+            exists = await db.fetchval(
+                "SELECT COUNT(*) FROM transactions WHERE reference_number = $1",
+                reference
+            )
+            if not exists:
+                break
+            sequence += 1
+            reference = f"{type_code}-{date_str}-{sequence:03d}"
     
     return reference
 
