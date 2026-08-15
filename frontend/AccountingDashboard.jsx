@@ -764,7 +764,10 @@ const AccountingDashboard = () => {
                           <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>({item.currency})</span>
                         </div>
                         <span style={{ fontWeight: '700', color: '#dc2626' }}>
-                          {item.currency === 'MXN' ? 'MX$' : '$'}{parseFloat(item.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          {item.balance != null
+                            ? (item.currency === 'MXN' ? 'MX$' : '$') + parseFloat(item.balance).toLocaleString('en-US', { minimumFractionDigits: 2 })
+                            : '⚠ missing'
+                          }
                         </span>
                       </div>
 
@@ -789,7 +792,10 @@ const AccountingDashboard = () => {
                                     {d.description}
                                   </td>
                                   <td style={{ padding: '0.4rem 1rem', textAlign: 'right', color: '#dc2626', fontWeight: '600' }}>
-                                    {(d.currency === 'MXN' ? 'MX$' : '$') + (parseFloat(d.amount || 0)).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                    {d.amount != null
+                                      ? (d.currency === 'MXN' ? 'MX$' : '$') + parseFloat(d.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })
+                                      : <span style={{ color: '#f59e0b', fontWeight: '400' }}>⚠ missing</span>
+                                    }
                                   </td>
                                 </tr>
                               ))}
