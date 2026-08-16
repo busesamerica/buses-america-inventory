@@ -666,8 +666,6 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
                   )}
                 </div>
               )}
-                </div>
-              )}
             </div>
 
             <div>
