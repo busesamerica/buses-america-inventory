@@ -85,7 +85,7 @@ const InventoryManagement = () => {
       if (!response.ok) throw new Error('Failed to save bus');
       const savedBus = await response.json();
 
-      if (!editingBus && busData.payment_account_id) {
+      if (!editingBus && (busData.payment_account_id || busData.payment_status === 'on_credit')) {
         try {
           await fetch(`${API_URL}/inventory/${savedBus.inventory_id}/record-purchase-payment`, {
             method: 'POST',
@@ -94,13 +94,16 @@ const InventoryManagement = () => {
               'Authorization': `Bearer ${localStorage.getItem('session_token')}`
             },
             body: JSON.stringify({
-              payment_account_id: busData.payment_account_id,
-              payment_date: busData.purchase_date
+              payment_account_id: busData.payment_account_id ? parseInt(busData.payment_account_id) : null,
+              payment_date: busData.purchase_date,
+              payment_status: busData.payment_status || 'paid'
             })
           });
-          alert('✅ Bus saved and purchase payment recorded!');
+          alert(busData.payment_status === 'on_credit' 
+            ? '✅ Bus saved! Purchase recorded as Accounts Payable.' 
+            : '✅ Bus saved and purchase payment recorded!');
         } catch (err) {
-          alert('✅ Bus saved, but payment failed. Record manually.');
+          alert('✅ Bus saved, but payment recording failed. Record manually.');
         }
       } else {
         alert(editingBus ? '✅ Bus updated!' : '✅ Bus saved!');
@@ -455,6 +458,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     status: 'Available',
     condition: 'Good',
     payment_account_id: '',
+    payment_status: 'paid',
     supplier_id: ''
   });
 
@@ -501,7 +505,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
       alert('Please enter a valid purchase price');
       return;
     }
-    if (!bus && !formData.payment_account_id) {
+    if (!bus && formData.payment_status === 'paid' && !formData.payment_account_id) {
       alert('Please select a payment account');
       return;
     }
@@ -607,22 +611,61 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               {!bus && (
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>
-                    Paid From * <span style={{ fontSize: '0.75rem', color: '#666', fontWeight: '400' }}>(new buses)</span>
+                    Payment Status *
                   </label>
-                  <select
-                    name="payment_account_id"
-                    value={formData.payment_account_id}
-                    onChange={handleChange}
-                    required={!bus}
-                    style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }}
-                  >
-                    <option value="">Select account</option>
-                    {paymentAccounts.map(account => (
-                      <option key={account.account_id} value={account.account_id}>
-                        {account.account_name} ({account.currency})
-                      </option>
-                    ))}
-                  </select>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, payment_status: 'paid', payment_account_id: '' })}
+                      style={{
+                        flex: 1, padding: '0.5rem',
+                        border: formData.payment_status === 'paid' ? '2px solid #059669' : '1px solid #ddd',
+                        borderRadius: '4px',
+                        background: formData.payment_status === 'paid' ? '#d1fae5' : 'white',
+                        color: formData.payment_status === 'paid' ? '#065f46' : '#374151',
+                        fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer'
+                      }}
+                    >
+                      💵 Paid
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, payment_status: 'on_credit', payment_account_id: '' })}
+                      style={{
+                        flex: 1, padding: '0.5rem',
+                        border: formData.payment_status === 'on_credit' ? '2px solid #d97706' : '1px solid #ddd',
+                        borderRadius: '4px',
+                        background: formData.payment_status === 'on_credit' ? '#fef3c7' : 'white',
+                        color: formData.payment_status === 'on_credit' ? '#92400e' : '#374151',
+                        fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer'
+                      }}
+                    >
+                      📋 On Credit
+                    </button>
+                  </div>
+                  {formData.payment_status === 'paid' && (
+                    <select
+                      name="payment_account_id"
+                      value={formData.payment_account_id}
+                      onChange={handleChange}
+                      required
+                      style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                    >
+                      <option value="">Select account</option>
+                      {paymentAccounts.map(account => (
+                        <option key={account.account_id} value={account.account_id}>
+                          {account.account_name} ({account.currency})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {formData.payment_status === 'on_credit' && (
+                    <div style={{ padding: '0.6rem', background: '#fef3c7', borderRadius: '4px', fontSize: '0.8rem', color: '#92400e' }}>
+                      Purchase will be recorded as Accounts Payable. Pay later from the Accounting module.
+                    </div>
+                  )}
+                </div>
+              )}
                 </div>
               )}
             </div>
@@ -723,13 +766,14 @@ function RecordPurchasePaymentModal({ bus, paymentAccounts, onClose, onSuccess }
   
   const [selectedAccount, setSelectedAccount] = useState('');
   const [paymentDate, setPaymentDate] = useState(bus.purchase_date || new Date().toISOString().split('T')[0]);
+  const [paymentStatus, setPaymentStatus] = useState('paid');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!selectedAccount) {
+    if (paymentStatus === 'paid' && !selectedAccount) {
       setError('Please select a payment account');
       return;
     }
@@ -745,8 +789,9 @@ function RecordPurchasePaymentModal({ bus, paymentAccounts, onClose, onSuccess }
           'Authorization': `Bearer ${localStorage.getItem('session_token')}`
         },
         body: JSON.stringify({
-          payment_account_id: parseInt(selectedAccount),
-          payment_date: paymentDate
+          payment_account_id: paymentStatus === 'paid' ? parseInt(selectedAccount) : null,
+          payment_date: paymentDate,
+          payment_status: paymentStatus
         })
       });
 
@@ -784,27 +829,72 @@ function RecordPurchasePaymentModal({ bus, paymentAccounts, onClose, onSuccess }
         )}
 
         <form onSubmit={handleSubmit}>
+          {/* Payment Status Toggle */}
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#374151' }}>
-              Paid From <span style={{ color: '#ef4444' }}>*</span>
+              Payment Status <span style={{ color: '#ef4444' }}>*</span>
             </label>
-            <select
-              value={selectedAccount}
-              onChange={(e) => setSelectedAccount(e.target.value)}
-              required
-              style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.875rem' }}
-            >
-              <option value="">Select payment account</option>
-              {paymentAccounts.map(account => (
-                <option key={account.account_id} value={account.account_id}>
-                  {account.account_name} ({account.currency})
-                </option>
-              ))}
-            </select>
-            <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-              Which bank/cash account was used?
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <button
+                type="button"
+                onClick={() => { setPaymentStatus('paid'); setSelectedAccount(''); }}
+                style={{
+                  flex: 1, padding: '0.6rem',
+                  border: paymentStatus === 'paid' ? '2px solid #059669' : '1px solid #d1d5db',
+                  borderRadius: '0.5rem',
+                  background: paymentStatus === 'paid' ? '#d1fae5' : 'white',
+                  color: paymentStatus === 'paid' ? '#065f46' : '#374151',
+                  fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer'
+                }}
+              >
+                💵 Paid
+              </button>
+              <button
+                type="button"
+                onClick={() => { setPaymentStatus('on_credit'); setSelectedAccount(''); }}
+                style={{
+                  flex: 1, padding: '0.6rem',
+                  border: paymentStatus === 'on_credit' ? '2px solid #d97706' : '1px solid #d1d5db',
+                  borderRadius: '0.5rem',
+                  background: paymentStatus === 'on_credit' ? '#fef3c7' : 'white',
+                  color: paymentStatus === 'on_credit' ? '#92400e' : '#374151',
+                  fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer'
+                }}
+              >
+                📋 On Credit
+              </button>
             </div>
           </div>
+
+          {paymentStatus === 'paid' && (
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#374151' }}>
+                Paid From <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <select
+                value={selectedAccount}
+                onChange={(e) => setSelectedAccount(e.target.value)}
+                required
+                style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.875rem' }}
+              >
+                <option value="">Select payment account</option>
+                {paymentAccounts.map(account => (
+                  <option key={account.account_id} value={account.account_id}>
+                    {account.account_name} ({account.currency})
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                Which bank/cash account was used?
+              </div>
+            </div>
+          )}
+
+          {paymentStatus === 'on_credit' && (
+            <div style={{ padding: '0.75rem', background: '#fef3c7', borderRadius: '0.5rem', fontSize: '0.8rem', color: '#92400e', marginBottom: '1rem' }}>
+              Purchase will be recorded as Accounts Payable. You can pay it later from the Accounting module.
+            </div>
+          )}
 
           <div style={{ marginBottom: '1.5rem' }}>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#374151' }}>
