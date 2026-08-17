@@ -1146,8 +1146,10 @@ async def create_inventory(
 # ========================================
 
 class RecordPurchasePayment(BaseModel):
-    payment_account_id: int
+    payment_account_id: Optional[int] = None
     payment_date: Optional[date] = None
+    payment_status: str = 'paid'
+    payable_to: Optional[str] = None
 
 @app.post("/api/inventory/{inventory_id}/record-purchase-payment")
 async def record_purchase_payment(
@@ -1170,74 +1172,140 @@ async def record_purchase_payment(
     if not purchase_price or float(purchase_price) == 0:
         raise HTTPException(status_code=400, detail="No purchase price set for this inventory item")
     
-    # Verify the bank account exists
-    bank_account = await db.fetchrow(
-        "SELECT account_id, account_name, currency FROM accounts WHERE account_id = $1 AND is_active = TRUE",
-        payment_data.payment_account_id
-    )
-    if not bank_account:
-        raise HTTPException(status_code=404, detail="Bank account not found")
+    payment_dt = payment_data.payment_date or bus.get('purchase_date') or date.today()
     
     # Find inventory asset account
     inventory_account = await db.fetchval(
         "SELECT account_id FROM accounts WHERE account_subtype = 'Inventory' AND is_active = TRUE LIMIT 1"
     )
-    
     if not inventory_account:
         raise HTTPException(status_code=400, detail="No Inventory account found in chart of accounts")
     
-    payment_dt = payment_data.payment_date or bus.get('purchase_date') or date.today()
+    bus_label = f"{bus['stock_number']} — {bus['year']} {bus['make']} {bus['model']}"
     
-    # Create journal entry: Debit Inventory Asset, Credit Bank
-    trans_row = await db.fetchrow("""
-        INSERT INTO transactions (transaction_date, description, reference_type, reference_id, currency, created_by)
-        VALUES ($1, $2, 'purchase', $3, $4, $5)
-        RETURNING transaction_id
-    """, payment_dt,
-        f"Purchase payment for {bus['stock_number']} — {bus['year']} {bus['make']} {bus['model']}",
-        inventory_id, 'USD', user['username'])
-    
-    trans_id = trans_row['transaction_id']
-    
-    # Determine currency from the bank account
-    line_currency = bank_account['currency'] or 'USD'
-    
-    # Debit Inventory Asset
-    await db.execute("""
-        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-        VALUES ($1, $2, $3, 0, $4, $5)
-    """, trans_id, inventory_account, purchase_price, line_currency,
-        f"Inventory asset — {bus['stock_number']}")
-    
-    # Credit Bank
-    await db.execute("""
-        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-        VALUES ($1, $2, 0, $3, $4, $5)
-    """, trans_id, payment_data.payment_account_id, purchase_price, line_currency,
-        f"Payment for purchase of {bus['stock_number']}")
-    
-    await update_account_balances(db, trans_id)
-    
-    await log_audit(
-        db, user['user_id'], user['username'],
-        'create', 'transactions', trans_id,
-        new_values={
-            'transaction_id': trans_id,
-            'inventory_id': inventory_id,
-            'stock_number': bus['stock_number'],
-            'amount': str(purchase_price),
-            'bank_account': bank_account['account_name'],
-        },
-        description=(
-            f"Purchase payment recorded: {bus['stock_number']} — "
-            f"${purchase_price} from {bank_account['account_name']}"
+    if payment_data.payment_status == 'on_credit':
+        # On credit: Debit Inventory, Credit AP
+        ap_account_id = await db.fetchval(
+            "SELECT account_id FROM accounts WHERE account_subtype = 'AP' AND currency = 'USD' AND is_active = TRUE LIMIT 1"
         )
-    )
+        if not ap_account_id:
+            raise HTTPException(status_code=400, detail="No AP account found for USD")
+        
+        # Get creditor name for AP tracking
+        # Use payable_to if provided, otherwise fall back to supplier name
+        if payment_data.payable_to and payment_data.payable_to.strip():
+            creditor_name = payment_data.payable_to.strip()
+        else:
+            creditor_name = 'Unknown'
+            if bus['supplier_id']:
+                supplier = await db.fetchrow(
+                    "SELECT company_name FROM suppliers WHERE supplier_id = $1", bus['supplier_id']
+                )
+                if supplier:
+                    creditor_name = supplier['company_name']
+        
+        trans_row = await db.fetchrow("""
+            INSERT INTO transactions (transaction_date, description, reference_type, reference_id, currency, created_by)
+            VALUES ($1, $2, 'purchase', $3, 'USD', $4)
+            RETURNING transaction_id
+        """, payment_dt,
+            f"Purchase on credit for {bus_label}",
+            inventory_id, user['username'])
+        
+        trans_id = trans_row['transaction_id']
+        
+        # Debit Inventory
+        await db.execute("""
+            INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+            VALUES ($1, $2, $3, 0, 'USD', $4)
+        """, trans_id, inventory_account, purchase_price,
+            f"Inventory asset — {bus['stock_number']}")
+        
+        # Credit AP
+        await db.execute("""
+            INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+            VALUES ($1, $2, 0, $3, 'USD', $4)
+        """, trans_id, ap_account_id, purchase_price,
+            f"AP — {creditor_name} — Purchase — {bus_label}")
+        
+        await update_account_balances(db, trans_id)
+        
+        await log_audit(
+            db, user['user_id'], user['username'],
+            'create', 'transactions', trans_id,
+            new_values={
+                'transaction_id': trans_id,
+                'inventory_id': inventory_id,
+                'stock_number': bus['stock_number'],
+                'amount': str(purchase_price),
+                'payment_status': 'on_credit',
+                'vendor': creditor_name
+            },
+            description=f"Purchase on credit recorded: {bus['stock_number']} — ${purchase_price} (AP — {creditor_name})"
+        )
+        
+        return {
+            "message": f"Purchase of ${purchase_price} for {bus['stock_number']} recorded as Accounts Payable ({creditor_name})",
+            "transaction_id": trans_id
+        }
     
-    return {
-        "message": f"Purchase payment of ${purchase_price} recorded for {bus['stock_number']}",
-        "transaction_id": trans_id
-    }
+    else:
+        # Paid: Debit Inventory, Credit Bank (original behavior)
+        if not payment_data.payment_account_id:
+            raise HTTPException(status_code=400, detail="Payment account required when paying immediately")
+        
+        bank_account = await db.fetchrow(
+            "SELECT account_id, account_name, currency FROM accounts WHERE account_id = $1 AND is_active = TRUE",
+            payment_data.payment_account_id
+        )
+        if not bank_account:
+            raise HTTPException(status_code=404, detail="Bank account not found")
+        
+        line_currency = bank_account['currency'] or 'USD'
+        
+        trans_row = await db.fetchrow("""
+            INSERT INTO transactions (transaction_date, description, reference_type, reference_id, currency, created_by)
+            VALUES ($1, $2, 'purchase', $3, $4, $5)
+            RETURNING transaction_id
+        """, payment_dt,
+            f"Purchase payment for {bus_label}",
+            inventory_id, 'USD', user['username'])
+        
+        trans_id = trans_row['transaction_id']
+        
+        # Debit Inventory
+        await db.execute("""
+            INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+            VALUES ($1, $2, $3, 0, $4, $5)
+        """, trans_id, inventory_account, purchase_price, line_currency,
+            f"Inventory asset — {bus['stock_number']}")
+        
+        # Credit Bank
+        await db.execute("""
+            INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+            VALUES ($1, $2, 0, $3, $4, $5)
+        """, trans_id, payment_data.payment_account_id, purchase_price, line_currency,
+            f"Payment for purchase of {bus['stock_number']}")
+        
+        await update_account_balances(db, trans_id)
+        
+        await log_audit(
+            db, user['user_id'], user['username'],
+            'create', 'transactions', trans_id,
+            new_values={
+                'transaction_id': trans_id,
+                'inventory_id': inventory_id,
+                'stock_number': bus['stock_number'],
+                'amount': str(purchase_price),
+                'bank_account': bank_account['account_name'],
+            },
+            description=f"Purchase payment recorded: {bus['stock_number']} — ${purchase_price} from {bank_account['account_name']}"
+        )
+        
+        return {
+            "message": f"Purchase payment of ${purchase_price} recorded for {bus['stock_number']}",
+            "transaction_id": trans_id
+        }
 
 @app.get("/api/inventory", response_model=List[Inventory])
 async def get_inventory(
