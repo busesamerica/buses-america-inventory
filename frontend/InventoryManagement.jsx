@@ -96,7 +96,8 @@ const InventoryManagement = () => {
             body: JSON.stringify({
               payment_account_id: busData.payment_account_id ? parseInt(busData.payment_account_id) : null,
               payment_date: busData.purchase_date,
-              payment_status: busData.payment_status || 'paid'
+              payment_status: busData.payment_status || 'paid',
+              payable_to: busData.payable_to || null
             })
           });
           alert(busData.payment_status === 'on_credit' 
@@ -459,6 +460,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     condition: 'Good',
     payment_account_id: '',
     payment_status: 'paid',
+    payable_to: '',
     supplier_id: ''
   });
 
@@ -660,8 +662,24 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
                     </select>
                   )}
                   {formData.payment_status === 'on_credit' && (
-                    <div style={{ padding: '0.6rem', background: '#fef3c7', borderRadius: '4px', fontSize: '0.8rem', color: '#92400e' }}>
-                      Purchase will be recorded as Accounts Payable. Pay later from the Accounting module.
+                    <div>
+                      <div style={{ padding: '0.6rem', background: '#fef3c7', borderRadius: '4px', fontSize: '0.8rem', color: '#92400e', marginBottom: '0.75rem' }}>
+                        Purchase will be recorded as Accounts Payable. Pay later from the Accounting module.
+                      </div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>
+                        Payable To *
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.payable_to}
+                        onChange={(e) => setFormData({ ...formData, payable_to: e.target.value })}
+                        placeholder="Who do you owe? (e.g. auction house, dealer)"
+                        required
+                        style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }}
+                      />
+                      <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                        May be different from the supplier
+                      </div>
                     </div>
                   )}
                 </div>
@@ -765,6 +783,7 @@ function RecordPurchasePaymentModal({ bus, paymentAccounts, onClose, onSuccess }
   const [selectedAccount, setSelectedAccount] = useState('');
   const [paymentDate, setPaymentDate] = useState(bus.purchase_date || new Date().toISOString().split('T')[0]);
   const [paymentStatus, setPaymentStatus] = useState('paid');
+  const [payableTo, setPayableTo] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -773,6 +792,10 @@ function RecordPurchasePaymentModal({ bus, paymentAccounts, onClose, onSuccess }
 
     if (paymentStatus === 'paid' && !selectedAccount) {
       setError('Please select a payment account');
+      return;
+    }
+    if (paymentStatus === 'on_credit' && !payableTo.trim()) {
+      setError('Please enter who this is payable to');
       return;
     }
 
@@ -789,7 +812,8 @@ function RecordPurchasePaymentModal({ bus, paymentAccounts, onClose, onSuccess }
         body: JSON.stringify({
           payment_account_id: paymentStatus === 'paid' ? parseInt(selectedAccount) : null,
           payment_date: paymentDate,
-          payment_status: paymentStatus
+          payment_status: paymentStatus,
+          payable_to: paymentStatus === 'on_credit' ? payableTo : null
         })
       });
 
@@ -889,8 +913,24 @@ function RecordPurchasePaymentModal({ bus, paymentAccounts, onClose, onSuccess }
           )}
 
           {paymentStatus === 'on_credit' && (
-            <div style={{ padding: '0.75rem', background: '#fef3c7', borderRadius: '0.5rem', fontSize: '0.8rem', color: '#92400e', marginBottom: '1rem' }}>
-              Purchase will be recorded as Accounts Payable. You can pay it later from the Accounting module.
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ padding: '0.75rem', background: '#fef3c7', borderRadius: '0.5rem', fontSize: '0.8rem', color: '#92400e', marginBottom: '0.75rem' }}>
+                Purchase will be recorded as Accounts Payable. You can pay it later from the Accounting module.
+              </div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#374151' }}>
+                Payable To <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={payableTo}
+                onChange={(e) => setPayableTo(e.target.value)}
+                placeholder="Who do you owe? (e.g. auction house, dealer)"
+                required
+                style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.875rem' }}
+              />
+              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                May be different from the supplier
+              </div>
             </div>
           )}
 
