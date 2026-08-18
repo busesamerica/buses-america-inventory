@@ -335,6 +335,8 @@ class Inventory(BaseModel):
     description: Optional[str]
     internal_notes: Optional[str]
     
+    has_purchase_payment: Optional[bool] = False
+    
     created_at: datetime
     updated_at: datetime
     
@@ -1358,7 +1360,11 @@ async def get_inventory(
     query = f"""
         SELECT i.*, 
                c.client_name, c.client_company, c.client_location, 
-               c.client_contact, c.client_email, c.client_use_case
+               c.client_contact, c.client_email, c.client_use_case,
+               EXISTS(
+                   SELECT 1 FROM transactions t 
+                   WHERE t.reference_type = 'purchase' AND t.reference_id = i.inventory_id
+               ) as has_purchase_payment
         FROM inventory i
         LEFT JOIN clients c ON i.client_id = c.client_id
         WHERE {where_clause}
