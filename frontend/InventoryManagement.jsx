@@ -300,6 +300,8 @@ const InventoryManagement = () => {
                               >
                                 💰 Costs
                               </button>
+                              {console.log(bus.stock_number, 'has_purchase_payment:', bus.has_purchase_payment, typeof bus.has_purchase_payment)}
+                              {!bus.has_purchase_payment && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -311,6 +313,7 @@ const InventoryManagement = () => {
                               >
                                 💳 Purchase Payment
                               </button>
+                              )}
                               {inspection && (
                                 <button
                                   onClick={(e) => {
