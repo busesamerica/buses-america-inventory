@@ -3317,18 +3317,21 @@ async def get_ap_summary(
     """
     rows = await db.fetch(query)
     
-    # Detail lines — individual AP charges per vendor+currency (only credits = costs on credit)
+    # Detail lines — full vendor ledger (charges and payments)
     detail_query = """
         SELECT 
             t.transaction_id,
             t.transaction_date,
             t.description,
+            t.reference_type,
             tl.currency,
             tl.credit_amount,
+            tl.debit_amount,
             tl.notes,
             COALESCE(
                 CASE 
                     WHEN tl.notes LIKE 'AP — %' THEN split_part(split_part(tl.notes, 'AP — ', 2), ' — ', 1)
+                    WHEN tl.notes LIKE 'AP payment — %' THEN split_part(tl.notes, 'AP payment — ', 2)
                     ELSE 'Unknown'
                 END, 
                 'Unknown'
@@ -3337,8 +3340,7 @@ async def get_ap_summary(
         JOIN accounts a ON tl.account_id = a.account_id
         JOIN transactions t ON tl.transaction_id = t.transaction_id
         WHERE a.account_subtype = 'AP'
-          AND tl.credit_amount > 0
-        ORDER BY t.transaction_date DESC
+        ORDER BY t.transaction_date ASC, t.transaction_id ASC
     """
     detail_rows = await db.fetch(detail_query)
     
@@ -3350,12 +3352,18 @@ async def get_ap_summary(
         key = vendor + '|' + currency
         if key not in vendor_details:
             vendor_details[key] = []
+        
+        credit = float(row['credit_amount'])
+        debit = float(row['debit_amount'])
+        
         vendor_details[key].append({
             'transaction_id': row['transaction_id'],
             'date': str(row['transaction_date']),
             'description': row['description'],
+            'type': row['reference_type'],
             'currency': currency,
-            'amount': float(row['credit_amount']),
+            'charge': credit if credit > 0 else 0,
+            'payment': debit if debit > 0 else 0,
             'notes': row['notes']
         })
     
