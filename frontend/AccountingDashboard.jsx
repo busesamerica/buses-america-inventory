@@ -779,26 +779,38 @@ const AccountingDashboard = () => {
                               <tr style={{ background: '#fef2f2' }}>
                                 <th style={{ padding: '0.4rem 1rem', textAlign: 'left', color: '#991b1b', fontWeight: '600', fontSize: '0.65rem', textTransform: 'uppercase' }}>Date</th>
                                 <th style={{ padding: '0.4rem 0.5rem', textAlign: 'left', color: '#991b1b', fontWeight: '600', fontSize: '0.65rem', textTransform: 'uppercase' }}>Description</th>
-                                <th style={{ padding: '0.4rem 1rem', textAlign: 'right', color: '#991b1b', fontWeight: '600', fontSize: '0.65rem', textTransform: 'uppercase' }}>Amount</th>
+                                <th style={{ padding: '0.4rem 0.75rem', textAlign: 'right', color: '#991b1b', fontWeight: '600', fontSize: '0.65rem', textTransform: 'uppercase' }}>Charge</th>
+                                <th style={{ padding: '0.4rem 0.75rem', textAlign: 'right', color: '#991b1b', fontWeight: '600', fontSize: '0.65rem', textTransform: 'uppercase' }}>Payment</th>
+                                <th style={{ padding: '0.4rem 1rem', textAlign: 'right', color: '#991b1b', fontWeight: '600', fontSize: '0.65rem', textTransform: 'uppercase' }}>Balance</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {item.details.map((d, dIdx) => (
-                                <tr key={dIdx} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                                  <td style={{ padding: '0.4rem 1rem', color: '#374151', whiteSpace: 'nowrap' }}>
-                                    {d.date ? new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
-                                  </td>
-                                  <td style={{ padding: '0.4rem 0.5rem', color: '#374151' }}>
-                                    {d.description}
-                                  </td>
-                                  <td style={{ padding: '0.4rem 1rem', textAlign: 'right', color: '#dc2626', fontWeight: '600' }}>
-                                    {d.amount != null
-                                      ? (d.currency === 'MXN' ? 'MX$' : '$') + parseFloat(d.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })
-                                      : <span style={{ color: '#f59e0b', fontWeight: '400' }}>⚠ missing</span>
-                                    }
-                                  </td>
-                                </tr>
-                              ))}
+                              {(() => {
+                                let runningBalance = 0;
+                                return item.details.map((d, dIdx) => {
+                                  runningBalance += (d.charge || 0) - (d.payment || 0);
+                                  const cur = d.currency === 'MXN' ? 'MX$' : '$';
+                                  return (
+                                    <tr key={dIdx} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                      <td style={{ padding: '0.4rem 1rem', color: '#374151', whiteSpace: 'nowrap' }}>
+                                        {d.date ? new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                                      </td>
+                                      <td style={{ padding: '0.4rem 0.5rem', color: '#374151', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {d.description}
+                                      </td>
+                                      <td style={{ padding: '0.4rem 0.75rem', textAlign: 'right', color: d.charge > 0 ? '#dc2626' : '#d1d5db', fontWeight: d.charge > 0 ? '600' : '400' }}>
+                                        {d.charge > 0 ? cur + d.charge.toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
+                                      </td>
+                                      <td style={{ padding: '0.4rem 0.75rem', textAlign: 'right', color: d.payment > 0 ? '#059669' : '#d1d5db', fontWeight: d.payment > 0 ? '600' : '400' }}>
+                                        {d.payment > 0 ? cur + d.payment.toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
+                                      </td>
+                                      <td style={{ padding: '0.4rem 1rem', textAlign: 'right', fontWeight: '600', color: runningBalance > 0 ? '#991b1b' : '#059669' }}>
+                                        {cur}{runningBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                      </td>
+                                    </tr>
+                                  );
+                                });
+                              })()}
                             </tbody>
                           </table>
                         </div>
