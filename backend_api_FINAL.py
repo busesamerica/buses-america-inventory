@@ -309,12 +309,12 @@ class Inventory(BaseModel):
     
     is_sold: bool
     sale_date: Optional[date]
-    client_name: Optional[str]
-    client_company: Optional[str]
-    client_location: Optional[str]
-    client_contact: Optional[str]
-    client_email: Optional[str]
-    client_use_case: Optional[str]
+    client_name: Optional[str] = None
+    client_company: Optional[str] = None
+    client_location: Optional[str] = None
+    client_contact: Optional[str] = None
+    client_email: Optional[str] = None
+    client_use_case: Optional[str] = None
     sale_price: Optional[Decimal]
     sale_currency: Optional[str]
     deposit_amount: Optional[Decimal]
