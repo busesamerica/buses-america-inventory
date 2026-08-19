@@ -15,7 +15,9 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
     toAccount: '',
     fromAmount: '',
     toAmount: '',
-    exchangeRate: ''
+    exchangeRate: '',
+    paymentStatus: 'paid',
+    vendor: ''
   });
   
   const [accounts, setAccounts] = React.useState([]);
@@ -58,7 +60,9 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
       toAccount: '',
       fromAmount: '',
       toAmount: '',
-      exchangeRate: ''
+      exchangeRate: '',
+      paymentStatus: 'paid',
+      vendor: ''
     });
     setError('');
   };
@@ -102,11 +106,33 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
           { account_id: capitalAccount?.account_id, debit_amount: 0, credit_amount: parseFloat(formData.amount), currency: formData.currency }
         ];
       } else if (transactionType === 'expense') {
-        desc = `Expense - ${formData.description}`;
-        lines = [
-          { account_id: parseInt(formData.expenseAccount), debit_amount: parseFloat(formData.amount), credit_amount: 0, currency: formData.currency },
-          { account_id: parseInt(formData.bankAccount), debit_amount: 0, credit_amount: parseFloat(formData.amount), currency: formData.currency }
-        ];
+        if (formData.paymentStatus === 'on_credit') {
+          if (!formData.vendor || !formData.vendor.trim()) {
+            setError('Vendor is required for expenses on credit');
+            return;
+          }
+          // Find AP account for this currency
+          const apAccount = accounts.find(a => a.account_subtype === 'AP' && a.currency === formData.currency);
+          if (!apAccount) {
+            setError('No Accounts Payable account found for ' + formData.currency);
+            return;
+          }
+          desc = `Expense (Credit) - ${formData.description}`;
+          lines = [
+            { account_id: parseInt(formData.expenseAccount), debit_amount: parseFloat(formData.amount), credit_amount: 0, currency: formData.currency, notes: formData.description },
+            { account_id: apAccount.account_id, debit_amount: 0, credit_amount: parseFloat(formData.amount), currency: formData.currency, notes: `AP — ${formData.vendor} — ${formData.description}` }
+          ];
+        } else {
+          if (!formData.bankAccount) {
+            setError('Please select a payment account');
+            return;
+          }
+          desc = `Expense - ${formData.description}`;
+          lines = [
+            { account_id: parseInt(formData.expenseAccount), debit_amount: parseFloat(formData.amount), credit_amount: 0, currency: formData.currency },
+            { account_id: parseInt(formData.bankAccount), debit_amount: 0, credit_amount: parseFloat(formData.amount), currency: formData.currency }
+          ];
+        }
       } else if (transactionType === 'exchange') {
         // Currency exchange: MXN leaves one account, USD enters another (or vice versa)
         const fromAccount = accounts.find(a => a.account_id === parseInt(formData.fromAccount));
@@ -191,13 +217,43 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
 
           {(transactionType === 'deposit' || transactionType === 'expense') && (
             <>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>{transactionType === 'deposit' ? 'Deposit To' : 'Pay From'} *</label>
-                <select value={formData.bankAccount} onChange={(e) => setFormData({...formData, bankAccount: e.target.value})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
-                  <option value="">Select account...</option>
-                  {bankAccounts.map(a => <option key={a.account_id} value={a.account_id}>{a.account_name}</option>)}
-                </select>
-              </div>
+              {transactionType === 'expense' && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Payment Status *</label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button type="button" onClick={() => setFormData({...formData, paymentStatus: 'paid', vendor: ''})}
+                      style={{ flex: 1, padding: '0.6rem', border: formData.paymentStatus === 'paid' ? '2px solid #059669' : '1px solid #d1d5db', borderRadius: '0.5rem', background: formData.paymentStatus === 'paid' ? '#d1fae5' : 'white', color: formData.paymentStatus === 'paid' ? '#065f46' : '#374151', fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer' }}>
+                      💵 Paid
+                    </button>
+                    <button type="button" onClick={() => setFormData({...formData, paymentStatus: 'on_credit', bankAccount: ''})}
+                      style={{ flex: 1, padding: '0.6rem', border: formData.paymentStatus === 'on_credit' ? '2px solid #d97706' : '1px solid #d1d5db', borderRadius: '0.5rem', background: formData.paymentStatus === 'on_credit' ? '#fef3c7' : 'white', color: formData.paymentStatus === 'on_credit' ? '#92400e' : '#374151', fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer' }}>
+                      📋 On Credit
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {(transactionType === 'deposit' || (transactionType === 'expense' && formData.paymentStatus === 'paid')) && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>{transactionType === 'deposit' ? 'Deposit To' : 'Paid From'} *</label>
+                  <select value={formData.bankAccount} onChange={(e) => setFormData({...formData, bankAccount: e.target.value})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
+                    <option value="">Select account...</option>
+                    {bankAccounts.map(a => <option key={a.account_id} value={a.account_id}>{a.account_name} ({a.currency})</option>)}
+                  </select>
+                </div>
+              )}
+
+              {transactionType === 'expense' && formData.paymentStatus === 'on_credit' && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Vendor *</label>
+                  <input type="text" value={formData.vendor} onChange={(e) => setFormData({...formData, vendor: e.target.value})}
+                    placeholder="Who do you owe?" required
+                    style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }} />
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                    Will be tracked in Accounts Payable
+                  </div>
+                </div>
+              )}
 
               {transactionType === 'expense' && (
                 <div style={{ marginBottom: '1rem' }}>
