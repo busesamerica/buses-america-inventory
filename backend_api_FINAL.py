@@ -317,6 +317,7 @@ class Inventory(BaseModel):
     client_use_case: Optional[str] = None
     sale_price: Optional[Decimal]
     sale_currency: Optional[str]
+    sale_exchange_rate: Optional[Decimal] = None
     deposit_amount: Optional[Decimal]
     payment_status: Optional[str]
     balance_due: Optional[Decimal]
@@ -3017,8 +3018,9 @@ async def record_sale(
     if bus['is_sold']:
         raise HTTPException(status_code=400, detail="This bus is already marked as sold")
 
-    # 2. Get exchange rate
+    # 2. Get exchange rate and store it with the sale
     exchange_rate = await get_exchange_rate(db, 'MXN', 'USD')
+    sale_exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')
     sale_price = float(sale_data.sale_price)
 
     # 3. Calculate total costs in sale currency
@@ -3039,6 +3041,7 @@ async def record_sale(
         'sale_price': sale_data.sale_price,
         'sale_currency': sale_data.sale_currency,
         'sale_date': sale_data.sale_date,
+        'sale_exchange_rate': sale_exchange_rate,
         'balance_due': sale_data.sale_price,
         'payment_status': 'Pending'
     }
@@ -3832,7 +3835,7 @@ async def calculate_profit_distribution(
         """
         SELECT 
             inventory_id, stock_number, sale_price, sale_currency,
-            purchase_price_usd
+            purchase_price_usd, sale_exchange_rate
         FROM inventory
         WHERE inventory_id = $1 AND is_sold = TRUE
         """,
@@ -3859,8 +3862,11 @@ async def calculate_profit_distribution(
     purchase_price = float(sale['purchase_price_usd'])
     total_cost_usd = purchase_price + usd_costs
     
-    # Get exchange rate
-    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')
+    # Use exchange rate at time of sale (not current rate)
+    if sale['sale_exchange_rate']:
+        exchange_rate = float(sale['sale_exchange_rate'])
+    else:
+        exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')
     
     # Calculate profit in sale currency
     sale_price = float(sale['sale_price'])
