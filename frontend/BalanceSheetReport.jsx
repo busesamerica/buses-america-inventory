@@ -158,7 +158,6 @@ const BalanceSheetReport = ({ isOpen, onClose }) => {
               >
                 <option value="USD">USD</option>
                 <option value="MXN">MXN</option>
-                <option value="BOTH">Both</option>
               </select>
             </div>
 
