@@ -106,7 +106,7 @@ const TransactionJournal = ({ isOpen, onClose }) => {
     payment: 'Payment Received', distribution: 'Profit Distribution',
     distribution_payout: 'Distribution Payout', deposit: 'Deposit',
     expense: 'Expense', transfer: 'Transfer', exchange: 'Currency Exchange',
-    ap_payment: 'AP Payment'
+    ap_payment: 'AP Payment', period_close: 'Period Close', revaluation: 'FX Revaluation'
   };
 
   if (!isOpen) return null;
@@ -167,7 +167,9 @@ const TransactionJournal = ({ isOpen, onClose }) => {
             h('option',{value:'distribution_payout'},'Payouts'), h('option',{value:'exchange'},'Exchanges'),
             h('option',{value:'deposit'},'Deposits'), h('option',{value:'expense'},'Expenses'),
             h('option',{value:'transfer'},'Transfers'),
-            h('option',{value:'ap_payment'},'AP Payments')
+            h('option',{value:'ap_payment'},'AP Payments'),
+            h('option',{value:'period_close'},'Period Closings'),
+            h('option',{value:'revaluation'},'FX Revaluations')
           )
         ),
         h('button', { onClick:function(){loadAccounts();loadTransactions();}, style:{padding:'0.35rem 1rem',background:'#111827',color:'white',border:'none',borderRadius:'0.25rem',fontSize:'0.8rem',fontWeight:'600',cursor:'pointer'} }, 'Run Report'),
