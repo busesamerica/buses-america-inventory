@@ -1,317 +1,198 @@
-// PeriodClosingModal.jsx - Close Accounting Period
+// PeriodClosingModal.jsx — Period Closing with FX Revaluation
 
 const PeriodClosingModal = ({ isOpen, onClose, onComplete }) => {
-  const [loading, setLoading] = React.useState(false);
-  const [step, setStep] = React.useState(1); // 1: Setup, 2: Preview, 3: Confirm
-  const [netIncome, setNetIncome] = React.useState(null);
-  const [periodData, setPeriodData] = React.useState({
-    start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-    end_date: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0],
-    period_name: ''
-  });
+  var _s = React.useState;
+  var _pcs = _s([]), closings = _pcs[0], setClosings = _pcs[1];
+  var _ls = _s(false), loading = _ls[0], setLoading = _ls[1];
+  var _ss = _s(false), saving = _ss[0], setSaving = _ss[1];
+  var _es = _s(''), error = _es[0], setError = _es[1];
+  var _rs = _s(null), result = _rs[0], setResult = _rs[1];
+  var _fs = _s({
+    period_start: '',
+    period_end: '',
+    notes: ''
+  }), form = _fs[0], setForm = _fs[1];
 
-  const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
+  var API_URL = window.API_BASE_URL ? window.API_BASE_URL + '/api' : 'https://buses-america.onrender.com/api';
 
-  React.useEffect(() => {
-    if (isOpen) {
-      // Auto-generate period name
-      const date = new Date(periodData.end_date);
-      const monthYear = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-      setPeriodData({...periodData, period_name: monthYear});
-      setStep(1);
-      setNetIncome(null);
-    }
+  React.useEffect(function() {
+    if (isOpen) { loadClosings(); loadLastDate(); }
   }, [isOpen]);
 
-  const handleFieldChange = (field, value) => {
-    setPeriodData({...periodData, [field]: value});
-  };
-
-  const loadNetIncome = async () => {
+  var loadClosings = function() {
     setLoading(true);
-    try {
-      const token = localStorage.getItem('session_token');
-      const params = new URLSearchParams({
-        start_date: periodData.start_date,
-        end_date: periodData.end_date,
-        currency: 'BOTH'
-      });
-      
-      const response = await fetch(`${API_URL}/accounting/reports/income-statement?${params}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setNetIncome(data);
-        setStep(2);
-      } else {
-        alert('Error loading income statement. Please try again.');
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      alert('Error loading income statement. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    var token = localStorage.getItem('session_token');
+    fetch(API_URL + '/accounting/period-closings', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(function(r) { return r.ok ? r.json() : []; })
+    .then(function(data) { setClosings(data || []); setLoading(false); })
+    .catch(function() { setLoading(false); });
   };
 
-  const executePeriodClose = async () => {
-    setLoading(true);
-    try {
-      const token = localStorage.getItem('session_token');
-      const response = await fetch(`${API_URL}/accounting/close-period`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(periodData)
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        alert(`✅ ${result.message}`);
-        onComplete();
-        onClose();
+  var loadLastDate = function() {
+    var token = localStorage.getItem('session_token');
+    fetch(API_URL + '/accounting/last-closing-date', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(function(r) { return r.ok ? r.json() : {}; })
+    .then(function(data) {
+      if (data.last_closing_date) {
+        var lastDate = new Date(data.last_closing_date + 'T00:00:00');
+        lastDate.setDate(lastDate.getDate() + 1);
+        var nextStart = lastDate.toISOString().split('T')[0];
+        setForm(function(f) { return Object.assign({}, f, { period_start: nextStart }); });
       } else {
-        const error = await response.json();
-        alert(`❌ Error: ${error.detail || 'Failed to close period'}`);
+        setForm(function(f) { return Object.assign({}, f, { period_start: '2026-01-01' }); });
       }
-    } catch (error) {
-      console.error('Error:', error);
-      alert('❌ Error closing period. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    })
+    .catch(function() {});
   };
 
-  const formatCurrency = (amount, currency) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency === 'MXN' ? 'MXN' : 'USD'
-    }).format(amount);
+  var handleClose = function() {
+    if (!form.period_start || !form.period_end) {
+      setError('Please select both start and end dates');
+      return;
+    }
+    if (form.period_end >= new Date().toISOString().split('T')[0]) {
+      setError('Cannot close a period that has not ended yet');
+      return;
+    }
+    if (!window.confirm('Close period ' + form.period_start + ' to ' + form.period_end + '?\n\nThis will:\n- Close all income/expense accounts to Retained Earnings\n- Create FX revaluation entry\n- Lock the period from edits\n\nThis action cannot be undone.')) {
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setResult(null);
+    var token = localStorage.getItem('session_token');
+    fetch(API_URL + '/accounting/period-close', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    })
+    .then(function(r) {
+      if (r.ok) return r.json();
+      return r.json().then(function(err) { throw new Error(err.detail || 'Failed to close period'); });
+    })
+    .then(function(data) {
+      setResult(data);
+      loadClosings();
+      if (onComplete) onComplete();
+    })
+    .catch(function(err) {
+      setError(err.message);
+    })
+    .finally(function() { setSaving(false); });
+  };
+
+  var formatDate = function(ds) {
+    if (!ds) return '';
+    try {
+      var s = String(ds).split('T')[0].split('-');
+      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return months[parseInt(s[1])-1] + ' ' + parseInt(s[2]) + ', ' + s[0];
+    } catch(e) { return String(ds); }
+  };
+
+  var fc = function(amt, cur) {
+    var n = parseFloat(amt || 0);
+    var f = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(n));
+    return (n < 0 ? '-' : '') + (cur === 'MXN' ? 'MX$' : '$') + f;
   };
 
   if (!isOpen) return null;
 
-  return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0,0,0,0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    }}>
-      <div style={{
-        background: 'white',
-        borderRadius: '0.75rem',
-        maxWidth: '600px',
-        width: '100%',
-        maxHeight: '80vh',
-        overflow: 'auto',
-        boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'
-      }}>
-        {/* Header */}
-        <div style={{
-          padding: '1.5rem',
-          borderBottom: '1px solid #e5e7eb',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '700', color: '#111827' }}>
-            🔒 Close Accounting Period
-          </h2>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '0.5rem',
-              background: 'transparent',
-              border: 'none',
-              fontSize: '1.5rem',
-              cursor: 'pointer',
-              color: '#6b7280'
-            }}
-          >
-            ✕
-          </button>
-        </div>
+  var h = React.createElement;
 
-        {/* Content */}
-        <div style={{ padding: '1.5rem' }}>
-          {/* Step 1: Setup */}
-          {step === 1 && (
-            <>
-              <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#eff6ff', borderRadius: '0.5rem', border: '1px solid #3b82f6' }}>
-                <div style={{ fontWeight: '600', color: '#1e40af', marginBottom: '0.5rem' }}>
-                  ℹ️ About Period Closing
-                </div>
-                <div style={{ fontSize: '0.875rem', color: '#1e40af' }}>
-                  Closing a period will:
-                  <ul style={{ margin: '0.5rem 0', paddingLeft: '1.5rem' }}>
-                    <li>Calculate Net Income for the period</li>
-                    <li>Transfer Net Income to Retained Earnings</li>
-                    <li>Zero out all Revenue and Expense accounts</li>
-                    <li>Create a permanent closing entry</li>
-                  </ul>
-                </div>
-              </div>
+  return h('div', { style: { position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:'1rem' } },
+    h('div', { style: { background:'white',borderRadius:'0.75rem',maxWidth:'650px',width:'100%',maxHeight:'90vh',overflow:'auto',boxShadow:'0 20px 25px rgba(0,0,0,0.15)' } },
 
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
-                  Period Name
-                </label>
-                <input
-                  type="text"
-                  value={periodData.period_name}
-                  onChange={(e) => handleFieldChange('period_name', e.target.value)}
-                  placeholder="e.g., March 2026"
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '0.5rem',
-                    fontSize: '1rem'
-                  }}
-                />
-              </div>
+      // Header
+      h('div', { style: { padding:'1.25rem 1.5rem',borderBottom:'1px solid #e5e7eb',display:'flex',justifyContent:'space-between',alignItems:'center' } },
+        h('h2', { style: { margin:0,fontSize:'1.1rem',fontWeight:'700',color:'#111827' } }, '\uD83D\uDD12 Period Closing'),
+        h('button', { onClick:onClose, style: { background:'transparent',border:'none',fontSize:'1.25rem',cursor:'pointer',color:'#6b7280' } }, '\u2715')
+      ),
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
-                    Period Start Date
-                  </label>
-                  <input
-                    type="date"
-                    value={periodData.start_date}
-                    onChange={(e) => handleFieldChange('start_date', e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '0.5rem',
-                      fontSize: '1rem'
-                    }}
-                  />
-                </div>
+      // Past Closings
+      h('div', { style: { padding:'1.5rem',borderBottom:'1px solid #e5e7eb' } },
+        h('div', { style: { fontSize:'0.85rem',fontWeight:'600',color:'#374151',marginBottom:'0.75rem' } }, 'Closed Periods'),
+        closings.length === 0
+          ? h('div', { style: { color:'#9ca3af',fontSize:'0.85rem',fontStyle:'italic' } }, 'No periods closed yet')
+          : h('table', { style: { width:'100%',borderCollapse:'collapse',fontSize:'0.8rem' } },
+              h('thead', null,
+                h('tr', { style: { borderBottom:'1px solid #e5e7eb' } },
+                  h('th', { style: { textAlign:'left',padding:'0.4rem 0',color:'#6b7280',fontWeight:'600' } }, 'Period'),
+                  h('th', { style: { textAlign:'right',padding:'0.4rem 0',color:'#6b7280',fontWeight:'600' } }, 'Net Income (USD)'),
+                  h('th', { style: { textAlign:'right',padding:'0.4rem 0',color:'#6b7280',fontWeight:'600' } }, 'Net Income (MXN)'),
+                  h('th', { style: { textAlign:'right',padding:'0.4rem 0',color:'#6b7280',fontWeight:'600' } }, 'FX Gain/Loss'),
+                  h('th', { style: { textAlign:'right',padding:'0.4rem 0',color:'#6b7280',fontWeight:'600' } }, 'Rate')
+                )
+              ),
+              h('tbody', null,
+                closings.map(function(c, idx) {
+                  return h('tr', { key: idx, style: { borderBottom:'1px solid #f3f4f6' } },
+                    h('td', { style: { padding:'0.4rem 0',color:'#111827' } }, formatDate(c.period_start) + ' \u2014 ' + formatDate(c.period_end)),
+                    h('td', { style: { padding:'0.4rem 0',textAlign:'right',fontWeight:'600' } }, fc(c.net_income_usd, 'USD')),
+                    h('td', { style: { padding:'0.4rem 0',textAlign:'right',fontWeight:'600' } }, fc(c.net_income_mxn, 'MXN')),
+                    h('td', { style: { padding:'0.4rem 0',textAlign:'right',fontWeight:'600',color: parseFloat(c.fx_gain_loss || 0) >= 0 ? '#059669' : '#dc2626' } }, fc(c.fx_gain_loss, 'MXN')),
+                    h('td', { style: { padding:'0.4rem 0',textAlign:'right',color:'#6b7280' } }, parseFloat(c.exchange_rate || 0).toFixed(4))
+                  );
+                })
+              )
+            )
+      ),
 
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
-                    Period End Date
-                  </label>
-                  <input
-                    type="date"
-                    value={periodData.end_date}
-                    onChange={(e) => handleFieldChange('end_date', e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '0.5rem',
-                      fontSize: '1rem'
-                    }}
-                  />
-                </div>
-              </div>
+      // Close New Period
+      h('div', { style: { padding:'1.5rem' } },
+        h('div', { style: { fontSize:'0.85rem',fontWeight:'600',color:'#374151',marginBottom:'1rem' } }, 'Close New Period'),
 
-              <button
-                onClick={loadNetIncome}
-                disabled={loading || !periodData.period_name}
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  background: loading ? '#9ca3af' : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '0.5rem',
-                  fontSize: '1rem',
-                  fontWeight: '600',
-                  cursor: loading || !periodData.period_name ? 'not-allowed' : 'pointer'
-                }}
-              >
-                {loading ? 'Calculating...' : 'Next: Preview Net Income →'}
-              </button>
-            </>
-          )}
+        error && h('div', { style: { padding:'0.75rem',background:'#fee2e2',borderRadius:'0.5rem',color:'#991b1b',fontSize:'0.85rem',marginBottom:'1rem' } }, error),
 
-          {/* Step 2: Preview */}
-          {step === 2 && netIncome && (
-            <>
-              <div style={{ marginBottom: '1.5rem' }}>
-                <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.125rem', fontWeight: '700', color: '#111827' }}>
-                  Period: {periodData.period_name}
-                </h3>
-                <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '1.5rem' }}>
-                  {new Date(periodData.start_date).toLocaleDateString()} - {new Date(periodData.end_date).toLocaleDateString()}
-                </div>
+        result && h('div', { style: { padding:'1rem',background:'#d1fae5',borderRadius:'0.5rem',marginBottom:'1rem' } },
+          h('div', { style: { fontWeight:'600',color:'#065f46',marginBottom:'0.5rem' } }, '\u2713 ' + result.message),
+          h('div', { style: { fontSize:'0.8rem',color:'#065f46' } },
+            'Net Income: ' + fc(result.net_income.usd, 'USD') + ' / ' + fc(result.net_income.mxn, 'MXN')),
+          h('div', { style: { fontSize:'0.8rem',color:'#065f46' } },
+            'FX Gain/Loss: ' + fc(result.fx_gain_loss, 'MXN') + ' at rate ' + result.exchange_rate)
+        ),
 
-                <div style={{ padding: '1.5rem', background: '#f9fafb', borderRadius: '0.75rem', marginBottom: '1.5rem' }}>
-                  <div style={{ fontSize: '0.875rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.5rem' }}>
-                    Net Income for Period
-                  </div>
-                  <div style={{ fontSize: '2rem', fontWeight: '700', color: netIncome.net_income_usd >= 0 ? '#059669' : '#dc2626' }}>
-                    {formatCurrency(netIncome.net_income_usd, 'USD')}
-                  </div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: '600', color: netIncome.net_income_mxn >= 0 ? '#059669' : '#dc2626', marginTop: '0.25rem' }}>
-                    {formatCurrency(netIncome.net_income_mxn, 'MXN')}
-                  </div>
-                </div>
+        !result && h('div', null,
+          h('div', { style: { display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem',marginBottom:'0.75rem' } },
+            h('div', null,
+              h('label', { style: { display:'block',fontSize:'0.7rem',fontWeight:'600',color:'#6b7280',marginBottom:'0.25rem',textTransform:'uppercase' } }, 'Period Start'),
+              h('input', { type:'date',value:form.period_start,
+                onChange:function(e){setForm(Object.assign({},form,{period_start:e.target.value}))},
+                style:{width:'100%',padding:'0.5rem',border:'1px solid #d1d5db',borderRadius:'0.375rem',fontSize:'0.85rem'} })
+            ),
+            h('div', null,
+              h('label', { style: { display:'block',fontSize:'0.7rem',fontWeight:'600',color:'#6b7280',marginBottom:'0.25rem',textTransform:'uppercase' } }, 'Period End'),
+              h('input', { type:'date',value:form.period_end,
+                onChange:function(e){setForm(Object.assign({},form,{period_end:e.target.value}))},
+                style:{width:'100%',padding:'0.5rem',border:'1px solid #d1d5db',borderRadius:'0.375rem',fontSize:'0.85rem'} })
+            )
+          ),
+          h('div', { style: { marginBottom:'0.75rem' } },
+            h('label', { style: { display:'block',fontSize:'0.7rem',fontWeight:'600',color:'#6b7280',marginBottom:'0.25rem',textTransform:'uppercase' } }, 'Notes (Optional)'),
+            h('input', { type:'text',value:form.notes,
+              onChange:function(e){setForm(Object.assign({},form,{notes:e.target.value}))},
+              placeholder:'e.g. Q1 2026 closing',
+              style:{width:'100%',padding:'0.5rem',border:'1px solid #d1d5db',borderRadius:'0.375rem',fontSize:'0.85rem'} })
+          ),
 
-                <div style={{ padding: '1rem', background: '#fef3c7', borderRadius: '0.5rem', border: '1px solid #f59e0b', marginBottom: '1.5rem' }}>
-                  <div style={{ fontWeight: '600', color: '#92400e', marginBottom: '0.5rem' }}>
-                    ⚠️ Warning
-                  </div>
-                  <div style={{ fontSize: '0.875rem', color: '#92400e' }}>
-                    This action cannot be undone. Once closed, the period will be locked and all revenue/expense accounts will be zeroed.
-                  </div>
-                </div>
-              </div>
+          h('div', { style: { padding:'0.75rem',background:'#fef3c7',borderRadius:'0.5rem',fontSize:'0.8rem',color:'#92400e',marginBottom:'1rem' } },
+            '\u26A0\uFE0F This will close all income and expense accounts to Retained Earnings, create an FX revaluation entry, and lock the period. This action cannot be undone.'
+          ),
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <button
-                  onClick={() => setStep(1)}
-                  disabled={loading}
-                  style={{
-                    padding: '0.75rem',
-                    background: 'white',
-                    color: '#374151',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '0.5rem',
-                    fontSize: '1rem',
-                    fontWeight: '600',
-                    cursor: loading ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  ← Back
-                </button>
-                <button
-                  onClick={executePeriodClose}
-                  disabled={loading}
-                  style={{
-                    padding: '0.75rem',
-                    background: loading ? '#9ca3af' : 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '0.5rem',
-                    fontSize: '1rem',
-                    fontWeight: '600',
-                    cursor: loading ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  {loading ? 'Closing...' : '🔒 Close Period'}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+          h('button', {
+            onClick:handleClose,
+            disabled:saving,
+            style:{
+              width:'100%',padding:'0.75rem',
+              background:saving?'#9ca3af':'#111827',
+              color:'white',border:'none',borderRadius:'0.375rem',
+              fontSize:'0.875rem',fontWeight:'600',
+              cursor:saving?'not-allowed':'pointer'
+            }
+          }, saving ? 'Closing period...' : '\uD83D\uDD12 Close Period')
+        )
+      )
+    )
   );
 };
 
