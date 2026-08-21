@@ -599,46 +599,80 @@ async def log_audit(
 
 # ==================== EXCHANGE RATE HELPER ====================
 
-async def get_exchange_rate(db, from_curr: str, to_curr: str) -> float:
+async def get_exchange_rate(db, from_curr: str, to_curr: str, as_of_date=None) -> float:
     """
-    Get exchange rate from database, handling both directions
-    Standardizes all exchange rate lookups across the application
+    Get exchange rate from database, handling both directions.
+    If as_of_date is provided, returns the rate effective on that date
+    (most recent effective_date <= as_of_date).
+    If no date, returns the latest rate.
     """
-    # Try to get the exact rate
+    if as_of_date:
+        # Date-based lookup: find the rate effective on or before the given date
+        rate = await db.fetchval(
+            """SELECT rate FROM exchange_rates 
+               WHERE from_currency = $1 AND to_currency = $2 
+               AND is_active = true AND effective_date <= $3
+               ORDER BY effective_date DESC LIMIT 1""",
+            from_curr, to_curr, as_of_date
+        )
+        if rate:
+            return float(rate)
+        
+        # Try inverse
+        inverse_rate = await db.fetchval(
+            """SELECT rate FROM exchange_rates 
+               WHERE from_currency = $1 AND to_currency = $2 
+               AND is_active = true AND effective_date <= $3
+               ORDER BY effective_date DESC LIMIT 1""",
+            to_curr, from_curr, as_of_date
+        )
+        if inverse_rate:
+            return 1.0 / float(inverse_rate)
+        
+        # Fall back to any rate on or before that date
+        any_rate = await db.fetchrow(
+            """SELECT from_currency, to_currency, rate FROM exchange_rates 
+               WHERE is_active = true AND effective_date <= $1
+               ORDER BY effective_date DESC LIMIT 1""",
+            as_of_date
+        )
+        if any_rate:
+            if any_rate['from_currency'] == from_curr and any_rate['to_currency'] == to_curr:
+                return float(any_rate['rate'])
+            elif any_rate['from_currency'] == to_curr and any_rate['to_currency'] == from_curr:
+                return 1.0 / float(any_rate['rate'])
+        
+        # No rate found for this date — fall through to latest rate
+    
+    # Latest rate lookup (no date or date lookup failed)
     rate = await db.fetchval(
-        "SELECT rate FROM exchange_rates WHERE from_currency = $1 AND to_currency = $2 AND is_active = true ORDER BY created_at DESC LIMIT 1",
+        "SELECT rate FROM exchange_rates WHERE from_currency = $1 AND to_currency = $2 AND is_active = true ORDER BY effective_date DESC LIMIT 1",
         from_curr, to_curr
     )
-    
     if rate:
         return float(rate)
     
-    # Try inverse rate
+    # Try inverse
     inverse_rate = await db.fetchval(
-        "SELECT rate FROM exchange_rates WHERE from_currency = $1 AND to_currency = $2 AND is_active = true ORDER BY created_at DESC LIMIT 1",
+        "SELECT rate FROM exchange_rates WHERE from_currency = $1 AND to_currency = $2 AND is_active = true ORDER BY effective_date DESC LIMIT 1",
         to_curr, from_curr
     )
-    
     if inverse_rate:
         return 1.0 / float(inverse_rate)
     
-    # Fallback to any active rate (convert through USD if needed)
+    # Fallback to any active rate
     any_rate = await db.fetchrow(
-        "SELECT from_currency, to_currency, rate FROM exchange_rates WHERE is_active = true ORDER BY created_at DESC LIMIT 1"
+        "SELECT from_currency, to_currency, rate FROM exchange_rates WHERE is_active = true ORDER BY effective_date DESC LIMIT 1"
     )
-    
     if any_rate:
-        # If we have USD→MXN (17.5), and need MXN→USD, return 1/17.5
-        if any_rate['from_currency'] == to_curr and any_rate['to_currency'] == from_curr:
-            return 1.0 / float(any_rate['rate'])
-        elif any_rate['from_currency'] == from_curr and any_rate['to_currency'] == to_curr:
+        if any_rate['from_currency'] == from_curr and any_rate['to_currency'] == to_curr:
             return float(any_rate['rate'])
+        elif any_rate['from_currency'] == to_curr and any_rate['to_currency'] == from_curr:
+            return 1.0 / float(any_rate['rate'])
     
-    # Ultimate fallback — no rate found anywhere
-    # Log warning and raise error so the user knows to set up an exchange rate
     raise HTTPException(
         status_code=400,
-        detail=f"No exchange rate found for {from_curr}/{to_curr}. Please set an exchange rate in the Accounting module before performing cross-currency operations."
+        detail=f"No exchange rate found for {from_curr}/{to_curr}. Please set an exchange rate in the Accounting module."
     )
 
 # ==================== CENTRALIZED COST CALCULATION ====================
@@ -1898,8 +1932,8 @@ async def add_payment(
     sale_currency = inventory['sale_currency']
     sale_price = float(inventory['sale_price'])
     
-    # Get current exchange rate
-    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')
+    # Get exchange rate as of payment date
+    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN', payment.payment_date)
     
     # Insert payment
     query = """
@@ -3017,10 +3051,13 @@ async def record_sale(
         raise HTTPException(status_code=404, detail="Bus not found")
     if bus['is_sold']:
         raise HTTPException(status_code=400, detail="This bus is already marked as sold")
+    
+    # Check period lock
+    await check_period_lock(db, sale_data.sale_date)
 
-    # 2. Get exchange rate and store it with the sale
-    exchange_rate = await get_exchange_rate(db, 'MXN', 'USD')
-    sale_exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')
+    # 2. Get exchange rate as of sale date and store it
+    exchange_rate = await get_exchange_rate(db, 'MXN', 'USD', sale_data.sale_date)
+    sale_exchange_rate = await get_exchange_rate(db, 'USD', 'MXN', sale_data.sale_date)
     sale_price = float(sale_data.sale_price)
 
     # 3. Calculate total costs in sale currency
@@ -3303,7 +3340,7 @@ async def get_ap_summary(
             COALESCE(
                 CASE 
                     WHEN tl.notes LIKE 'AP — %' THEN split_part(split_part(tl.notes, 'AP — ', 2), ' — ', 1)
-                    WHEN tl.notes LIKE 'AP payment — %' THEN split_part(tl.notes, 'AP payment — ', 2)
+                    WHEN tl.notes LIKE 'AP payment — %' THEN split_part(split_part(tl.notes, 'AP payment — ', 2), ' — ', 1)
                     ELSE 'Unknown'
                 END, 
                 'Unknown'
@@ -3334,7 +3371,7 @@ async def get_ap_summary(
             COALESCE(
                 CASE 
                     WHEN tl.notes LIKE 'AP — %' THEN split_part(split_part(tl.notes, 'AP — ', 2), ' — ', 1)
-                    WHEN tl.notes LIKE 'AP payment — %' THEN split_part(tl.notes, 'AP payment — ', 2)
+                    WHEN tl.notes LIKE 'AP payment — %' THEN split_part(split_part(tl.notes, 'AP payment — ', 2), ' — ', 1)
                     ELSE 'Unknown'
                 END, 
                 'Unknown'
@@ -3428,18 +3465,20 @@ async def record_ap_payment(
     trans_id = trans_row['transaction_id']
     
     # Debit AP (reduce what we owe)
+    ap_note = f"AP payment — {payment.vendor}" + (f" — {payment.notes}" if payment.notes else "")
     await db.execute("""
         INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
         VALUES ($1, $2, $3, 0, $4, $5)
     """, trans_id, ap_account_id, payment.payment_amount, payment.payment_currency,
-        f"AP payment — {payment.vendor}")
+        ap_note)
     
     # Credit Bank (money leaves)
+    bank_note = f"Payment to {payment.vendor} from {bank_account['account_name']}" + (f" — {payment.notes}" if payment.notes else "")
     await db.execute("""
         INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
         VALUES ($1, $2, 0, $3, $4, $5)
     """, trans_id, payment.payment_account_id, payment.payment_amount, payment.payment_currency,
-        f"Payment to {payment.vendor} from {bank_account['account_name']}")
+        bank_note)
     
     await update_account_balances(db, trans_id)
     
@@ -4570,6 +4609,291 @@ async def create_inventory_from_inspection(
     return dict(inventory_row)
 
 # ========================================
+# PERIOD CLOSING
+# ========================================
+
+class PeriodCloseRequest(BaseModel):
+    period_start: date
+    period_end: date
+    notes: Optional[str] = None
+
+@app.get("/api/accounting/period-closings")
+async def get_period_closings(
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Get all period closings"""
+    rows = await db.fetch(
+        "SELECT * FROM period_closings ORDER BY period_end DESC"
+    )
+    return [dict(row) for row in rows]
+
+@app.get("/api/accounting/last-closing-date")
+async def get_last_closing_date(
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Get the last closed period end date"""
+    last = await db.fetchval(
+        "SELECT MAX(period_end) FROM period_closings"
+    )
+    return {"last_closing_date": str(last) if last else None}
+
+@app.post("/api/accounting/period-close")
+async def close_period(
+    request: PeriodCloseRequest,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Close an accounting period:
+    1. Verify no overlap with existing closings
+    2. Calculate net income for the period
+    3. Close income/expense accounts to Retained Earnings
+    4. Run FX revaluation at closing rate
+    5. Lock the period
+    """
+    period_start = request.period_start
+    period_end = request.period_end
+    
+    # Validate: period_end must be before today
+    if period_end >= datetime.now().date():
+        raise HTTPException(status_code=400, detail="Cannot close a period that hasn't ended yet")
+    
+    # Validate: no overlap with existing closings
+    overlap = await db.fetchval(
+        "SELECT COUNT(*) FROM period_closings WHERE period_end >= $1 AND period_start <= $2",
+        period_start, period_end
+    )
+    if overlap:
+        raise HTTPException(status_code=400, detail="This period overlaps with an existing closing")
+    
+    # Validate: period starts after last closing
+    last_close = await db.fetchval("SELECT MAX(period_end) FROM period_closings")
+    if last_close and period_start <= last_close:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Period must start after the last closing date ({last_close})"
+        )
+    
+    # Get closing exchange rate (rate on period_end)
+    closing_rate = await get_exchange_rate(db, 'USD', 'MXN', period_end)
+    
+    # === Step 1: Calculate net income for the period ===
+    income_data = await db.fetchrow("""
+        SELECT 
+            COALESCE(SUM(CASE WHEN a.account_type = 'Income' AND tl.currency = 'USD' THEN tl.credit_amount - tl.debit_amount ELSE 0 END), 0) as income_usd,
+            COALESCE(SUM(CASE WHEN a.account_type = 'Income' AND tl.currency = 'MXN' THEN tl.credit_amount - tl.debit_amount ELSE 0 END), 0) as income_mxn,
+            COALESCE(SUM(CASE WHEN a.account_type = 'Expense' AND tl.currency = 'USD' THEN tl.debit_amount - tl.credit_amount ELSE 0 END), 0) as expense_usd,
+            COALESCE(SUM(CASE WHEN a.account_type = 'Expense' AND tl.currency = 'MXN' THEN tl.debit_amount - tl.credit_amount ELSE 0 END), 0) as expense_mxn
+        FROM transaction_lines tl
+        JOIN accounts a ON tl.account_id = a.account_id
+        JOIN transactions t ON tl.transaction_id = t.transaction_id
+        WHERE a.account_type IN ('Income', 'Expense')
+          AND t.transaction_date >= $1 AND t.transaction_date <= $2
+    """, period_start, period_end)
+    
+    net_income_usd = float(income_data['income_usd']) - float(income_data['expense_usd'])
+    net_income_mxn = float(income_data['income_mxn']) - float(income_data['expense_mxn'])
+    
+    # === Step 2: Close income/expense accounts to Retained Earnings ===
+    # Get all income and expense accounts with activity in this period
+    active_accounts = await db.fetch("""
+        SELECT a.account_id, a.account_name, a.account_type, tl.currency,
+               SUM(tl.debit_amount) as total_debit,
+               SUM(tl.credit_amount) as total_credit
+        FROM transaction_lines tl
+        JOIN accounts a ON tl.account_id = a.account_id
+        JOIN transactions t ON tl.transaction_id = t.transaction_id
+        WHERE a.account_type IN ('Income', 'Expense')
+          AND t.transaction_date >= $1 AND t.transaction_date <= $2
+        GROUP BY a.account_id, a.account_name, a.account_type, tl.currency
+        HAVING SUM(tl.debit_amount) != 0 OR SUM(tl.credit_amount) != 0
+    """, period_start, period_end)
+    
+    # Get Retained Earnings account
+    re_account = await db.fetchval(
+        "SELECT account_id FROM accounts WHERE account_subtype = 'Retained Earnings' LIMIT 1"
+    )
+    if not re_account:
+        raise HTTPException(status_code=400, detail="Retained Earnings account not found")
+    
+    # Create closing transaction
+    closing_trans = await db.fetchrow("""
+        INSERT INTO transactions (transaction_date, description, reference_type, currency, created_by)
+        VALUES ($1, $2, 'period_close', 'MXN', $3)
+        RETURNING transaction_id
+    """, period_end,
+        f"Period Closing {period_start} to {period_end}",
+        user['username'])
+    
+    closing_trans_id = closing_trans['transaction_id']
+    
+    # Close each income/expense account to RE
+    for acct in active_accounts:
+        acct_type = acct['account_type']
+        total_debit = float(acct['total_debit'])
+        total_credit = float(acct['total_credit'])
+        currency = acct['currency']
+        
+        if acct_type == 'Income':
+            # Income has credit balance — debit income, credit RE
+            net = total_credit - total_debit
+            if abs(net) > 0.01:
+                await db.execute("""
+                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                    VALUES ($1, $2, $3, 0, $4, $5)
+                """, closing_trans_id, acct['account_id'], abs(net), currency,
+                    f"Close {acct['account_name']} to RE")
+                
+                await db.execute("""
+                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                    VALUES ($1, $2, 0, $3, $4, $5)
+                """, closing_trans_id, re_account, abs(net), currency,
+                    f"RE — {acct['account_name']} ({currency})")
+        
+        elif acct_type == 'Expense':
+            # Expense has debit balance — credit expense, debit RE
+            net = total_debit - total_credit
+            if abs(net) > 0.01:
+                await db.execute("""
+                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                    VALUES ($1, $2, 0, $3, $4, $5)
+                """, closing_trans_id, acct['account_id'], abs(net), currency,
+                    f"Close {acct['account_name']} to RE")
+                
+                await db.execute("""
+                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                    VALUES ($1, $2, $3, 0, $4, $5)
+                """, closing_trans_id, re_account, abs(net), currency,
+                    f"RE — {acct['account_name']} ({currency})")
+    
+    await update_account_balances(db, closing_trans_id)
+    
+    # === Step 3: FX Revaluation ===
+    # Get all USD monetary accounts (Bank, Cash, AR, AP, Inventory)
+    fx_gain_loss_account = await db.fetchval(
+        "SELECT account_id FROM accounts WHERE account_name = 'Unrealized FX Gain/Loss' LIMIT 1"
+    )
+    
+    fx_total = 0
+    revaluation_trans_id = None
+    
+    if fx_gain_loss_account:
+        usd_accounts = await db.fetch("""
+            SELECT ab.account_id, a.account_name, a.account_type, ab.balance
+            FROM account_balances ab
+            JOIN accounts a ON ab.account_id = a.account_id
+            WHERE ab.currency = 'USD' AND ABS(ab.balance) > 0.01
+              AND a.account_subtype IN ('Bank', 'Cash', 'AR', 'AP', 'Inventory')
+        """)
+        
+        if usd_accounts:
+            # Create revaluation transaction
+            reval_trans = await db.fetchrow("""
+                INSERT INTO transactions (transaction_date, description, reference_type, currency, created_by)
+                VALUES ($1, $2, 'revaluation', 'MXN', $3)
+                RETURNING transaction_id
+            """, period_end,
+                f"FX Revaluation at {closing_rate} — Period ending {period_end}",
+                user['username'])
+            
+            revaluation_trans_id = reval_trans['transaction_id']
+            
+            for usd_acct in usd_accounts:
+                usd_balance = float(usd_acct['balance'])
+                # What this USD balance is worth in MXN at closing rate
+                mxn_at_closing = usd_balance * closing_rate
+                
+                # What it's currently recorded as in MXN (from MXN balance for same account)
+                mxn_recorded = await db.fetchval("""
+                    SELECT COALESCE(balance, 0) FROM account_balances 
+                    WHERE account_id = $1 AND currency = 'MXN'
+                """, usd_acct['account_id'])
+                mxn_recorded = float(mxn_recorded) if mxn_recorded else 0
+                
+                # The FX gain/loss for this account
+                # For assets: positive difference = gain (USD worth more)
+                # For liabilities: positive difference = loss (owe more)
+                fx_diff = mxn_at_closing - mxn_recorded
+                
+                if abs(fx_diff) > 0.01 and mxn_recorded == 0:
+                    # No MXN balance recorded — the entire USD balance converts
+                    # This is the unrealized gain/loss from holding USD
+                    fx_total += fx_diff
+            
+            # Record net FX gain/loss
+            fx_total = round(fx_total, 2)
+            
+            if abs(fx_total) > 0.01:
+                if fx_total > 0:
+                    # FX Gain: Credit FX account (reduces expense = gain)
+                    await db.execute("""
+                        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                        VALUES ($1, $2, 0, $3, 'MXN', $4)
+                    """, revaluation_trans_id, fx_gain_loss_account, abs(fx_total),
+                        f"Unrealized FX gain at rate {closing_rate}")
+                    # Debit RE for the gain
+                    await db.execute("""
+                        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                        VALUES ($1, $2, $3, 0, 'MXN', $4)
+                    """, revaluation_trans_id, re_account, abs(fx_total),
+                        f"FX gain to RE at rate {closing_rate}")
+                else:
+                    # FX Loss: Debit FX account (increases expense = loss)
+                    await db.execute("""
+                        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                        VALUES ($1, $2, $3, 0, 'MXN', $4)
+                    """, revaluation_trans_id, fx_gain_loss_account, abs(fx_total),
+                        f"Unrealized FX loss at rate {closing_rate}")
+                    # Credit RE for the loss
+                    await db.execute("""
+                        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                        VALUES ($1, $2, 0, $3, 'MXN', $4)
+                    """, revaluation_trans_id, re_account, abs(fx_total),
+                        f"FX loss to RE at rate {closing_rate}")
+                
+                await update_account_balances(db, revaluation_trans_id)
+    
+    # === Step 4: Record the closing ===
+    closing_record = await db.fetchrow("""
+        INSERT INTO period_closings (
+            period_start, period_end, closing_date, exchange_rate,
+            net_income_usd, net_income_mxn, fx_gain_loss,
+            closing_transaction_id, revaluation_transaction_id,
+            notes, created_by
+        ) VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, $6, $7, $8, $9, $10)
+        RETURNING *
+    """, period_start, period_end, closing_rate,
+        net_income_usd, net_income_mxn, fx_total,
+        closing_trans_id, revaluation_trans_id,
+        request.notes, user['username'])
+    
+    return {
+        "message": f"Period {period_start} to {period_end} closed successfully",
+        "closing": dict(closing_record),
+        "net_income": {"usd": net_income_usd, "mxn": net_income_mxn},
+        "fx_gain_loss": fx_total,
+        "exchange_rate": closing_rate
+    }
+
+# ========================================
+# PERIOD LOCK ENFORCEMENT
+# ========================================
+
+async def check_period_lock(db, transaction_date):
+    """Check if a date falls within a closed period"""
+    closed = await db.fetchval(
+        "SELECT COUNT(*) FROM period_closings WHERE $1 <= period_end",
+        transaction_date
+    )
+    if closed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot create or modify transactions on {transaction_date} — this date falls within a closed period."
+        )
+
+# ========================================
 # ACCOUNTING REPORTS ENDPOINTS
 # ========================================
 
@@ -4589,8 +4913,8 @@ async def get_income_statement(
     start = datetime.strptime(start_date, '%Y-%m-%d').date()
     end = datetime.strptime(end_date, '%Y-%m-%d').date()
     
-    # Get exchange rate using helper function
-    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')  # Returns ~17.50; divide MXN by this to get USD
+    # Get exchange rate as of report end date (closing rate)
+    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN', end)
     
     # Query account activity for the period
     query = """
@@ -4751,8 +5075,8 @@ async def get_balance_sheet(
     
     report_date = datetime.strptime(as_of_date, '%Y-%m-%d').date()
     
-    # Get exchange rate using helper function
-    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')  # Returns ~17.50; divide MXN by this to get USD
+    # Get exchange rate as of report date (closing rate)
+    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN', report_date)
     
     # Query account balances as of the date
     query = """
