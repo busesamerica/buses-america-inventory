@@ -3723,13 +3723,13 @@ async def update_account_balances(db, transaction_id: int):
         else:
             cumulative_balance = float(totals['total_credit']) - float(totals['total_debit'])
         
-        # Upsert a single balance row dated today (replaces any previous value for today)
+        # Upsert a single balance row (one per account+currency)
         await db.execute(
             """
             INSERT INTO account_balances (account_id, currency, balance, as_of_date)
             VALUES ($1, $2, $3, CURRENT_DATE)
-            ON CONFLICT (account_id, currency, as_of_date)
-            DO UPDATE SET balance = $3
+            ON CONFLICT (account_id, currency)
+            DO UPDATE SET balance = $3, as_of_date = CURRENT_DATE
             """,
             account_id, currency, cumulative_balance
         )
@@ -3753,15 +3753,7 @@ async def get_cash_position(
             a.currency,
             COALESCE(b.balance, 0) as balance
         FROM accounts a
-        LEFT JOIN LATERAL (
-            SELECT balance 
-            FROM account_balances 
-            WHERE account_id = a.account_id 
-                AND currency = a.currency
-                AND as_of_date <= CURRENT_DATE
-            ORDER BY as_of_date DESC
-            LIMIT 1
-        ) b ON TRUE
+        LEFT JOIN account_balances b ON a.account_id = b.account_id AND b.currency = a.currency
         WHERE a.account_type = 'Asset'
             AND a.account_subtype IN ('Bank', 'Cash')
             AND a.is_active = TRUE
