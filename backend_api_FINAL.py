@@ -677,27 +677,17 @@ async def get_exchange_rate(db, from_curr: str, to_curr: str, as_of_date=None) -
 
 # ==================== CENTRALIZED COST CALCULATION ====================
 
-async def calculate_total_costs(db, inventory_id: int, target_currency: str = 'USD') -> dict:
+async def calculate_total_costs(db, inventory_id: int, target_currency: str = 'USD', as_of_date=None) -> dict:
     """
     SINGLE SOURCE OF TRUTH for cost calculations
     
-    Calculates total costs for a vehicle in the specified currency
-    Returns: {
-        'purchase_price': float,
-        'additional_costs': float,
-        'total_cost': float,
-        'currency': str,
-        'breakdown': {
-            'purchase_price_original': float,
-            'purchase_currency': str,
-            'cost_items': [list of costs],
-            'exchange_rate_used': float
-        }
-    }
+    Calculates total costs for a vehicle in the specified currency.
+    If as_of_date is provided, uses the exchange rate effective on that date.
+    For sold buses, pass the sale_date to use the rate at time of sale.
     """
     # Get inventory purchase info
     inventory = await db.fetchrow(
-        "SELECT purchase_price_usd FROM inventory WHERE inventory_id = $1",
+        "SELECT purchase_price_usd, sale_exchange_rate, sale_date, is_sold FROM inventory WHERE inventory_id = $1",
         inventory_id
     )
     
@@ -710,8 +700,15 @@ async def calculate_total_costs(db, inventory_id: int, target_currency: str = 'U
         inventory_id
     )
     
-    # Get exchange rate
-    exchange_rate = await get_exchange_rate(db, 'MXN', 'USD')
+    # Get exchange rate: use sale_exchange_rate for sold buses, date-based otherwise
+    if inventory['is_sold'] and inventory['sale_exchange_rate']:
+        # Use the locked rate from time of sale
+        sale_rate = float(inventory['sale_exchange_rate'])
+        exchange_rate = 1.0 / sale_rate  # MXN→USD
+    elif as_of_date:
+        exchange_rate = await get_exchange_rate(db, 'MXN', 'USD', as_of_date)
+    else:
+        exchange_rate = await get_exchange_rate(db, 'MXN', 'USD')
     
     # Purchase price (always stored in USD)
     purchase_price_usd = float(inventory['purchase_price_usd'] or 0)
@@ -3060,8 +3057,8 @@ async def record_sale(
     sale_exchange_rate = await get_exchange_rate(db, 'USD', 'MXN', sale_data.sale_date)
     sale_price = float(sale_data.sale_price)
 
-    # 3. Calculate total costs in sale currency
-    cost_data = await calculate_total_costs(db, sale_data.inventory_id, sale_data.sale_currency)
+    # 3. Calculate total costs in sale currency (use sale date rate)
+    cost_data = await calculate_total_costs(db, sale_data.inventory_id, sale_data.sale_currency, sale_data.sale_date)
     total_cost = cost_data['total_cost'] if cost_data else 0
 
     # 4. Calculate profit
