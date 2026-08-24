@@ -596,6 +596,7 @@ function InventoryApp() {
             {id:'pre-inspections',label:'Pre-Inspections',icon:'🔍'},
             {id:'sales',label:'Sales Management',icon:'💰'},
             {id:'clients',label:'Clients',icon:'👥'},
+            {id:'quotes',label:'Quotes',icon:'📄'},
             {id:'accounting',label:'Accounting',icon:'💼'}
           ].map(item => (
             <button
@@ -642,6 +643,7 @@ function InventoryApp() {
             {view === 'pre-inspections' && 'Pre-Inspections'}
             {view === 'suppliers' && 'Suppliers'}
             {view === 'clients' && 'Client Management'}
+            {view === 'quotes' && 'Quotes'}
             {view === 'accounting' && 'Accounting Dashboard'}
           </h1>
           <UserDropdown />
@@ -710,6 +712,9 @@ function InventoryApp() {
 
           {/* INVENTORY VIEW */}
           {view === 'inventory' && <InventoryManagement />}
+
+          {/* QUOTES VIEW */}
+          {view === 'quotes' && <QuoteManagement />}
 
           {/* SUPPLIERS VIEW */}
           {view === 'suppliers' && (

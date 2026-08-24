@@ -8,6 +8,7 @@
     buildCommand: |
       pip install -r requirements.txt
       python init_database.py
+      python migrate_quotes.py || echo "WARNING: quote migration failed - quoting will be unavailable until it is applied"
     startCommand: uvicorn backend_api_FINAL:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
