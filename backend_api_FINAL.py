@@ -9,7 +9,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field, EmailStr
 from typing import Optional, List
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from inspection_summary_helper import generate_inspection_summary, calculate_pre_fill_data
 import asyncpg
 import os
@@ -5323,6 +5323,962 @@ async def get_balance_sheet(
             'balance_difference_mxn': assets['MXN'] - total_liabilities_equity_mxn
         }
     
+
+# ========================================
+# QUOTING MODULE
+# ========================================
+#
+# A quote is a header (client, currency, validity, terms) plus line items.
+# Line items are either:
+#   'bus'    - a unit from inventory, priced. These become sales on acceptance.
+#   'charge' - transport, import/customs, prep, warranty extension, etc.
+#              A negative unit_price makes it a discount line.
+#
+# Lifecycle: Draft -> Sent -> Accepted | Rejected | Expired | Cancelled
+# Accepting a quote records a sale for every bus line (reusing /api/sales/record
+# so revenue and COGS postings stay identical to a manually recorded sale) and
+# auto-cancels any other open quote holding the same units.
+
+QUOTE_STATUSES = ('Draft', 'Sent', 'Accepted', 'Rejected', 'Expired', 'Cancelled')
+QUOTE_OPEN_STATUSES = ('Draft', 'Sent')
+QUOTE_EDITABLE_STATUSES = ('Draft', 'Sent', 'Expired')
+QUOTE_CONVERTIBLE_STATUSES = ('Draft', 'Sent', 'Expired')
+
+TWO_PLACES = Decimal('0.01')
+
+
+def _dump(model, exclude_unset: bool = False) -> dict:
+    """Pydantic v1/v2 compatible model -> dict."""
+    if hasattr(model, 'model_dump'):
+        return model.model_dump(exclude_unset=exclude_unset)
+    return model.dict(exclude_unset=exclude_unset)
+
+
+def _dec(value, default='0') -> Decimal:
+    """Coerce anything numeric-ish to Decimal without float drift."""
+    if value is None:
+        return Decimal(default)
+    if isinstance(value, Decimal):
+        return value
+    return Decimal(str(value))
+
+
+def _money(value) -> Decimal:
+    return _dec(value).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+
+
+# ==================== QUOTE MODELS ====================
+
+class QuoteLineItemIn(BaseModel):
+    line_type: str = 'bus'
+    inventory_id: Optional[int] = None
+    description: Optional[str] = None
+    quantity: Decimal = Decimal('1')
+    unit_price: Decimal = Decimal('0')
+    notes: Optional[str] = None
+
+
+class QuoteCreate(BaseModel):
+    client_id: Optional[int] = None
+    client_name: Optional[str] = None
+    client_company: Optional[str] = None
+    client_contact: Optional[str] = None
+    client_email: Optional[str] = None
+    client_phone: Optional[str] = None
+    client_location: Optional[str] = None
+    client_tax_id: Optional[str] = None
+    billing_address: Optional[str] = None
+
+    quote_date: Optional[date] = None
+    valid_until: Optional[date] = None
+    validity_days: Optional[int] = None      # alternative to valid_until
+
+    currency: str = 'USD'
+    discount_amount: Decimal = Decimal('0')
+    tax_rate: Decimal = Decimal('0')
+    deposit_percent: Optional[Decimal] = None
+    deposit_required: Optional[Decimal] = None
+
+    payment_terms: Optional[str] = None
+    delivery_terms: Optional[str] = None
+    warranty_terms: Optional[str] = None
+    notes: Optional[str] = None
+    internal_notes: Optional[str] = None
+
+    line_items: List[QuoteLineItemIn] = []
+
+
+class QuoteUpdate(BaseModel):
+    client_id: Optional[int] = None
+    client_name: Optional[str] = None
+    client_company: Optional[str] = None
+    client_contact: Optional[str] = None
+    client_email: Optional[str] = None
+    client_phone: Optional[str] = None
+    client_location: Optional[str] = None
+    client_tax_id: Optional[str] = None
+    billing_address: Optional[str] = None
+
+    quote_date: Optional[date] = None
+    valid_until: Optional[date] = None
+    currency: Optional[str] = None
+    discount_amount: Optional[Decimal] = None
+    tax_rate: Optional[Decimal] = None
+    deposit_percent: Optional[Decimal] = None
+    deposit_required: Optional[Decimal] = None
+
+    payment_terms: Optional[str] = None
+    delivery_terms: Optional[str] = None
+    warranty_terms: Optional[str] = None
+    notes: Optional[str] = None
+    internal_notes: Optional[str] = None
+
+    # None means "leave the existing lines alone"; a list replaces them wholesale.
+    line_items: Optional[List[QuoteLineItemIn]] = None
+
+
+class QuoteStatusUpdate(BaseModel):
+    status: str
+    reason: Optional[str] = None
+
+
+class QuoteAcceptRequest(BaseModel):
+    sale_date: Optional[date] = None
+    # 'prorate' spreads charges/tax/discount across the units so the recorded
+    # revenue equals the quote total. 'none' records each unit at its line price.
+    charge_allocation: str = 'prorate'
+    client_id: Optional[int] = None
+
+
+# ==================== QUOTE HELPERS ====================
+
+async def _expire_stale_quotes(db):
+    """Flip Sent quotes past their valid_until date to Expired."""
+    await db.execute("""
+        UPDATE quotes
+        SET status = 'Expired',
+            status_reason = COALESCE(status_reason, 'Automatically expired: past valid-until date')
+        WHERE is_deleted = FALSE
+          AND status = 'Sent'
+          AND valid_until IS NOT NULL
+          AND valid_until < CURRENT_DATE
+    """)
+
+
+async def _next_quote_number(db) -> str:
+    year = date.today().year
+    prefix = f"QT-{year}-"
+    last = await db.fetchval("""
+        SELECT quote_number FROM quotes
+        WHERE quote_number LIKE $1
+        ORDER BY quote_number DESC
+        LIMIT 1
+    """, prefix + '%')
+    seq = 1
+    if last:
+        try:
+            seq = int(last.rsplit('-', 1)[1]) + 1
+        except (IndexError, ValueError):
+            seq = await db.fetchval("SELECT COUNT(*) + 1 FROM quotes") or 1
+    return f"{prefix}{seq:04d}"
+
+
+async def _resolve_client_snapshot(db, payload: dict) -> dict:
+    """Fill missing client fields from the clients table when client_id is given."""
+    client_id = payload.get('client_id')
+    if not client_id:
+        return payload
+
+    client = await db.fetchrow(
+        "SELECT * FROM clients WHERE client_id = $1 AND is_deleted = FALSE", client_id
+    )
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client {client_id} not found")
+
+    mapping = {
+        'client_name': 'client_name',
+        'client_company': 'client_company',
+        'client_location': 'client_location',
+        'client_email': 'client_email',
+        'client_phone': 'client_phone',
+        'client_contact': 'contact_person',
+        'client_tax_id': 'tax_id',
+        'billing_address': 'billing_address',
+    }
+    for quote_field, client_field in mapping.items():
+        if not payload.get(quote_field):
+            payload[quote_field] = client[client_field] if client_field in client else None
+    return payload
+
+
+async def _build_line_rows(db, line_items: List[QuoteLineItemIn]) -> tuple:
+    """Validate + snapshot line items. Returns (rows, warnings)."""
+    rows = []
+    warnings = []
+    seen_inventory = set()
+
+    for idx, item in enumerate(line_items, start=1):
+        line_type = (item.line_type or 'bus').lower()
+        if line_type not in ('bus', 'charge'):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Line {idx}: line_type must be 'bus' or 'charge', got '{item.line_type}'"
+            )
+
+        row = {
+            'line_number': idx,
+            'line_type': line_type,
+            'inventory_id': None,
+            'stock_number': None, 'vin': None, 'unit_year': None,
+            'make': None, 'model': None, 'body_style': None,
+            'passenger_capacity': None, 'odometer': None,
+            'description': item.description,
+            'quantity': _dec(item.quantity, '1'),
+            'unit_price': _money(item.unit_price),
+            'notes': item.notes,
+        }
+
+        if line_type == 'bus':
+            if not item.inventory_id:
+                raise HTTPException(
+                    status_code=400, detail=f"Line {idx}: a 'bus' line requires an inventory_id"
+                )
+            if item.inventory_id in seen_inventory:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Line {idx}: unit {item.inventory_id} appears more than once on this quote"
+                )
+            seen_inventory.add(item.inventory_id)
+
+            bus = await db.fetchrow("""
+                SELECT inventory_id, stock_number, vin, year, make, model, body_style,
+                       passenger_capacity, odometer, asking_price, asking_currency,
+                       is_sold, status
+                FROM inventory
+                WHERE inventory_id = $1 AND is_deleted = FALSE
+            """, item.inventory_id)
+            if not bus:
+                raise HTTPException(
+                    status_code=404, detail=f"Line {idx}: inventory unit {item.inventory_id} not found"
+                )
+            if bus['is_sold']:
+                warnings.append(
+                    f"{bus['stock_number']} is already marked sold — this quote cannot be converted "
+                    f"until that changes."
+                )
+
+            row.update({
+                'inventory_id': bus['inventory_id'],
+                'stock_number': bus['stock_number'],
+                'vin': bus['vin'],
+                'unit_year': bus['year'],
+                'make': bus['make'],
+                'model': bus['model'],
+                'body_style': bus['body_style'],
+                'passenger_capacity': bus['passenger_capacity'],
+                'odometer': bus['odometer'],
+            })
+            row['quantity'] = Decimal('1')  # a unit is a unit
+            if not row['description']:
+                row['description'] = (
+                    f"{bus['year'] or ''} {bus['make'] or ''} {bus['model'] or ''}".strip()
+                    + f" — Stock {bus['stock_number']}"
+                )
+            if row['unit_price'] == 0 and bus['asking_price']:
+                row['unit_price'] = _money(bus['asking_price'])
+        else:
+            if not row['description']:
+                raise HTTPException(
+                    status_code=400, detail=f"Line {idx}: a 'charge' line requires a description"
+                )
+
+        rows.append(row)
+
+    return rows, warnings
+
+
+def _calculate_totals(rows: List[dict], discount_amount, tax_rate) -> dict:
+    subtotal = sum((_dec(r['quantity']) * _dec(r['unit_price']) for r in rows), Decimal('0'))
+    subtotal = _money(subtotal)
+    discount = _money(discount_amount)
+    taxable = subtotal - discount
+    tax = _money(taxable * _dec(tax_rate) / Decimal('100'))
+    return {
+        'subtotal': subtotal,
+        'discount_amount': discount,
+        'tax_rate': _dec(tax_rate),
+        'tax_amount': tax,
+        'total_amount': _money(taxable + tax),
+    }
+
+
+async def _replace_line_items(db, quote_id: int, rows: List[dict]):
+    await db.execute("DELETE FROM quote_line_items WHERE quote_id = $1", quote_id)
+    for row in rows:
+        await db.execute("""
+            INSERT INTO quote_line_items
+                (quote_id, line_number, line_type, inventory_id, stock_number, vin,
+                 unit_year, make, model, body_style, passenger_capacity, odometer,
+                 description, quantity, unit_price, notes)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        """, quote_id, row['line_number'], row['line_type'], row['inventory_id'],
+             row['stock_number'], row['vin'], row['unit_year'], row['make'], row['model'],
+             row['body_style'], row['passenger_capacity'], row['odometer'],
+             row['description'], row['quantity'], row['unit_price'], row['notes'])
+
+
+async def _load_quote(db, quote_id: int) -> dict:
+    quote = await db.fetchrow(
+        "SELECT * FROM quotes WHERE quote_id = $1 AND is_deleted = FALSE", quote_id
+    )
+    if not quote:
+        raise HTTPException(status_code=404, detail="Quote not found")
+
+    lines = await db.fetch("""
+        SELECT li.*, i.is_sold, i.status AS unit_status
+        FROM quote_line_items li
+        LEFT JOIN inventory i ON i.inventory_id = li.inventory_id
+        WHERE li.quote_id = $1
+        ORDER BY li.line_number, li.line_id
+    """, quote_id)
+
+    result = dict(quote)
+    result['line_items'] = [dict(line) for line in lines]
+    result['unit_count'] = sum(1 for line in lines if line['line_type'] == 'bus')
+    result['is_editable'] = result['status'] in QUOTE_EDITABLE_STATUSES
+    result['is_convertible'] = (
+        result['status'] in QUOTE_CONVERTIBLE_STATUSES and result['unit_count'] > 0
+    )
+    return result
+
+
+# ==================== QUOTE ENDPOINTS ====================
+
+@app.get("/api/quotes")
+async def list_quotes(
+    status: Optional[str] = None,
+    client_id: Optional[int] = None,
+    search: Optional[str] = None,
+    include_lines: bool = False,
+    limit: int = 200,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """List quotes, newest first. Stale Sent quotes are expired on the way through."""
+    await _expire_stale_quotes(db)
+
+    conditions = ["q.is_deleted = FALSE"]
+    values = []
+
+    if status:
+        wanted = [s.strip() for s in status.split(',') if s.strip()]
+        values.append(wanted)
+        conditions.append(f"q.status = ANY(${len(values)})")
+
+    if client_id:
+        values.append(client_id)
+        conditions.append(f"q.client_id = ${len(values)}")
+
+    if search:
+        values.append(f"%{search.lower()}%")
+        idx = len(values)
+        conditions.append(
+            f"(LOWER(q.quote_number) LIKE ${idx} OR LOWER(q.client_name) LIKE ${idx} "
+            f"OR LOWER(COALESCE(q.client_company,'')) LIKE ${idx})"
+        )
+
+    values.append(limit)
+
+    quotes = await db.fetch(f"""
+        SELECT q.*,
+               COUNT(li.line_id) FILTER (WHERE li.line_type = 'bus') AS unit_count
+        FROM quotes q
+        LEFT JOIN quote_line_items li ON li.quote_id = q.quote_id
+        WHERE {' AND '.join(conditions)}
+        GROUP BY q.quote_id
+        ORDER BY q.quote_date DESC, q.quote_id DESC
+        LIMIT ${len(values)}
+    """, *values)
+
+    results = [dict(q) for q in quotes]
+
+    if include_lines and results:
+        ids = [q['quote_id'] for q in results]
+        lines = await db.fetch("""
+            SELECT * FROM quote_line_items
+            WHERE quote_id = ANY($1)
+            ORDER BY quote_id, line_number, line_id
+        """, ids)
+        by_quote = {}
+        for line in lines:
+            by_quote.setdefault(line['quote_id'], []).append(dict(line))
+        for quote in results:
+            quote['line_items'] = by_quote.get(quote['quote_id'], [])
+
+    return results
+
+
+@app.get("/api/quotes/stats/summary")
+async def get_quote_stats(db=Depends(get_db), user=Depends(get_current_user)):
+    """Counts and open value by status, plus win rate."""
+    await _expire_stale_quotes(db)
+
+    rows = await db.fetch("""
+        SELECT status, currency, COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS value
+        FROM quotes
+        WHERE is_deleted = FALSE
+        GROUP BY status, currency
+    """)
+
+    by_status = {}
+    for row in rows:
+        entry = by_status.setdefault(row['status'], {'count': 0, 'value_usd': 0.0, 'value_mxn': 0.0})
+        entry['count'] += row['count']
+        key = 'value_mxn' if row['currency'] == 'MXN' else 'value_usd'
+        entry[key] += float(row['value'])
+
+    decided = sum(by_status.get(s, {}).get('count', 0) for s in ('Accepted', 'Rejected'))
+    accepted = by_status.get('Accepted', {}).get('count', 0)
+
+    return {
+        'by_status': by_status,
+        'open_count': sum(by_status.get(s, {}).get('count', 0) for s in QUOTE_OPEN_STATUSES),
+        'open_value_usd': sum(by_status.get(s, {}).get('value_usd', 0.0) for s in QUOTE_OPEN_STATUSES),
+        'open_value_mxn': sum(by_status.get(s, {}).get('value_mxn', 0.0) for s in QUOTE_OPEN_STATUSES),
+        'accepted_count': accepted,
+        'win_rate': round(accepted / decided * 100, 1) if decided else None,
+    }
+
+
+@app.get("/api/quotes/{quote_id}")
+async def get_quote(quote_id: int, db=Depends(get_db), user=Depends(get_current_user)):
+    """One quote with its line items."""
+    await _expire_stale_quotes(db)
+    return await _load_quote(db, quote_id)
+
+
+@app.post("/api/quotes")
+async def create_quote(
+    quote: QuoteCreate,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Create a quote with its line items. Totals are computed server-side."""
+    payload = _dump(quote)
+    line_items = quote.line_items or []
+    payload.pop('line_items', None)
+    validity_days = payload.pop('validity_days', None)
+
+    payload = await _resolve_client_snapshot(db, payload)
+
+    if not payload.get('client_name'):
+        raise HTTPException(status_code=400, detail="client_name is required (or pass a client_id)")
+
+    currency = (payload.get('currency') or 'USD').upper()
+    if currency not in ('USD', 'MXN'):
+        raise HTTPException(status_code=400, detail="currency must be USD or MXN")
+    payload['currency'] = currency
+
+    quote_date = payload.get('quote_date') or date.today()
+    payload['quote_date'] = quote_date
+    if not payload.get('valid_until') and validity_days:
+        payload['valid_until'] = quote_date + timedelta(days=validity_days)
+
+    rows, warnings = await _build_line_rows(db, line_items)
+    totals = _calculate_totals(rows, payload.get('discount_amount'), payload.get('tax_rate'))
+
+    deposit_required = payload.get('deposit_required')
+    if deposit_required is None and payload.get('deposit_percent'):
+        deposit_required = _money(totals['total_amount'] * _dec(payload['deposit_percent']) / Decimal('100'))
+
+    try:
+        exchange_rate = await get_exchange_rate(db, 'USD', 'MXN', quote_date)
+    except HTTPException:
+        exchange_rate = None
+
+    async with db.transaction():
+        quote_number = await _next_quote_number(db)
+
+        created = await db.fetchrow("""
+            INSERT INTO quotes (
+                quote_number, client_id, client_name, client_company, client_contact,
+                client_email, client_phone, client_location, client_tax_id, billing_address,
+                quote_date, valid_until, currency, exchange_rate, status,
+                subtotal, discount_amount, tax_rate, tax_amount, total_amount,
+                deposit_required, deposit_percent,
+                payment_terms, delivery_terms, warranty_terms, notes, internal_notes,
+                created_by
+            ) VALUES (
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+                $11,$12,$13,$14,'Draft',
+                $15,$16,$17,$18,$19,
+                $20,$21,
+                $22,$23,$24,$25,$26,
+                $27
+            )
+            RETURNING *
+        """, quote_number, payload.get('client_id'), payload.get('client_name'),
+             payload.get('client_company'), payload.get('client_contact'),
+             payload.get('client_email'), payload.get('client_phone'),
+             payload.get('client_location'), payload.get('client_tax_id'),
+             payload.get('billing_address'),
+             quote_date, payload.get('valid_until'), currency,
+             _dec(exchange_rate) if exchange_rate else None,
+             totals['subtotal'], totals['discount_amount'], totals['tax_rate'],
+             totals['tax_amount'], totals['total_amount'],
+             deposit_required, payload.get('deposit_percent'),
+             payload.get('payment_terms'), payload.get('delivery_terms'),
+             payload.get('warranty_terms'), payload.get('notes'), payload.get('internal_notes'),
+             user['username'])
+
+        await _replace_line_items(db, created['quote_id'], rows)
+
+        await log_audit(
+            db, user['user_id'], user['username'], 'create', 'quotes', created['quote_id'],
+            new_values=dict(created),
+            description=(
+                f"Created quote {quote_number} for {payload.get('client_name')} — "
+                f"{len(rows)} line(s), total {totals['total_amount']} {currency}"
+            )
+        )
+
+    result = await _load_quote(db, created['quote_id'])
+    result['warnings'] = warnings
+    return result
+
+
+@app.put("/api/quotes/{quote_id}")
+async def update_quote(
+    quote_id: int,
+    updates: QuoteUpdate,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Update a quote. Only Draft/Sent/Expired quotes can be edited."""
+    existing = await _load_quote(db, quote_id)
+
+    if existing['status'] not in QUOTE_EDITABLE_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A {existing['status'].lower()} quote cannot be edited. "
+                   f"Duplicate it instead to create a revision."
+        )
+
+    payload = _dump(updates, exclude_unset=True)
+    new_lines = payload.pop('line_items', None)
+
+    if 'client_id' in payload and payload['client_id']:
+        payload = await _resolve_client_snapshot(db, payload)
+
+    if payload.get('currency'):
+        payload['currency'] = payload['currency'].upper()
+        if payload['currency'] not in ('USD', 'MXN'):
+            raise HTTPException(status_code=400, detail="currency must be USD or MXN")
+
+    warnings = []
+    if new_lines is not None:
+        rows, warnings = await _build_line_rows(
+            db, [QuoteLineItemIn(**line) if isinstance(line, dict) else line for line in new_lines]
+        )
+    else:
+        rows = [
+            {'quantity': line['quantity'], 'unit_price': line['unit_price']}
+            for line in existing['line_items']
+        ]
+
+    discount = payload.get('discount_amount', existing['discount_amount'])
+    tax_rate = payload.get('tax_rate', existing['tax_rate'])
+    totals = _calculate_totals(rows, discount, tax_rate)
+    payload.update(totals)
+
+    deposit_percent = payload.get('deposit_percent', existing['deposit_percent'])
+    if 'deposit_required' not in payload and deposit_percent:
+        payload['deposit_required'] = _money(
+            totals['total_amount'] * _dec(deposit_percent) / Decimal('100')
+        )
+
+    async with db.transaction():
+        set_clauses = []
+        values = [quote_id]
+        for field, value in payload.items():
+            values.append(value)
+            set_clauses.append(f"{field} = ${len(values)}")
+
+        updated = await db.fetchrow(f"""
+            UPDATE quotes SET {', '.join(set_clauses)}
+            WHERE quote_id = $1 AND is_deleted = FALSE
+            RETURNING *
+        """, *values)
+
+        if new_lines is not None:
+            await _replace_line_items(db, quote_id, rows)
+
+        await log_audit(
+            db, user['user_id'], user['username'], 'update', 'quotes', quote_id,
+            old_values={k: v for k, v in existing.items() if k != 'line_items'},
+            new_values=dict(updated),
+            description=f"Updated quote {existing['quote_number']}"
+        )
+
+    result = await _load_quote(db, quote_id)
+    result['warnings'] = warnings
+    return result
+
+
+@app.post("/api/quotes/{quote_id}/status")
+async def set_quote_status(
+    quote_id: int,
+    change: QuoteStatusUpdate,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Move a quote through its lifecycle. Use /accept to convert to a sale."""
+    new_status = change.status
+
+    if new_status not in QUOTE_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"status must be one of {', '.join(QUOTE_STATUSES)}"
+        )
+    if new_status == 'Accepted':
+        raise HTTPException(
+            status_code=400,
+            detail="Use POST /api/quotes/{quote_id}/accept to accept a quote — "
+                   "it records the sale and the accounting entries."
+        )
+
+    existing = await _load_quote(db, quote_id)
+
+    if existing['status'] == 'Accepted':
+        raise HTTPException(
+            status_code=400,
+            detail="This quote was already accepted and converted to a sale."
+        )
+    if existing['status'] == new_status:
+        return existing
+
+    sent_at = existing['sent_at']
+    responded_at = existing['responded_at']
+    if new_status == 'Sent' and not sent_at:
+        sent_at = datetime.utcnow()
+    if new_status in ('Rejected', 'Cancelled'):
+        responded_at = datetime.utcnow()
+
+    updated = await db.fetchrow("""
+        UPDATE quotes
+        SET status = $2, status_reason = $3, sent_at = $4, responded_at = $5
+        WHERE quote_id = $1 AND is_deleted = FALSE
+        RETURNING *
+    """, quote_id, new_status, change.reason, sent_at, responded_at)
+
+    await log_audit(
+        db, user['user_id'], user['username'], 'update', 'quotes', quote_id,
+        old_values={'status': existing['status']},
+        new_values={'status': new_status},
+        description=(
+            f"Quote {existing['quote_number']}: {existing['status']} -> {new_status}"
+            + (f" ({change.reason})" if change.reason else "")
+        )
+    )
+
+    return await _load_quote(db, quote_id)
+
+
+@app.post("/api/quotes/{quote_id}/duplicate")
+async def duplicate_quote(
+    quote_id: int,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Copy a quote into a new Draft — the way to revise a sent or expired quote."""
+    source = await _load_quote(db, quote_id)
+
+    async with db.transaction():
+        quote_number = await _next_quote_number(db)
+        valid_until = None
+        if source['valid_until'] and source['quote_date']:
+            span = (source['valid_until'] - source['quote_date']).days
+            valid_until = date.today() + timedelta(days=span)
+
+        created = await db.fetchrow("""
+            INSERT INTO quotes (
+                quote_number, revision, client_id, client_name, client_company, client_contact,
+                client_email, client_phone, client_location, client_tax_id, billing_address,
+                quote_date, valid_until, currency, exchange_rate, status,
+                subtotal, discount_amount, tax_rate, tax_amount, total_amount,
+                deposit_required, deposit_percent,
+                payment_terms, delivery_terms, warranty_terms, notes, internal_notes,
+                created_by
+            )
+            SELECT $2, revision + 1, client_id, client_name, client_company, client_contact,
+                   client_email, client_phone, client_location, client_tax_id, billing_address,
+                   CURRENT_DATE, $3, currency, exchange_rate, 'Draft',
+                   subtotal, discount_amount, tax_rate, tax_amount, total_amount,
+                   deposit_required, deposit_percent,
+                   payment_terms, delivery_terms, warranty_terms, notes, internal_notes,
+                   $4
+            FROM quotes WHERE quote_id = $1
+            RETURNING *
+        """, quote_id, quote_number, valid_until, user['username'])
+
+        await db.execute("""
+            INSERT INTO quote_line_items
+                (quote_id, line_number, line_type, inventory_id, stock_number, vin,
+                 unit_year, make, model, body_style, passenger_capacity, odometer,
+                 description, quantity, unit_price, notes)
+            SELECT $2, line_number, line_type, inventory_id, stock_number, vin,
+                   unit_year, make, model, body_style, passenger_capacity, odometer,
+                   description, quantity, unit_price, notes
+            FROM quote_line_items WHERE quote_id = $1
+            ORDER BY line_number, line_id
+        """, quote_id, created['quote_id'])
+
+        await log_audit(
+            db, user['user_id'], user['username'], 'create', 'quotes', created['quote_id'],
+            description=f"Duplicated quote {source['quote_number']} as {quote_number}"
+        )
+
+    return await _load_quote(db, created['quote_id'])
+
+
+@app.delete("/api/quotes/{quote_id}")
+async def delete_quote(
+    quote_id: int,
+    db=Depends(get_db),
+    user=Depends(require_manager_or_admin)
+):
+    """Soft-delete a quote. Accepted quotes are kept as the record of a sale."""
+    existing = await _load_quote(db, quote_id)
+
+    if existing['status'] == 'Accepted':
+        raise HTTPException(
+            status_code=400,
+            detail="An accepted quote is the record behind a sale and cannot be deleted. "
+                   "Cancel it instead if it was raised in error."
+        )
+
+    await db.execute("UPDATE quotes SET is_deleted = TRUE WHERE quote_id = $1", quote_id)
+    await log_audit(
+        db, user['user_id'], user['username'], 'delete', 'quotes', quote_id,
+        old_values={k: v for k, v in existing.items() if k != 'line_items'},
+        description=f"Deleted quote {existing['quote_number']}"
+    )
+    return {"status": "deleted", "quote_id": quote_id, "quote_number": existing['quote_number']}
+
+
+@app.post("/api/quotes/{quote_id}/accept")
+async def accept_quote(
+    quote_id: int,
+    request: QuoteAcceptRequest,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Accept a quote and convert every bus line into a recorded sale.
+
+    Runs in one transaction: either all units are sold and the quote is marked
+    Accepted, or nothing changes. Other open quotes holding the same units are
+    cancelled as superseded.
+    """
+    await _expire_stale_quotes(db)
+    quote = await _load_quote(db, quote_id)
+
+    if quote['status'] == 'Accepted':
+        raise HTTPException(status_code=400, detail="This quote has already been accepted.")
+    if quote['status'] not in QUOTE_CONVERTIBLE_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A {quote['status'].lower()} quote cannot be accepted. "
+                   f"Duplicate it to create a fresh quote."
+        )
+
+    bus_lines = [line for line in quote['line_items'] if line['line_type'] == 'bus']
+    if not bus_lines:
+        raise HTTPException(
+            status_code=400,
+            detail="This quote has no bus line items, so there is nothing to convert into a sale."
+        )
+
+    allocation = (request.charge_allocation or 'prorate').lower()
+    if allocation not in ('prorate', 'none'):
+        raise HTTPException(status_code=400, detail="charge_allocation must be 'prorate' or 'none'")
+
+    sale_date = request.sale_date or date.today()
+    client_id = request.client_id or quote['client_id']
+
+    # Every unit must still be available before anything is written.
+    unavailable = []
+    for line in bus_lines:
+        bus = await db.fetchrow(
+            "SELECT stock_number, is_sold FROM inventory WHERE inventory_id = $1 AND is_deleted = FALSE",
+            line['inventory_id']
+        )
+        if not bus:
+            unavailable.append(f"unit {line['inventory_id']} (no longer in inventory)")
+        elif bus['is_sold']:
+            unavailable.append(f"{bus['stock_number']} (already sold)")
+    if unavailable:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot accept this quote — " + ", ".join(unavailable)
+        )
+
+    # Split the quote total across the units.
+    bus_subtotal = sum((_dec(line['line_total']) for line in bus_lines), Decimal('0'))
+    sale_prices = {}
+
+    if allocation == 'prorate' and bus_subtotal > 0:
+        extras = _dec(quote['total_amount']) - bus_subtotal
+        running = Decimal('0')
+        for i, line in enumerate(bus_lines):
+            if i == len(bus_lines) - 1:
+                # last line absorbs the rounding remainder so the sum is exact
+                price = _dec(quote['total_amount']) - running
+            else:
+                share = _dec(line['line_total']) / bus_subtotal
+                price = _money(_dec(line['line_total']) + extras * share)
+                running += price
+            sale_prices[line['line_id']] = _money(price)
+    else:
+        for line in bus_lines:
+            sale_prices[line['line_id']] = _money(line['line_total'])
+
+    sales = []
+    async with db.transaction():
+        for line in bus_lines:
+            sale = await record_sale(
+                RecordSaleRequest(
+                    inventory_id=line['inventory_id'],
+                    sale_price=sale_prices[line['line_id']],
+                    sale_currency=quote['currency'],
+                    sale_date=sale_date,
+                    client_id=client_id,
+                    sale_notes=f"Converted from quote {quote['quote_number']}"
+                ),
+                db=db,
+                user=user
+            )
+            await db.execute(
+                "UPDATE inventory SET quote_id = $1 WHERE inventory_id = $2",
+                quote_id, line['inventory_id']
+            )
+            sales.append(sale)
+
+        await db.execute("""
+            UPDATE quotes
+            SET status = 'Accepted',
+                responded_at = CURRENT_TIMESTAMP,
+                converted_at = CURRENT_TIMESTAMP,
+                converted_sale_date = $2,
+                client_id = COALESCE($3, client_id),
+                status_reason = $4
+            WHERE quote_id = $1
+        """, quote_id, sale_date, client_id,
+             f"Accepted and converted to {len(sales)} sale(s)")
+
+        # Any other open quote holding one of these units is now dead.
+        unit_ids = [line['inventory_id'] for line in bus_lines]
+        superseded = await db.fetch("""
+            UPDATE quotes
+            SET status = 'Cancelled',
+                responded_at = CURRENT_TIMESTAMP,
+                superseded_by = $1,
+                status_reason = $3
+            WHERE quote_id <> $1
+              AND is_deleted = FALSE
+              AND status = ANY($4)
+              AND quote_id IN (
+                  SELECT DISTINCT quote_id FROM quote_line_items
+                  WHERE line_type = 'bus' AND inventory_id = ANY($2)
+              )
+            RETURNING quote_id, quote_number
+        """, quote_id, unit_ids,
+             f"Superseded — unit(s) sold on quote {quote['quote_number']}",
+             list(QUOTE_OPEN_STATUSES))
+
+        await log_audit(
+            db, user['user_id'], user['username'], 'update', 'quotes', quote_id,
+            new_values={'status': 'Accepted', 'sale_date': sale_date.isoformat()},
+            description=(
+                f"Accepted quote {quote['quote_number']} — converted {len(sales)} unit(s) "
+                f"totalling {quote['total_amount']} {quote['currency']} "
+                f"({allocation} charge allocation)"
+            )
+        )
+
+    result = await _load_quote(db, quote_id)
+    result['sales'] = sales
+    result['superseded_quotes'] = [dict(row) for row in superseded]
+    result['charge_allocation'] = allocation
+    return result
+
+
+@app.get("/api/quotes/inventory/available")
+async def get_quotable_inventory(
+    search: Optional[str] = None,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Units that can go on a quote, flagged with how many open quotes already hold them."""
+    await _expire_stale_quotes(db)
+
+    conditions = ["i.is_deleted = FALSE", "i.is_sold = FALSE"]
+    values = []
+    if search:
+        values.append(f"%{search.lower()}%")
+        idx = len(values)
+        conditions.append(
+            f"(LOWER(i.stock_number) LIKE ${idx} OR LOWER(i.vin) LIKE ${idx} "
+            f"OR LOWER(COALESCE(i.make,'')) LIKE ${idx} OR LOWER(COALESCE(i.model,'')) LIKE ${idx})"
+        )
+
+    rows = await db.fetch(f"""
+        SELECT i.inventory_id, i.stock_number, i.vin, i.year, i.make, i.model,
+               i.body_style, i.passenger_capacity, i.odometer, i.status,
+               i.asking_price, i.asking_currency, i.minimum_price, i.minimum_currency,
+               COUNT(DISTINCT q.quote_id) AS open_quote_count
+        FROM inventory i
+        LEFT JOIN quote_line_items li
+               ON li.inventory_id = i.inventory_id AND li.line_type = 'bus'
+        LEFT JOIN quotes q
+               ON q.quote_id = li.quote_id AND q.is_deleted = FALSE
+              AND q.status IN ('Draft','Sent')
+        WHERE {' AND '.join(conditions)}
+        GROUP BY i.inventory_id
+        ORDER BY i.stock_number
+    """, *values)
+
+    return [dict(row) for row in rows]
+
+
+@app.post("/admin/migrate-quotes")
+async def migrate_quotes(user=Depends(require_admin)):
+    """Create the quoting tables if they aren't there yet. Idempotent."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "migrations", "001_quotes.sql")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=500, detail=f"Migration file not found at {path}")
+
+    with open(path, "r") as f:
+        sql = f.read()
+
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        await conn.execute(sql)
+        present = await conn.fetchval(
+            "SELECT COUNT(*) FROM information_schema.tables "
+            "WHERE table_name IN ('quotes','quote_line_items')"
+        )
+        return {
+            "status": "success" if present == 2 else "incomplete",
+            "tables_present": present,
+            "message": "Quoting tables are ready." if present == 2 else "Migration did not complete.",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Quote migration failed: {e}")
+    finally:
+        await conn.close()
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
