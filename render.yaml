@@ -21,6 +21,8 @@
         generateValue: true
       - key: UPLOAD_DIR
         value: /tmp/uploads
+      - key: ALLOWED_ORIGINS
+        value: https://buses-america-ui.onrender.com
     autoDeploy: true
 
 databases:

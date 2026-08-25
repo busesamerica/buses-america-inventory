@@ -65,6 +65,25 @@ Company letterhead and footer details live in the `BA_COMPANY` object at the top
 seller's name, phone and email are set in the quote editor, default to whoever is signed
 in, and are stored on the quote so a reprint always shows who issued it.
 
+## Security
+
+- Every `/api/*` and `/admin/*` endpoint except `POST /api/auth/login` and the
+  public exchange-rate lookups now requires a valid session token
+  (`Authorization: Bearer <session_token>`, obtained from `/api/auth/login`).
+  Some write endpoints require the `manager` or `admin` role specifically —
+  see `require_manager_or_admin` / `require_admin` in `backend_api_FINAL.py`.
+- CORS is restricted to the origins listed in the `ALLOWED_ORIGINS` env var
+  (comma-separated). It defaults to `localhost` only if unset — set it to
+  your real frontend URL(s) in production instead of leaving it unset.
+- `/api/auth/login` throttles repeated failures per username+IP (5 attempts /
+  15 minutes) to slow down credential-stuffing and brute-force attempts.
+- Photo uploads are limited to `.jpg/.jpeg/.png/.gif/.webp`, capped at 10MB,
+  and stored under a server-generated filename — the client-supplied filename
+  is never used to build the on-disk path, which prevents path traversal.
+- Password hashes use PBKDF2-HMAC-SHA256 with a per-hash iteration count
+  embedded in the stored value, so the work factor can be raised again later
+  without invalidating existing users' passwords.
+
 ### Database migration
 
 Everything in `migrations/` is applied in filename order by `migrate.py` (not just the

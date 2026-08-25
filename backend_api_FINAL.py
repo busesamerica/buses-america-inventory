@@ -16,11 +16,15 @@ import os
 import secrets
 import hashlib
 import json
+import uuid
+import time
 from contextlib import asynccontextmanager
 
 # Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/buses_america")
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
+ALLOWED_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+MAX_PHOTO_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 # Security
 security = HTTPBearer()
@@ -506,9 +510,19 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Restrict cross-origin requests to known frontend origin(s). "*" combined with
+# allow_credentials=True lets any website make authenticated requests using a
+# visitor's bearer token, so the origin list must be explicit in production.
+_allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+ALLOWED_ORIGINS = [o.strip() for o in _allowed_origins_env.split(",") if o.strip()]
+if not ALLOWED_ORIGINS:
+    # Fail safe to localhost-only when ALLOWED_ORIGINS isn't configured, instead
+    # of silently trusting every origin on the internet.
+    ALLOWED_ORIGINS = ["http://localhost:3000", "http://localhost:5173"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -520,24 +534,69 @@ async def get_db():
 
 # ==================== AUTHENTICATION HELPERS ====================
 
+PBKDF2_ITERATIONS = 600_000  # OWASP-recommended floor for PBKDF2-HMAC-SHA256
+LEGACY_PBKDF2_ITERATIONS = 100_000  # iteration count used by hashes created before this change
+
 def hash_password(password: str) -> str:
-    """Hash password using PBKDF2"""
+    """Hash password using PBKDF2. Format: pbkdf2_sha256$<iterations>$<salt>$<hex hash>."""
     salt = secrets.token_hex(16)
-    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
-    return f"{salt}${pwd_hash.hex()}"
+    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), PBKDF2_ITERATIONS)
+    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt}${pwd_hash.hex()}"
 
 def verify_password(password: str, password_hash: str) -> bool:
-    """Verify password against hash"""
+    """Verify password against hash.
+
+    Supports the current versioned format (which records its own iteration
+    count so it can be strengthened later without invalidating every
+    existing user's password) and the legacy two-field format from before
+    this change, so existing accounts keep working.
+    """
     try:
-        salt, pwd_hash = password_hash.split('$')
-        new_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
-        return new_hash.hex() == pwd_hash
-    except:
+        parts = password_hash.split('$')
+        if len(parts) == 4 and parts[0] == 'pbkdf2_sha256':
+            _, iterations_str, salt, pwd_hash = parts
+            iterations = int(iterations_str)
+        elif len(parts) == 2:
+            salt, pwd_hash = parts
+            iterations = LEGACY_PBKDF2_ITERATIONS
+        else:
+            return False
+        new_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), iterations)
+        return secrets.compare_digest(new_hash.hex(), pwd_hash)
+    except Exception:
         return False
 
 def generate_session_token() -> str:
     """Generate secure session token"""
     return secrets.token_urlsafe(32)
+
+# In-memory login throttling, keyed by username+IP. Not shared across
+# multiple server processes/instances, but on the single-instance deployment
+# this app runs on it stops straightforward credential-stuffing / brute-force
+# attempts against /api/auth/login with no extra infrastructure required.
+_LOGIN_FAILURES: dict = {}
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_LOCKOUT_SECONDS = 15 * 60
+
+def _login_throttle_key(username: str, request: Request) -> str:
+    client_ip = request.client.host if request and request.client else "unknown"
+    return f"{(username or '').lower()}:{client_ip}"
+
+def _check_login_throttle(key: str):
+    now = time.time()
+    attempts = [t for t in _LOGIN_FAILURES.get(key, []) if now - t < LOGIN_LOCKOUT_SECONDS]
+    _LOGIN_FAILURES[key] = attempts
+    if len(attempts) >= LOGIN_MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed login attempts. Please try again in 15 minutes."
+        )
+
+def _record_login_failure(key: str):
+    _LOGIN_FAILURES.setdefault(key, []).append(time.time())
+
+def _clear_login_failures(key: str):
+    _LOGIN_FAILURES.pop(key, None)
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -795,8 +854,8 @@ async def root():
     }
 
 @app.post("/admin/initialize-database")
-async def initialize_database():
-    """Initialize database with schema - ONE TIME USE ONLY"""
+async def initialize_database(user=Depends(require_admin)):
+    """Initialize database with schema - ONE TIME USE ONLY - ADMIN ONLY"""
     try:
         # Read schema file
         with open('bus_inventory_schema_FINAL.sql', 'r') as f:
@@ -844,18 +903,23 @@ async def initialize_database():
 # ==================== AUTHENTICATION ENDPOINTS ====================
 
 @app.post("/api/auth/login", response_model=SessionResponse)
-async def login(credentials: UserLogin, db=Depends(get_db)):
+async def login(credentials: UserLogin, request: Request, db=Depends(get_db)):
     """User login - returns session token"""
+    throttle_key = _login_throttle_key(credentials.username, request)
+    _check_login_throttle(throttle_key)
+
     user = await db.fetchrow("""
-        SELECT * FROM users 
+        SELECT * FROM users
         WHERE username = $1 AND is_active = TRUE
     """, credentials.username)
-    
+
     if not user or not verify_password(credentials.password, user['password_hash']):
+        _record_login_failure(throttle_key)
         await log_audit(db, None, credentials.username, 'login_failed',
                        description=f"Failed login attempt for {credentials.username}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
+
+    _clear_login_failures(throttle_key)
     session_token = generate_session_token()
     expires_at = datetime.utcnow() + timedelta(hours=8)
     
@@ -881,10 +945,12 @@ async def login(credentials: UserLogin, db=Depends(get_db)):
 @app.post("/api/auth/logout")
 async def logout(current_user: dict = Depends(get_current_user), db=Depends(get_db)):
     """User logout"""
+    # Only invalidate the session used for this request, not every session
+    # the user has open on other devices/browsers.
     await db.execute("""
-        DELETE FROM user_sessions 
-        WHERE user_id = $1
-    """, current_user['user_id'])
+        DELETE FROM user_sessions
+        WHERE session_token = $1
+    """, current_user['session_token'])
     
     await log_audit(db, current_user['user_id'], current_user['username'], 'logout',
                    description=f"{current_user['full_name']} logged out")
@@ -903,6 +969,9 @@ async def create_user(
     db=Depends(get_db)
 ):
     """Create new user (admin only)"""
+    if len(user_data.password) < 10:
+        raise HTTPException(status_code=400, detail="Password must be at least 10 characters long")
+
     password_hash = hash_password(user_data.password)
     
     new_user = await db.fetchrow("""
@@ -1004,7 +1073,7 @@ async def get_exchange_rate_history(limit: int = 30, db=Depends(get_db)):
 # ==================== SUPPLIER ENDPOINTS ====================
 
 @app.post("/api/suppliers", response_model=Supplier)
-async def create_supplier(supplier: SupplierCreate, db=Depends(get_db)):
+async def create_supplier(supplier: SupplierCreate, db=Depends(get_db), user=Depends(get_current_user)):
     """Create new supplier"""
     query = """
         INSERT INTO suppliers (company_name, contact_person, email, phone, address, 
@@ -1020,7 +1089,7 @@ async def create_supplier(supplier: SupplierCreate, db=Depends(get_db)):
     return dict(row)
 
 @app.get("/api/suppliers", response_model=List[Supplier])
-async def get_suppliers(is_active: Optional[bool] = True, db=Depends(get_db)):
+async def get_suppliers(is_active: Optional[bool] = True, db=Depends(get_db), user=Depends(get_current_user)):
     """Get all suppliers"""
     if is_active is not None:
         query = "SELECT * FROM suppliers WHERE is_active = $1 ORDER BY company_name"
@@ -1033,7 +1102,7 @@ async def get_suppliers(is_active: Optional[bool] = True, db=Depends(get_db)):
 # ==================== PRE-PURCHASE INSPECTION ENDPOINTS ====================
 
 @app.post("/api/inspections/pre-purchase", response_model=PrePurchaseInspection)
-async def create_pre_purchase_inspection(inspection: PrePurchaseInspectionCreate, db=Depends(get_db)):
+async def create_pre_purchase_inspection(inspection: PrePurchaseInspectionCreate, db=Depends(get_db), user=Depends(get_current_user)):
     """Create pre-purchase inspection (before buying the bus)"""
     query = """
         INSERT INTO pre_purchase_inspections (
@@ -1076,7 +1145,8 @@ async def get_pre_purchase_inspections(
     decision: Optional[str] = None,
     recommendation: Optional[str] = None,
     limit: int = 50,
-    db=Depends(get_db)
+    db=Depends(get_db),
+    user=Depends(get_current_user)
 ):
     """Get pre-purchase inspections"""
     conditions = []
@@ -1110,7 +1180,8 @@ async def update_inspection_decision(
     inspection_id: int,
     decision: str,
     decision_notes: Optional[str] = None,
-    db=Depends(get_db)
+    db=Depends(get_db),
+    user=Depends(get_current_user)
 ):
     """Update inspection decision (Approved/Rejected)"""
     query = """
@@ -1360,7 +1431,8 @@ async def get_inventory(
     supplier_id: Optional[int] = None,
     limit: int = 100,
     offset: int = 0,
-    db=Depends(get_db)
+    db=Depends(get_db),
+    user=Depends(get_current_user)
 ):
     """Get inventory with filters"""
     conditions = ["i.is_deleted = FALSE"]
@@ -1418,7 +1490,7 @@ async def get_inventory(
     return [dict(row) for row in rows]
 
 @app.get("/api/inventory/{inventory_id}", response_model=Inventory)
-async def get_inventory_item(inventory_id: int, db=Depends(get_db)):
+async def get_inventory_item(inventory_id: int, db=Depends(get_db), user=Depends(get_current_user)):
     """Get specific inventory item"""
     query = "SELECT * FROM inventory WHERE inventory_id = $1 AND is_deleted = FALSE"
     row = await db.fetchrow(query, inventory_id)
@@ -4162,7 +4234,7 @@ async def get_profit_distributions(
 # ==================== WORK PLAN ENDPOINTS ====================
 
 @app.post("/api/inventory/{inventory_id}/work-plan", response_model=WorkPlan)
-async def create_work_plan(inventory_id: int, plan: WorkPlanCreate, db=Depends(get_db)):
+async def create_work_plan(inventory_id: int, plan: WorkPlanCreate, db=Depends(get_db), user=Depends(get_current_user)):
     """Create work plan for a unit"""
     query = """
         INSERT INTO work_plans (
@@ -4179,7 +4251,7 @@ async def create_work_plan(inventory_id: int, plan: WorkPlanCreate, db=Depends(g
     return dict(row)
 
 @app.get("/api/inventory/{inventory_id}/work-plans", response_model=List[WorkPlan])
-async def get_work_plans(inventory_id: int, db=Depends(get_db)):
+async def get_work_plans(inventory_id: int, db=Depends(get_db), user=Depends(get_current_user)):
     """Get all work plans for a unit"""
     query = "SELECT * FROM work_plans WHERE inventory_id = $1 ORDER BY created_at DESC"
     rows = await db.fetch(query, inventory_id)
@@ -4191,7 +4263,8 @@ async def complete_work_plan(
     actual_cost: Optional[Decimal] = None,
     actual_days: Optional[int] = None,
     execution_notes: Optional[str] = None,
-    db=Depends(get_db)
+    db=Depends(get_db),
+    user=Depends(get_current_user)
 ):
     """Mark work plan as complete"""
     query = """
@@ -4215,34 +4288,52 @@ async def upload_photo(
     photo_type: str = Form("Exterior"),
     is_primary: bool = Form(False),
     caption: Optional[str] = Form(None),
-    db=Depends(get_db)
+    db=Depends(get_db),
+    user=Depends(get_current_user)
 ):
     """Upload photo for inventory item"""
     inv_check = await db.fetchval("SELECT inventory_id FROM inventory WHERE inventory_id = $1", inventory_id)
     if not inv_check:
         raise HTTPException(status_code=404, detail="Inventory item not found")
-    
-    os.makedirs(f"{UPLOAD_DIR}/inventory/{inventory_id}", exist_ok=True)
-    file_path = f"{UPLOAD_DIR}/inventory/{inventory_id}/{file.filename}"
-    
+
+    # Never trust the client-supplied filename for the on-disk path — it can
+    # contain "../" sequences or an absolute path and lead to writing files
+    # outside the upload directory. Only the extension is kept (validated
+    # against an allowlist); the on-disk name is generated server-side.
+    original_name = os.path.basename(file.filename or "")
+    ext = os.path.splitext(original_name)[1].lower()
+    if ext not in ALLOWED_PHOTO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed: {', '.join(sorted(ALLOWED_PHOTO_EXTENSIONS))}"
+        )
+
+    content = await file.read()
+    if len(content) > MAX_PHOTO_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+
+    upload_subdir = os.path.join(UPLOAD_DIR, "inventory", str(inventory_id))
+    os.makedirs(upload_subdir, exist_ok=True)
+    safe_filename = f"{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(upload_subdir, safe_filename)
+
     with open(file_path, "wb") as f:
-        content = await file.read()
         f.write(content)
-    
+
     query = """
-        INSERT INTO inventory_photos (inventory_id, file_name, file_path, file_size, 
+        INSERT INTO inventory_photos (inventory_id, file_name, file_path, file_size,
                                      mime_type, photo_type, is_primary, caption)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING *
     """
     row = await db.fetchrow(
-        query, inventory_id, file.filename, file_path, len(content),
+        query, inventory_id, original_name, file_path, len(content),
         file.content_type, photo_type, is_primary, caption
     )
     return dict(row)
 
 @app.get("/api/inventory/{inventory_id}/photos")
-async def get_photos(inventory_id: int, db=Depends(get_db)):
+async def get_photos(inventory_id: int, db=Depends(get_db), user=Depends(get_current_user)):
     """Get all photos for inventory item"""
     query = """
         SELECT * FROM inventory_photos 
@@ -4255,7 +4346,7 @@ async def get_photos(inventory_id: int, db=Depends(get_db)):
 # ==================== WARRANTY ENDPOINTS ====================
 
 @app.post("/api/inventory/{inventory_id}/warranty-claim", response_model=WarrantyClaim)
-async def create_warranty_claim(inventory_id: int, claim: WarrantyClaimCreate, db=Depends(get_db)):
+async def create_warranty_claim(inventory_id: int, claim: WarrantyClaimCreate, db=Depends(get_db), user=Depends(get_current_user)):
     """File warranty claim"""
     query = """
         INSERT INTO warranty_claims (inventory_id, claim_date, claim_type, description, client_name, status)
@@ -4269,7 +4360,7 @@ async def create_warranty_claim(inventory_id: int, claim: WarrantyClaimCreate, d
     return dict(row)
 
 @app.get("/api/inventory/{inventory_id}/warranty-claims", response_model=List[WarrantyClaim])
-async def get_warranty_claims(inventory_id: int, db=Depends(get_db)):
+async def get_warranty_claims(inventory_id: int, db=Depends(get_db), user=Depends(get_current_user)):
     """Get warranty claims for a unit"""
     query = "SELECT * FROM warranty_claims WHERE inventory_id = $1 ORDER BY claim_date DESC"
     rows = await db.fetch(query, inventory_id)
@@ -4278,7 +4369,7 @@ async def get_warranty_claims(inventory_id: int, db=Depends(get_db)):
 # ==================== REPORTING ENDPOINTS ====================
 
 @app.get("/api/reports/dashboard")
-async def get_dashboard(db=Depends(get_db)):
+async def get_dashboard(db=Depends(get_db), user=Depends(get_current_user)):
     """Dashboard statistics"""
     query = """
         SELECT 
@@ -4298,28 +4389,28 @@ async def get_dashboard(db=Depends(get_db)):
     return dict(row)
 
 @app.get("/api/reports/us-inventory")
-async def get_us_inventory_report(db=Depends(get_db)):
+async def get_us_inventory_report(db=Depends(get_db), user=Depends(get_current_user)):
     """US inventory report"""
     query = "SELECT * FROM us_inventory"
     rows = await db.fetch(query)
     return [dict(row) for row in rows]
 
 @app.get("/api/reports/mexico-inventory")
-async def get_mexico_inventory_report(db=Depends(get_db)):
+async def get_mexico_inventory_report(db=Depends(get_db), user=Depends(get_current_user)):
     """Mexico inventory report"""
     query = "SELECT * FROM mexico_inventory"
     rows = await db.fetch(query)
     return [dict(row) for row in rows]
 
 @app.get("/api/reports/sold-pending")
-async def get_sold_pending_delivery(db=Depends(get_db)):
+async def get_sold_pending_delivery(db=Depends(get_db), user=Depends(get_current_user)):
     """Sold units pending delivery"""
     query = "SELECT * FROM sold_pending_delivery"
     rows = await db.fetch(query)
     return [dict(row) for row in rows]
 
 @app.get("/api/reports/warranty-active")
-async def get_active_warranties(db=Depends(get_db)):
+async def get_active_warranties(db=Depends(get_db), user=Depends(get_current_user)):
     """Units under active warranty"""
     query = "SELECT * FROM units_under_warranty"
     rows = await db.fetch(query)
