@@ -6,7 +6,7 @@ to sales, charge allocation, supersession, and the guards on accepted quotes.
 
 ## Setup
 
-`bus_inventory_schema_FINAL.sql` + `migrations/` (applied by `migrate_quotes.py`)
+`bus_inventory_schema_FINAL.sql` + `migrations/` (applied by `migrate.py`)
 are now enough on their own to reproduce production's schema locally --
 `clients`, `users`, and the accounting tables used to exist only in production
 with nothing in this repo to recreate them; `migrations/000_core_tables.sql`
@@ -19,7 +19,7 @@ createdb buses_test
 psql buses_test -f bus_inventory_schema_FINAL.sql
 
 export DATABASE_URL=postgres://localhost/buses_test
-python migrate_quotes.py    # applies migrations/, including 000_core_tables.sql
+python migrate.py    # applies migrations/, including 000_core_tables.sql
 
 psql buses_test -f tests/dev_fixtures.sql
 psql buses_test -f tests/seed_dev_data.sql

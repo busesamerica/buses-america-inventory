@@ -67,9 +67,11 @@ in, and are stored on the quote so a reprint always shows who issued it.
 
 ### Database migration
 
-Everything in `migrations/` is applied in filename order by `migrate_quotes.py`, which
-runs on each deploy via `render.yaml`. All of it is idempotent. To apply by hand:
+Everything in `migrations/` is applied in filename order by `migrate.py` (not just the
+quoting module -- despite the `/admin/migrate-quotes` name below, it now also covers
+users, clients and the accounting tables via `000_core_tables.sql`), which runs on each
+deploy via `render.yaml`. All of it is idempotent. To apply by hand:
 
-    DATABASE_URL=postgres://... python migrate_quotes.py
+    DATABASE_URL=postgres://... python migrate.py
 
 An admin can also POST to `/admin/migrate-quotes`.

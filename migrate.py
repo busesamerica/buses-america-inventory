@@ -7,7 +7,7 @@ quoting module anymore -- 000_core_tables.sql runs first). Idempotent: safe
 to run on every deploy.
 
 Usage:
-    DATABASE_URL=postgres://... python migrate_quotes.py
+    DATABASE_URL=postgres://... python migrate.py
 """
 
 import os
@@ -34,7 +34,7 @@ async def run():
         return False
 
     print("=" * 55)
-    print("Buses America - Quoting module migration")
+    print("Buses America - migrations")
     print("=" * 55)
 
     conn = await asyncpg.connect(database_url)

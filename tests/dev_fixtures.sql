@@ -18,7 +18,7 @@
 -- Usage:
 --   createdb buses_test
 --   psql buses_test -f bus_inventory_schema_FINAL.sql
---   DATABASE_URL=postgres://.../buses_test python migrate_quotes.py
+--   DATABASE_URL=postgres://.../buses_test python migrate.py
 --   psql buses_test -f tests/dev_fixtures.sql   -- this file: seed data only
 --   psql buses_test -f tests/seed_dev_data.sql
 
