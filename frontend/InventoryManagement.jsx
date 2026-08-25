@@ -442,8 +442,8 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     purchase_price_usd: '',
     asking_price: '',
     asking_currency: 'USD',
-    current_location: 'United States',
-    status: 'Available',
+    current_location: 'US Stock',
+    status: 'Purchased - In Transit to Stock',
     condition: 'Good',
     payment_account_id: '',
     payment_status: 'paid',
@@ -724,17 +724,26 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Location *</label>
                 <select name="current_location" value={formData.current_location} onChange={handleChange} required style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                  <option value="United States">United States</option>
-                  <option value="Mexico">Mexico</option>
+                  <option value="US Stock">US Stock</option>
+                  <option value="Mexico Stock">Mexico Stock</option>
+                  <option value="In Transit">In Transit</option>
+                  <option value="Client">Client</option>
                 </select>
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Status *</label>
+                {/* Selecting any status from "Sold - Pending Import" onward marks the
+                    unit sold server-side (is_sold), same as recording a sale through
+                    Sales Management - see update_inventory in backend_api_FINAL.py. */}
                 <select name="status" value={formData.status} onChange={handleChange} required style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                  <option value="Available">Available</option>
-                  <option value="Sold">Sold</option>
-                  <option value="In Transit">In Transit</option>
-                  <option value="Under Repair">Under Repair</option>
+                  <option value="Purchased - In Transit to Stock">Purchased - In Transit to Stock</option>
+                  <option value="In Stock (US)">In Stock (US)</option>
+                  <option value="Sold - Pending Import">Sold - Pending Import</option>
+                  <option value="Import/Customs Processing">Import/Customs Processing</option>
+                  <option value="In Stock (Mexico)">In Stock (Mexico)</option>
+                  <option value="In Preventive Maintenance">In Preventive Maintenance</option>
+                  <option value="Ready for Delivery">Ready for Delivery</option>
+                  <option value="In Transit to Client">In Transit to Client</option>
                   <option value="Delivered">Delivered</option>
                 </select>
               </div>
