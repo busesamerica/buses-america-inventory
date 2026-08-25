@@ -122,11 +122,6 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
   }
 };
 
-  const formatCurrency = (amount) => {
-    if (!amount) return '$0.00';
-    return `$${parseFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
-  };
-
   // Calculate estimated profit
   const estimatedProfit = formData.purchase_price_usd && inspection.seller_asking_price
     ? parseFloat(inspection.seller_asking_price) - parseFloat(formData.purchase_price_usd) - parseFloat(inspection.estimated_repair_cost_usd || 0)

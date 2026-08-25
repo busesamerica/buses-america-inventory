@@ -4381,6 +4381,7 @@ async def get_dashboard(db=Depends(get_db), user=Depends(get_current_user)):
             COUNT(*) FILTER (WHERE status = 'Delivered') as delivered,
             COUNT(*) FILTER (WHERE warranty_status = 'Active') as under_warranty,
             SUM(cost_in_us_stock_usd) FILTER (WHERE current_location = 'US Stock') as us_inventory_value,
+            SUM(cost_in_us_stock_usd) as total_inventory_value,
             AVG(days_in_inventory) FILTER (WHERE status != 'Delivered') as avg_days_in_inventory
         FROM inventory
         WHERE is_deleted = FALSE

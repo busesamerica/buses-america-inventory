@@ -65,14 +65,6 @@ const SalesManagement = () => {
     }
   };
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount && amount !== 0) return currency === 'USD' ? '$0.00' : 'MXN $0.00';
-    const formatted = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-    return currency === 'USD' ? `$${formatted}` : `MXN $${formatted}`;
-  };
 
   return (
     <div style={{ background: '#f9fafb' }}>
@@ -244,14 +236,6 @@ const RecordSaleForm = ({ inventory, clients, onSaleRecorded, onClientsChanged }
     }
   };
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount && amount !== 0) return currency === 'USD' ? '$0.00' : 'MXN $0.00';
-    const formatted = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-    return currency === 'USD' ? `$${formatted}` : `MXN $${formatted}`;
-  };
 
   if (inventory.length === 0) {
     return (
@@ -517,23 +501,6 @@ const ManageSales = ({ soldBuses, accounts, onPaymentRecorded, onViewDetails }) 
   const [selectedBus, setSelectedBus] = React.useState(null);
   const [showPaymentForm, setShowPaymentForm] = React.useState(false);
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount && amount !== 0) return currency === 'USD' ? '$0.00' : 'MXN $0.00';
-    const formatted = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-    return currency === 'USD' ? `$${formatted}` : `MXN $${formatted}`;
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    const str = String(dateString).split("T")[0]; return new Date(str + "T00:00:00").toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
 
   if (soldBuses.length === 0) {
     return (
@@ -1008,23 +975,6 @@ const SaleDetailsModal = ({ bus, onClose, onPaymentAdded, accounts }) => {
     }
   };
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount && amount !== 0) return currency === 'USD' ? '$0.00' : 'MXN $0.00';
-    const formatted = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-    return currency === 'USD' ? `$${formatted}` : `MXN $${formatted}`;
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    const str = String(dateString).split("T")[0]; return new Date(str + "T00:00:00").toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
 
   if (loading) {
     return (

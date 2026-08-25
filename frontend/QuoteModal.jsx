@@ -160,13 +160,7 @@ const QuoteModal = ({ quote, clients, currentUser, onClose, onSaved }) => {
   const total = taxable + tax;
   const deposit = total * (num(form.deposit_percent) / 100);
 
-  const fmt = (amount) => {
-    const formatted = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(amount || 0);
-    return form.currency === 'MXN' ? `MXN $${formatted}` : `$${formatted}`;
-  };
+  const fmt = (amount) => formatCurrency(amount, form.currency);
 
   const handleSave = async () => {
     setError(null);

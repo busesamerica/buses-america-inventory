@@ -7,26 +7,8 @@ const { useState, useEffect } = React;
 const API_BASE_URL = window.API_BASE_URL || 'https://buses-america.onrender.com';
 const API_URL = `${API_BASE_URL}/api`;
 
-// ============= UTILITIES =============
-const formatCurrency = (amount, currency = 'USD') => {
-  if (!amount && amount !== 0) return currency === 'USD' ? '$0.00' : 'MXN $0.00';
-  const roundedAmount = Math.round(amount * 100) / 100;
-  const formatted = new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(roundedAmount);
-  return currency === 'USD' ? `$${formatted}` : `MXN $${formatted}`;
-};
-
-const formatDate = (dateString) => {
-  if (!dateString) return 'N/A';
-  const str = String(dateString).split('T')[0];
-  return new Date(str + 'T00:00:00').toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
-};
+// formatCurrency / formatDate now live in utils.js (loaded before this file
+// in index.html) so every screen formats money and dates the same way.
 
 // ============= AUTH =============
 const AuthContext = React.createContext(null);
@@ -477,7 +459,6 @@ function InventoryApp() {
   const [suppliers, setSuppliers] = useState([]);
   const [inspections, setInspections] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [showBusForm, setShowBusForm] = useState(false);
   const [editingBus, setEditingBus] = useState(null);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
@@ -554,18 +535,6 @@ function InventoryApp() {
     setShowSupplierForm(false);
     alert('Supplier added successfully!');
   };
-
-  const filteredInventory = inventory.filter(bus => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return (
-      bus.stock_number?.toLowerCase().includes(s) ||
-      bus.vin?.toLowerCase().includes(s) ||
-      bus.make?.toLowerCase().includes(s) ||
-      bus.model?.toLowerCase().includes(s) ||
-      `${bus.year}`.includes(s)
-    );
-  });
 
   if (loading) {
     return (

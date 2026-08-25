@@ -40,16 +40,6 @@ const PreInspectionsList = ({ onViewReport, onCreateInventory }) => {
     }
   };
 
-  const formatCurrency = (amount) => {
-    if (!amount) return '$0.00';
-    return `$${parseFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
   const getBadgeStyle = (recommendation) => {
     const styles = {
       'Approve': { background: '#10b981', color: 'white', icon: '✅' },
