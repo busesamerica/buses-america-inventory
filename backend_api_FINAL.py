@@ -287,9 +287,16 @@ class Inventory(BaseModel):
     body_style: Optional[str]
     bus_type: Optional[str]
     passenger_capacity: Optional[int]
+    wheelchair_capacity: Optional[int] = None
+    engine_make: Optional[str] = None
+    engine_model: Optional[str] = None
+    engine_type: Optional[str] = None
+    transmission: Optional[str] = None
+    fuel_type: Optional[str] = None
     odometer: Optional[int]
     condition: str
     exterior_color: Optional[str]
+    interior_color: Optional[str] = None
     title_status: Optional[str]
     
     supplier_id: Optional[int]
