@@ -13,9 +13,16 @@ import sys
 import asyncio
 import asyncpg
 
-MIGRATION_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "migrations", "001_quotes.sql"
-)
+MIGRATIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "migrations")
+
+
+def migration_files():
+    """Every migrations/NNN_*.sql, applied in filename order."""
+    return [
+        os.path.join(MIGRATIONS_DIR, name)
+        for name in sorted(os.listdir(MIGRATIONS_DIR))
+        if name.endswith(".sql")
+    ]
 
 
 async def run():
@@ -28,9 +35,6 @@ async def run():
     print("Buses America - Quoting module migration")
     print("=" * 55)
 
-    with open(MIGRATION_FILE, "r") as f:
-        sql = f.read()
-
     conn = await asyncpg.connect(database_url)
     try:
         has_clients = await conn.fetchval(
@@ -41,9 +45,13 @@ async def run():
             print("       Run the base schema first, then re-run this migration.")
             return False
 
-        # The file is written to be applied as a single script (it contains
-        # DO $$ ... $$ blocks that must not be split on semicolons).
-        await conn.execute(sql)
+        for path in migration_files():
+            with open(path, "r") as f:
+                sql = f.read()
+            # Each file is applied as one script: they contain DO $$ ... $$
+            # blocks that must not be split on semicolons.
+            await conn.execute(sql)
+            print(f"  applied {os.path.basename(path)}")
 
         quotes = await conn.fetchval(
             "SELECT COUNT(*) FROM information_schema.tables "

@@ -13,13 +13,20 @@ VALUES ('Transportes del Norte','Transportes del Norte S.A. de C.V.','Monterrey,
 
 INSERT INTO inventory (stock_number, vin, year, make, model, body_style, passenger_capacity,
                        odometer, purchase_date, purchase_price_usd, transport_to_stock_cost_usd,
-                       asking_price, asking_currency, status, current_location)
+                       asking_price, asking_currency, status, current_location,
+                       exterior_color, engine_type, engine_make, engine_model, fuel_type,
+                       transmission, condition)
 VALUES
- ('BA-101','1HVBBABN1YH123456',2015,'Blue Bird','Vision','School Bus',72,145000,'2025-03-01',18000,1200,32500,'USD','In Stock (US)','US Stock'),
- ('BA-102','1HVBBABN1YH123457',2016,'IC Bus','CE Series','School Bus',77,132000,'2025-03-05',21000,1400,36900,'USD','In Stock (US)','US Stock'),
- ('BA-103','1HVBBABN1YH123458',2014,'Thomas','C2','School Bus',71,160000,'2025-04-10',16500,1100,29900,'USD','In Stock (US)','US Stock'),
- ('BA-104','1HVBBABN1YH123459',2017,'Blue Bird','Vision','School Bus',78,118000,'2025-05-02',23500,0,34500,'USD','In Stock (US)','US Stock'),
- ('BA-105','1HVBBABN1YH123460',2013,'IC Bus','RE Series','Transit Bus',44,175000,'2025-05-20',14000,0,24900,'USD','In Stock (US)','US Stock');
+ ('BA-101','1HVBBABN1YH123456',2015,'Blue Bird','Vision','Autobús escolar',72,145000,'2025-03-01',18000,1200,32500,'USD','In Stock (US)','US Stock',
+  'Amarillo','Diesel','Cummins','ISB 6.7','Diesel','Automática Allison 2500','Usado — Bueno'),
+ ('BA-102','1HVBBABN1YH123457',2016,'IC Bus','CE Series','Autobús escolar',77,132000,'2025-03-05',21000,1400,36900,'USD','In Stock (US)','US Stock',
+  'Amarillo','Diesel','Cummins','ISB 6.7','Diesel','Automática Allison 2500','Usado — Bueno'),
+ ('BA-103','1HVBBABN1YH123458',2014,'Thomas','C2','Autobús escolar',71,160000,'2025-04-10',16500,1100,29900,'USD','In Stock (US)','US Stock',
+  'Amarillo','Diesel','Cummins','ISB 6.7','Diesel','Automática Allison 2500','Usado — Regular'),
+ ('BA-104','1HVBBABN1YH123459',2017,'Blue Bird','Vision','Autobús escolar',78,118000,'2025-05-02',23500,0,34500,'USD','In Stock (US)','US Stock',
+  'Blanco','Gasolina','Triton','6.8 V10','Gasolina','Automática','Usado — Excelente'),
+ ('BA-105','1HVBBABN1YH123460',2013,'IC Bus','RE Series','Autobús de transporte',44,175000,'2025-05-20',14000,0,24900,'USD','In Stock (US)','US Stock',
+  'Blanco','Diesel','Cummins','ISB 6.7','Diesel','Automática Allison 2500','Usado — Bueno');
 
 INSERT INTO cost_items (inventory_id, cost_category, description, amount, currency, date_incurred)
 SELECT inventory_id,'Initial Reconditioning','Brakes and tires',2200,'USD','2025-04-01'
