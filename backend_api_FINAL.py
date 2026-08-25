@@ -5405,6 +5405,12 @@ class QuoteCreate(BaseModel):
     notes: Optional[str] = None
     internal_notes: Optional[str] = None
 
+    # Shown under "Elaborado por" on the printed quote. Defaults to the signed-in
+    # user's name when not supplied.
+    prepared_by_name: Optional[str] = None
+    prepared_by_phone: Optional[str] = None
+    prepared_by_email: Optional[str] = None
+
     line_items: List[QuoteLineItemIn] = []
 
 
@@ -5432,6 +5438,10 @@ class QuoteUpdate(BaseModel):
     warranty_terms: Optional[str] = None
     notes: Optional[str] = None
     internal_notes: Optional[str] = None
+
+    prepared_by_name: Optional[str] = None
+    prepared_by_phone: Optional[str] = None
+    prepared_by_email: Optional[str] = None
 
     # None means "leave the existing lines alone"; a list replaces them wholesale.
     line_items: Optional[List[QuoteLineItemIn]] = None
@@ -5467,7 +5477,7 @@ async def _expire_stale_quotes(db):
 
 async def _next_quote_number(db) -> str:
     year = date.today().year
-    prefix = f"QT-{year}-"
+    prefix = f"COT-{year}-"
     last = await db.fetchval("""
         SELECT quote_number FROM quotes
         WHERE quote_number LIKE $1
@@ -5532,6 +5542,9 @@ async def _build_line_rows(db, line_items: List[QuoteLineItemIn]) -> tuple:
             'stock_number': None, 'vin': None, 'unit_year': None,
             'make': None, 'model': None, 'body_style': None,
             'passenger_capacity': None, 'odometer': None,
+            'exterior_color': None, 'engine_make': None, 'engine_model': None,
+            'engine_type': None, 'fuel_type': None, 'transmission': None,
+            'condition': None,
             'description': item.description,
             'quantity': _dec(item.quantity, '1'),
             'unit_price': _money(item.unit_price),
@@ -5553,6 +5566,8 @@ async def _build_line_rows(db, line_items: List[QuoteLineItemIn]) -> tuple:
             bus = await db.fetchrow("""
                 SELECT inventory_id, stock_number, vin, year, make, model, body_style,
                        passenger_capacity, odometer, asking_price, asking_currency,
+                       exterior_color, engine_make, engine_model, engine_type,
+                       fuel_type, transmission, condition,
                        is_sold, status
                 FROM inventory
                 WHERE inventory_id = $1 AND is_deleted = FALSE
@@ -5577,6 +5592,13 @@ async def _build_line_rows(db, line_items: List[QuoteLineItemIn]) -> tuple:
                 'body_style': bus['body_style'],
                 'passenger_capacity': bus['passenger_capacity'],
                 'odometer': bus['odometer'],
+                'exterior_color': bus['exterior_color'],
+                'engine_make': bus['engine_make'],
+                'engine_model': bus['engine_model'],
+                'engine_type': bus['engine_type'],
+                'fuel_type': bus['fuel_type'],
+                'transmission': bus['transmission'],
+                'condition': bus['condition'],
             })
             row['quantity'] = Decimal('1')  # a unit is a unit
             if not row['description']:
@@ -5619,11 +5641,16 @@ async def _replace_line_items(db, quote_id: int, rows: List[dict]):
             INSERT INTO quote_line_items
                 (quote_id, line_number, line_type, inventory_id, stock_number, vin,
                  unit_year, make, model, body_style, passenger_capacity, odometer,
+                 exterior_color, engine_make, engine_model, engine_type, fuel_type,
+                 transmission, condition,
                  description, quantity, unit_price, notes)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
+                    $20,$21,$22,$23)
         """, quote_id, row['line_number'], row['line_type'], row['inventory_id'],
              row['stock_number'], row['vin'], row['unit_year'], row['make'], row['model'],
              row['body_style'], row['passenger_capacity'], row['odometer'],
+             row['exterior_color'], row['engine_make'], row['engine_model'],
+             row['engine_type'], row['fuel_type'], row['transmission'], row['condition'],
              row['description'], row['quantity'], row['unit_price'], row['notes'])
 
 
@@ -5784,6 +5811,11 @@ async def create_quote(
     if not payload.get('valid_until') and validity_days:
         payload['valid_until'] = quote_date + timedelta(days=validity_days)
 
+    if not payload.get('prepared_by_name'):
+        payload['prepared_by_name'] = user.get('full_name') or user['username']
+    if not payload.get('prepared_by_email'):
+        payload['prepared_by_email'] = user.get('email')
+
     rows, warnings = await _build_line_rows(db, line_items)
     totals = _calculate_totals(rows, payload.get('discount_amount'), payload.get('tax_rate'))
 
@@ -5807,6 +5839,7 @@ async def create_quote(
                 subtotal, discount_amount, tax_rate, tax_amount, total_amount,
                 deposit_required, deposit_percent,
                 payment_terms, delivery_terms, warranty_terms, notes, internal_notes,
+                prepared_by_name, prepared_by_phone, prepared_by_email,
                 created_by
             ) VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
@@ -5814,7 +5847,8 @@ async def create_quote(
                 $15,$16,$17,$18,$19,
                 $20,$21,
                 $22,$23,$24,$25,$26,
-                $27
+                $27,$28,$29,
+                $30
             )
             RETURNING *
         """, quote_number, payload.get('client_id'), payload.get('client_name'),
@@ -5829,6 +5863,8 @@ async def create_quote(
              deposit_required, payload.get('deposit_percent'),
              payload.get('payment_terms'), payload.get('delivery_terms'),
              payload.get('warranty_terms'), payload.get('notes'), payload.get('internal_notes'),
+             payload.get('prepared_by_name'), payload.get('prepared_by_phone'),
+             payload.get('prepared_by_email'),
              user['username'])
 
         await _replace_line_items(db, created['quote_id'], rows)
@@ -6008,6 +6044,7 @@ async def duplicate_quote(
                 subtotal, discount_amount, tax_rate, tax_amount, total_amount,
                 deposit_required, deposit_percent,
                 payment_terms, delivery_terms, warranty_terms, notes, internal_notes,
+                prepared_by_name, prepared_by_phone, prepared_by_email,
                 created_by
             )
             SELECT $2, revision + 1, client_id, client_name, client_company, client_contact,
@@ -6016,6 +6053,7 @@ async def duplicate_quote(
                    subtotal, discount_amount, tax_rate, tax_amount, total_amount,
                    deposit_required, deposit_percent,
                    payment_terms, delivery_terms, warranty_terms, notes, internal_notes,
+                   prepared_by_name, prepared_by_phone, prepared_by_email,
                    $4
             FROM quotes WHERE quote_id = $1
             RETURNING *
@@ -6025,9 +6063,13 @@ async def duplicate_quote(
             INSERT INTO quote_line_items
                 (quote_id, line_number, line_type, inventory_id, stock_number, vin,
                  unit_year, make, model, body_style, passenger_capacity, odometer,
+                 exterior_color, engine_make, engine_model, engine_type, fuel_type,
+                 transmission, condition,
                  description, quantity, unit_price, notes)
             SELECT $2, line_number, line_type, inventory_id, stock_number, vin,
                    unit_year, make, model, body_style, passenger_capacity, odometer,
+                   exterior_color, engine_make, engine_model, engine_type, fuel_type,
+                   transmission, condition,
                    description, quantity, unit_price, notes
             FROM quote_line_items WHERE quote_id = $1
             ORDER BY line_number, line_id
@@ -6254,22 +6296,26 @@ async def get_quotable_inventory(
 @app.post("/admin/migrate-quotes")
 async def migrate_quotes(user=Depends(require_admin)):
     """Create the quoting tables if they aren't there yet. Idempotent."""
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "migrations", "001_quotes.sql")
-    if not os.path.exists(path):
-        raise HTTPException(status_code=500, detail=f"Migration file not found at {path}")
+    directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "migrations")
+    if not os.path.isdir(directory):
+        raise HTTPException(status_code=500, detail=f"Migrations directory not found at {directory}")
 
-    with open(path, "r") as f:
-        sql = f.read()
+    files = sorted(name for name in os.listdir(directory) if name.endswith(".sql"))
+    if not files:
+        raise HTTPException(status_code=500, detail="No migration files found")
 
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        await conn.execute(sql)
+        for name in files:
+            with open(os.path.join(directory, name), "r") as f:
+                await conn.execute(f.read())
         present = await conn.fetchval(
             "SELECT COUNT(*) FROM information_schema.tables "
             "WHERE table_name IN ('quotes','quote_line_items')"
         )
         return {
             "status": "success" if present == 2 else "incomplete",
+            "migrations_applied": files,
             "tables_present": present,
             "message": "Quoting tables are ready." if present == 2 else "Migration did not complete.",
         }

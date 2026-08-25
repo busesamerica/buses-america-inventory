@@ -16,6 +16,12 @@ const QuoteManagement = () => {
   const [viewingQuote, setViewingQuote] = React.useState(null);
   const [acceptTarget, setAcceptTarget] = React.useState(null);
 
+  // Used for "Elaborado por" on the printed quote.
+  const currentUser = (() => {
+    try { return JSON.parse(localStorage.getItem('user') || 'null'); }
+    catch (e) { return null; }
+  })();
+
   const authHeaders = () => ({
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${localStorage.getItem('session_token')}`
@@ -394,6 +400,7 @@ const QuoteManagement = () => {
         <QuoteModal
           quote={editingQuote === 'new' ? null : editingQuote}
           clients={clients}
+          currentUser={currentUser}
           onClose={() => setEditingQuote(null)}
           onSaved={(saved) => {
             setEditingQuote(null);
@@ -407,7 +414,7 @@ const QuoteManagement = () => {
       )}
 
       {viewingQuote && (
-        <QuoteDocument quote={viewingQuote} onClose={() => setViewingQuote(null)} />
+        <QuoteDocument quote={viewingQuote} currentUser={currentUser} onClose={() => setViewingQuote(null)} />
       )}
 
       {acceptTarget && (

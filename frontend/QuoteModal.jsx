@@ -3,7 +3,7 @@
 // Totals mirror the server-side calculation so the user sees them live,
 // but the server is always the source of truth on save.
 
-const QuoteModal = ({ quote, clients, onClose, onSaved }) => {
+const QuoteModal = ({ quote, clients, currentUser, onClose, onSaved }) => {
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
   const isEdit = !!(quote && quote.quote_id);
 
@@ -12,6 +12,13 @@ const QuoteModal = ({ quote, clients, onClose, onSaved }) => {
     const d = new Date();
     d.setDate(d.getDate() + days);
     return d.toISOString().split('T')[0];
+  };
+
+  // Each seller quotes under their own name and number. Remember what this
+  // browser used last so it only has to be typed once, but store the value on
+  // the quote itself so a reprint always shows whoever issued it.
+  const remembered = (key) => {
+    try { return localStorage.getItem(key) || ''; } catch (e) { return ''; }
   };
 
   const [form, setForm] = React.useState({
@@ -34,7 +41,10 @@ const QuoteModal = ({ quote, clients, onClose, onSaved }) => {
     delivery_terms: quote?.delivery_terms || '',
     warranty_terms: quote?.warranty_terms || '60-day warranty on engine and transmission from delivery date.',
     notes: quote?.notes || '',
-    internal_notes: quote?.internal_notes || ''
+    internal_notes: quote?.internal_notes || '',
+    prepared_by_name: quote?.prepared_by_name || currentUser?.full_name || '',
+    prepared_by_phone: quote?.prepared_by_phone || remembered('quote_seller_phone'),
+    prepared_by_email: quote?.prepared_by_email || currentUser?.email || remembered('quote_seller_email')
   });
 
   const [lines, setLines] = React.useState(
@@ -190,6 +200,11 @@ const QuoteModal = ({ quote, clients, onClose, onSaved }) => {
         notes: l.notes || null
       }))
     };
+
+    try {
+      if (form.prepared_by_phone) localStorage.setItem('quote_seller_phone', form.prepared_by_phone);
+      if (form.prepared_by_email) localStorage.setItem('quote_seller_email', form.prepared_by_email);
+    } catch (e) { /* private browsing — the values still save on the quote */ }
 
     setSaving(true);
     try {
@@ -367,7 +382,7 @@ const QuoteModal = ({ quote, clients, onClose, onSaved }) => {
                 </select>
               </div>
               <div>
-                <label style={label}>Deposit %</label>
+                <label style={label}>Deposit % (internal)</label>
                 <input type="number" step="0.1" style={input} value={form.deposit_percent} onChange={(e) => setField('deposit_percent', e.target.value)} />
               </div>
             </div>
@@ -563,6 +578,29 @@ const QuoteModal = ({ quote, clients, onClose, onSaved }) => {
                   <span>{fmt(deposit)}</span>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* PREPARED BY */}
+          <div style={card}>
+            <h3 style={sectionTitle}>✍️ Elaborado por</h3>
+            <div style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '1rem' }}>
+              Printed at the bottom of the client quote. Defaults to you; change it when
+              quoting on behalf of another seller.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: '1rem' }}>
+              <div>
+                <label style={label}>Name</label>
+                <input style={input} value={form.prepared_by_name} onChange={(e) => setField('prepared_by_name', e.target.value)} />
+              </div>
+              <div>
+                <label style={label}>Phone</label>
+                <input style={input} placeholder="+52 899 000 0000" value={form.prepared_by_phone} onChange={(e) => setField('prepared_by_phone', e.target.value)} />
+              </div>
+              <div>
+                <label style={label}>Email</label>
+                <input style={input} value={form.prepared_by_email} onChange={(e) => setField('prepared_by_email', e.target.value)} />
+              </div>
             </div>
           </div>
 
