@@ -6295,9 +6295,9 @@ async def get_quotable_inventory(
     return [dict(row) for row in rows]
 
 
-@app.post("/admin/migrate-quotes")
-async def migrate_quotes(user=Depends(require_admin)):
-    """Create the quoting tables if they aren't there yet. Idempotent."""
+@app.post("/admin/migrate")
+async def run_migrations(user=Depends(require_admin)):
+    """Apply every migrations/NNN_*.sql file in filename order. Idempotent."""
     directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "migrations")
     if not os.path.isdir(directory):
         raise HTTPException(status_code=500, detail=f"Migrations directory not found at {directory}")

@@ -3,7 +3,7 @@
 --
 -- Safe to run repeatedly: every statement is IF NOT EXISTS / guarded.
 -- Apply with:  python migrate.py
---       or:    POST /admin/migrate-quotes
+--       or:    POST /admin/migrate
 
 -- ============================================================
 -- QUOTES (header)

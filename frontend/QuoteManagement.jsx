@@ -64,7 +64,7 @@ const QuoteManagement = () => {
         setQuotes(await res.json());
         setError(null);
       } else if (res.status === 404 || res.status === 500) {
-        setError('Could not load quotes. If this is the first time using quoting, run the database migration (POST /admin/migrate-quotes as an admin).');
+        setError('Could not load quotes. If this is the first time using quoting, run the database migration (POST /admin/migrate as an admin).');
       }
     } catch (e) {
       setError(`Could not reach the server: ${e.message}`);
