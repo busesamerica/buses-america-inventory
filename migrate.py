@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-Buses America - Quoting module migration runner.
+Buses America - migration runner.
 
-Applies migrations/001_quotes.sql. Idempotent: safe to run on every deploy.
+Applies every migrations/NNN_*.sql file in filename order (not just the
+quoting module anymore -- 000_core_tables.sql runs first). Idempotent: safe
+to run on every deploy.
 
 Usage:
-    DATABASE_URL=postgres://... python migrate_quotes.py
+    DATABASE_URL=postgres://... python migrate.py
 """
 
 import os
@@ -32,16 +34,20 @@ async def run():
         return False
 
     print("=" * 55)
-    print("Buses America - Quoting module migration")
+    print("Buses America - migrations")
     print("=" * 55)
 
     conn = await asyncpg.connect(database_url)
     try:
-        has_clients = await conn.fetchval(
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'clients'"
+        # 'inventory', not 'clients': 000_core_tables.sql is what creates
+        # clients (along with users and the accounting tables), and it's
+        # applied by the loop below like every other file in migrations/. The
+        # real prerequisite is that init_database.py ran the base schema.
+        has_inventory = await conn.fetchval(
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'inventory'"
         )
-        if not has_clients:
-            print("ERROR: the 'clients' table does not exist.")
+        if not has_inventory:
+            print("ERROR: the 'inventory' table does not exist.")
             print("       Run the base schema first, then re-run this migration.")
             return False
 

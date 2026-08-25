@@ -275,23 +275,15 @@ CREATE TABLE inventory (
     warranty_status VARCHAR(50), -- 'Active', 'Expired', 'Claimed', 'N/A'
     
     -- Days tracking
-    days_in_inventory INTEGER GENERATED ALWAYS AS (
-        CASE 
-            WHEN status = 'Delivered' THEN NULL
-            ELSE EXTRACT(DAY FROM (CURRENT_DATE - purchase_date))
-        END
-    ) STORED,
-    
+    -- Plain columns, not GENERATED: a generated column can't reference
+    -- CURRENT_DATE (Postgres requires the expression to be immutable), which
+    -- made this CREATE TABLE fail outright on a fresh database. Production
+    -- has always stored these as plain columns computed by the application;
+    -- this just matches what's actually running.
+    days_in_inventory INTEGER,
     days_in_us_stock INTEGER, -- Manually updated or calculated
     days_in_mexico_stock INTEGER, -- For units imported before sale
-    
-    days_in_warranty INTEGER GENERATED ALWAYS AS (
-        CASE
-            WHEN warranty_end_date IS NULL THEN NULL
-            WHEN CURRENT_DATE > warranty_end_date THEN 0
-            ELSE EXTRACT(DAY FROM (warranty_end_date - CURRENT_DATE))
-        END
-    ) STORED,
+    days_in_warranty INTEGER,
     
     -- Additional Info
     features TEXT[],

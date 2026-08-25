@@ -2,8 +2,8 @@
 -- Migration 001: quotes + quote_line_items
 --
 -- Safe to run repeatedly: every statement is IF NOT EXISTS / guarded.
--- Apply with:  python migrate_quotes.py
---       or:    POST /admin/migrate-quotes
+-- Apply with:  python migrate.py
+--       or:    POST /admin/migrate
 
 -- ============================================================
 -- QUOTES (header)
