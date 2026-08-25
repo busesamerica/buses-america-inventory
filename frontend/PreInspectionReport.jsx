@@ -28,18 +28,12 @@ React.useEffect(() => {
     return () => document.head.removeChild(style);
   }, []);
 
+  // "N/A" reads better than "$0.00" here - an inspection with no estimate
+  // yet is different from one estimated at exactly $0. Delegates the actual
+  // formatting to the shared formatCurrency in utils.js.
   const formatCurrency = (amount) => {
     if (!amount) return 'N/A';
-    return `$${parseFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    });
+    return window.formatCurrency(amount);
   };
 
   const getBadgeStyle = (rating) => {
@@ -252,7 +246,7 @@ React.useEffect(() => {
             <div>
               <div style={{ fontSize: '0.75rem', color: '#d1d5db', textTransform: 'uppercase' }}>Inspection Date</div>
               <div style={{ fontSize: '1rem', fontWeight: '600', marginTop: '0.25rem' }}>
-                {formatDate(inspection.inspection_date)}
+                {formatDate(inspection.inspection_date, 'long')}
               </div>
             </div>
             <div>

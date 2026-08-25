@@ -155,21 +155,6 @@ const InventoryManagement = () => {
     }
   };
 
-  const formatCurrency = (amount) => {
-    if (!amount && amount !== 0) return '$0.00';
-    return `$${parseFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    const str = String(dateString).split('T')[0];
-    return new Date(str + 'T00:00:00').toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
   const filteredInventory = inventory.filter(bus => {
     if (!search) return true;
     const searchLower = search.toLowerCase();

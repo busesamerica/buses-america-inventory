@@ -81,21 +81,6 @@ const PeriodClosingModal = ({ isOpen, onClose, onComplete }) => {
     .finally(function() { setSaving(false); });
   };
 
-  var formatDate = function(ds) {
-    if (!ds) return '';
-    try {
-      var s = String(ds).split('T')[0].split('-');
-      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      return months[parseInt(s[1])-1] + ' ' + parseInt(s[2]) + ', ' + s[0];
-    } catch(e) { return String(ds); }
-  };
-
-  var fc = function(amt, cur) {
-    var n = parseFloat(amt || 0);
-    var f = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(n));
-    return (n < 0 ? '-' : '') + (cur === 'MXN' ? 'MX$' : '$') + f;
-  };
-
   if (!isOpen) return null;
 
   var h = React.createElement;
@@ -128,9 +113,9 @@ const PeriodClosingModal = ({ isOpen, onClose, onComplete }) => {
                 closings.map(function(c, idx) {
                   return h('tr', { key: idx, style: { borderBottom:'1px solid #f3f4f6' } },
                     h('td', { style: { padding:'0.4rem 0',color:'#111827' } }, formatDate(c.period_start) + ' \u2014 ' + formatDate(c.period_end)),
-                    h('td', { style: { padding:'0.4rem 0',textAlign:'right',fontWeight:'600' } }, fc(c.net_income_usd, 'USD')),
-                    h('td', { style: { padding:'0.4rem 0',textAlign:'right',fontWeight:'600' } }, fc(c.net_income_mxn, 'MXN')),
-                    h('td', { style: { padding:'0.4rem 0',textAlign:'right',fontWeight:'600',color: parseFloat(c.fx_gain_loss || 0) >= 0 ? '#059669' : '#dc2626' } }, fc(c.fx_gain_loss, 'MXN')),
+                    h('td', { style: { padding:'0.4rem 0',textAlign:'right',fontWeight:'600' } }, formatCurrency(c.net_income_usd, 'USD')),
+                    h('td', { style: { padding:'0.4rem 0',textAlign:'right',fontWeight:'600' } }, formatCurrency(c.net_income_mxn, 'MXN')),
+                    h('td', { style: { padding:'0.4rem 0',textAlign:'right',fontWeight:'600',color: parseFloat(c.fx_gain_loss || 0) >= 0 ? '#059669' : '#dc2626' } }, formatCurrency(c.fx_gain_loss, 'MXN')),
                     h('td', { style: { padding:'0.4rem 0',textAlign:'right',color:'#6b7280' } }, parseFloat(c.exchange_rate || 0).toFixed(4))
                   );
                 })
@@ -147,9 +132,9 @@ const PeriodClosingModal = ({ isOpen, onClose, onComplete }) => {
         result && h('div', { style: { padding:'1rem',background:'#d1fae5',borderRadius:'0.5rem',marginBottom:'1rem' } },
           h('div', { style: { fontWeight:'600',color:'#065f46',marginBottom:'0.5rem' } }, '\u2713 ' + result.message),
           h('div', { style: { fontSize:'0.8rem',color:'#065f46' } },
-            'Net Income: ' + fc(result.net_income.usd, 'USD') + ' / ' + fc(result.net_income.mxn, 'MXN')),
+            'Net Income: ' + formatCurrency(result.net_income.usd, 'USD') + ' / ' + formatCurrency(result.net_income.mxn, 'MXN')),
           h('div', { style: { fontSize:'0.8rem',color:'#065f46' } },
-            'FX Gain/Loss: ' + fc(result.fx_gain_loss, 'MXN') + ' at rate ' + result.exchange_rate)
+            'FX Gain/Loss: ' + formatCurrency(result.fx_gain_loss, 'MXN') + ' at rate ' + result.exchange_rate)
         ),
 
         !result && h('div', null,

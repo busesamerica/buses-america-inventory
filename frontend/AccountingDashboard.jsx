@@ -172,16 +172,6 @@ const AccountingDashboard = () => {
     }
   };
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount && amount !== 0) return currency === 'USD' ? '$0.00' : 'MXN $0.00';
-    const formatted = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(Math.abs(amount));
-    const prefix = currency === 'USD' ? '$' : 'MXN $';
-    return amount < 0 ? `(${prefix}${formatted})` : `${prefix}${formatted}`;
-  };
-
   if (loading) {
     return (
       <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>

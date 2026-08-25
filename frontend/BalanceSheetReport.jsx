@@ -36,23 +36,6 @@ const BalanceSheetReport = ({ isOpen, onClose }) => {
     }
   };
 
-  const formatCurrency = (amount, currency = filters.currency) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency === 'MXN' ? 'MXN' : 'USD'
-    }).format(amount);
-  };
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    const str = String(dateStr).split('T')[0];
-    return new Date(str + 'T00:00:00').toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
-
   const handleFilterChange = (field, value) => {
     setFilters({...filters, [field]: value});
   };
@@ -202,7 +185,7 @@ const BalanceSheetReport = ({ isOpen, onClose }) => {
                   Balance Sheet
                 </div>
                 <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                  As of {formatDate(reportData.as_of_date)}
+                  As of {formatDate(reportData.as_of_date, 'long')}
                 </div>
               </div>
 

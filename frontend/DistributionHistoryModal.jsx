@@ -30,21 +30,6 @@ const DistributionHistoryModal = ({ isOpen, onClose }) => {
     }
   };
 
-  const formatCurrency = (amount, currency) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency
-    }).format(amount);
-  };
-
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
   if (!isOpen) return null;
 
   return (
