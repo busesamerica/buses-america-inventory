@@ -767,7 +767,9 @@ async def calculate_total_costs(db, inventory_id: int, target_currency: str = 'U
 
 # ==================== ROOT ENDPOINT ====================
 
-@app.get("/")
+# HEAD as well as GET: Render's health check probes the root with HEAD, which
+# would otherwise answer 405 on every deploy and every keep-alive ping.
+@app.api_route("/", methods=["GET", "HEAD"])
 async def root():
     """Root endpoint - API status and available endpoints"""
     return {
