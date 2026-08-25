@@ -281,6 +281,24 @@ class InventoryUpdate(BaseModel):
     # Exchange rate
     exchange_rate_used: Optional[Decimal] = None
 
+# A unit can't legitimately reach any of these statuses (see the documented
+# inventory.status pipeline in bus_inventory_schema_FINAL.sql) without having
+# been sold. update_inventory() below uses this to keep is_sold in sync no
+# matter how status gets set, instead of relying on every caller (or every
+# frontend form) to also set is_sold correctly on its own - see
+# migrations/004_fix_inventory_location_status.sql for the bug that caused
+# when nothing enforced it.
+#
+# Deliberately narrower than the full documented pipeline: 'Import/Customs
+# Processing' and 'In Stock (Mexico)' are left out because Mexico Stock is
+# also a valid *pre-sale* current_location - a unit can be relocated there
+# before it's sold, not only imported there after, so those two statuses
+# don't unambiguously imply a sale the way the others do.
+POST_SALE_STATUSES = {
+    'Sold - Pending Import', 'In Preventive Maintenance',
+    'Ready for Delivery', 'In Transit to Client', 'Delivered',
+}
+
 class Inventory(BaseModel):
     inventory_id: int
     stock_number: str
@@ -1514,7 +1532,12 @@ async def update_inventory(
         'client_contact', 'client_email', 'client_phone', 'client_use_case'
     }
     update_dict = {k: v for k, v in update_dict.items() if k not in NON_INVENTORY_FIELDS}
-    
+
+    # Force is_sold in step with status, rather than trusting every caller to
+    # send both correctly - see POST_SALE_STATUSES above.
+    if update_dict.get('status') in POST_SALE_STATUSES:
+        update_dict['is_sold'] = True
+
     if not update_dict:
         raise HTTPException(status_code=400, detail="No fields to update")
 
@@ -4605,7 +4628,19 @@ async def create_inventory_from_inspection(
         'Poor': 'Needs Major Work'
     }
     condition = condition_map.get(inspection['overall_rating'], 'Used')
-    
+
+    # current_location/status must match the vocabulary the dashboard and
+    # reporting queries filter on ('US Stock' / 'Mexico Stock', and the
+    # documented status pipeline) - see migrations/004_fix_inventory_location_status.sql
+    # for the bug this used to cause when they didn't.
+    resolved_location = additional_data.get('current_location') or 'US Stock'
+    if resolved_location == 'US Stock':
+        initial_status = 'In Stock (US)'
+    elif resolved_location == 'Mexico Stock':
+        initial_status = 'In Stock (Mexico)'
+    else:
+        initial_status = 'Purchased - In Transit to Stock'
+
     # Create inventory
     inventory_query = """
         INSERT INTO inventory (
@@ -4665,8 +4700,8 @@ async def create_inventory_from_inspection(
         purchase_date,
         additional_data.get('purchase_price_usd'),
         additional_data.get('supplier_id'),
-        additional_data.get('current_location', 'United States'),
-        'Available',
+        resolved_location,
+        initial_status,
         user['username']
     )
     
