@@ -76,7 +76,7 @@ if status != 200:
     sys.exit(1)
 
 quote_id = quote["quote_id"]
-check("quote number assigned", quote["quote_number"].startswith("QT-"), quote["quote_number"])
+check("quote number assigned", quote["quote_number"].startswith("COT-"), quote["quote_number"])
 check("client snapshot copied from client record",
       quote["client_company"] == "Transportes del Norte S.A. de C.V.", quote["client_company"])
 check("unit price defaulted to asking price",
@@ -89,6 +89,30 @@ check("total equals subtotal with no tax/discount", float(quote["total_amount"])
 check("deposit derived from percent", float(quote["deposit_required"]) == 22350.0, quote["deposit_required"])
 check("valid_until derived from validity_days", bool(quote["valid_until"]))
 check("starts as Draft", quote["status"] == "Draft")
+check("prepared-by defaults to the signed-in user",
+      quote["prepared_by_name"] == "Test Admin", quote.get("prepared_by_name"))
+check("unit specs snapshotted onto the line",
+      quote["line_items"][0].get("transmission") is not None
+      and quote["line_items"][0].get("condition") is not None,
+      {k: quote["line_items"][0].get(k) for k in ("exterior_color", "engine_make", "transmission", "condition")})
+
+# --- per-seller "Elaborado por" -------------------------------------------
+status, seller_quote = call("POST", "/api/quotes", {
+    "client_name": "Seller Override Test",
+    "prepared_by_name": "Jorge Treviño",
+    "prepared_by_phone": "+52 899 291 1739",
+    "prepared_by_email": "jtrevino@busesamerica.com",
+    "line_items": [{"line_type": "charge", "description": "Consultoría", "unit_price": 100}],
+})
+check("explicit seller details override the signed-in user",
+      status == 200 and seller_quote["prepared_by_name"] == "Jorge Treviño"
+      and seller_quote["prepared_by_phone"] == "+52 899 291 1739",
+      f"({status})")
+status, seller_copy = call("POST", f"/api/quotes/{seller_quote['quote_id']}/duplicate")
+check("a duplicated quote keeps its seller",
+      seller_copy["prepared_by_name"] == "Jorge Treviño", seller_copy.get("prepared_by_name"))
+call("DELETE", f"/api/quotes/{seller_copy['quote_id']}")
+call("DELETE", f"/api/quotes/{seller_quote['quote_id']}")
 
 # --- validation -----------------------------------------------------------
 status, err = call("POST", "/api/quotes", {

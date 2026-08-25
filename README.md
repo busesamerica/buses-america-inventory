@@ -48,13 +48,27 @@ holding the same units. Charges, tax and discount are spread across the units by
 default so recorded revenue equals the quote total; choosing "unit prices only" at
 acceptance records each unit at its line price instead.
 
-`View` opens a branded, printable quote — use the browser's *Save as PDF* to send it
-to a client.
+`View` opens the client-facing **Cotización** — a Spanish document on Buses America
+letterhead, laid out to match the company quote template: contact block, `COTIZACIÓN #
+/ FECHA / VÁLIDA HASTA` strip, a `CLIENTE` / `DATOS DEL AUTOBÚS` split, the price
+breakdown, `NOTAS Y CONDICIONES` opposite `ELABORADO POR`, and a signature block. Use
+the browser's *Save as PDF* to send it to a client.
+
+A quote carrying a single unit shows the full spec panel (marca, modelo, año, color,
+kilómetros, pasajeros, motor, transmisión, VIN, condición). Two or more units swap that
+panel for a `UNIDADES` table, since a spec panel per unit would not fit the page. Those
+specs are snapshotted onto the quote line when it is created, so reprinting an old quote
+shows the unit as it was described then, not as inventory describes it now.
+
+Company letterhead and footer details live in the `BA_COMPANY` object at the top of
+`frontend/QuoteDocument.jsx`. The `ELABORADO POR` block is per quote instead — each
+seller's name, phone and email are set in the quote editor, default to whoever is signed
+in, and are stored on the quote so a reprint always shows who issued it.
 
 ### Database migration
 
-The quoting tables are created by `migrations/001_quotes.sql`, applied on deploy via
-`migrate_quotes.py` (wired into `render.yaml`). It is idempotent. To apply it by hand:
+Everything in `migrations/` is applied in filename order by `migrate_quotes.py`, which
+runs on each deploy via `render.yaml`. All of it is idempotent. To apply by hand:
 
     DATABASE_URL=postgres://... python migrate_quotes.py
 
