@@ -282,10 +282,12 @@ class InventoryUpdate(BaseModel):
     exchange_rate_used: Optional[Decimal] = None
 
 # A unit can't legitimately reach any of these statuses (see the documented
-# inventory.status pipeline in bus_inventory_schema_FINAL.sql) without having
-# been sold. update_inventory() below uses this to keep is_sold in sync no
-# matter how status gets set, instead of relying on every caller (or every
-# frontend form) to also set is_sold correctly on its own - see
+# inventory.status pipeline in bus_inventory_schema_FINAL.sql, plus the
+# generic 'Sold' milestone for a unit that's sold but hasn't started - or
+# won't go through - the import pipeline) without having been sold.
+# update_inventory() below uses this to keep is_sold in sync no matter how
+# status gets set, instead of relying on every caller (or every frontend
+# form) to also set is_sold correctly on its own - see
 # migrations/004_fix_inventory_location_status.sql for the bug that caused
 # when nothing enforced it.
 #
@@ -295,7 +297,7 @@ class InventoryUpdate(BaseModel):
 # before it's sold, not only imported there after, so those two statuses
 # don't unambiguously imply a sale the way the others do.
 POST_SALE_STATUSES = {
-    'Sold - Pending Import', 'In Preventive Maintenance',
+    'Sold', 'Sold - Pending Import', 'In Preventive Maintenance',
     'Ready for Delivery', 'In Transit to Client', 'Delivered',
 }
 

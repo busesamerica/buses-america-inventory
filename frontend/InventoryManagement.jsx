@@ -732,12 +732,15 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Status *</label>
-                {/* Selecting any status from "Sold - Pending Import" onward marks the
-                    unit sold server-side (is_sold), same as recording a sale through
-                    Sales Management - see update_inventory in backend_api_FINAL.py. */}
+                {/* Selecting "Sold" or anything from "Sold - Pending Import" onward marks
+                    the unit sold server-side (is_sold), same as recording a sale through
+                    Sales Management - see update_inventory in backend_api_FINAL.py. "Sold"
+                    is the generic milestone for a unit that's sold but hasn't started (or
+                    won't go through) the import pipeline yet. */}
                 <select name="status" value={formData.status} onChange={handleChange} required style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }}>
                   <option value="Purchased - In Transit to Stock">Purchased - In Transit to Stock</option>
                   <option value="In Stock (US)">In Stock (US)</option>
+                  <option value="Sold">Sold</option>
                   <option value="Sold - Pending Import">Sold - Pending Import</option>
                   <option value="Import/Customs Processing">Import/Customs Processing</option>
                   <option value="In Stock (Mexico)">In Stock (Mexico)</option>

@@ -56,6 +56,10 @@ SET status = CASE current_location
   END
 WHERE status = 'Available';
 
-UPDATE inventory
-SET status = 'Sold - Pending Import'
-WHERE status = 'Sold';
+-- 'Sold' itself is NOT rewritten here: it's a supported status (the generic
+-- milestone for a unit that's sold but hasn't started the import pipeline
+-- yet), not just legacy debris - see POST_SALE_STATUSES in
+-- backend_api_FINAL.py. Since migrate.py re-runs every file in this
+-- directory on every deploy, rewriting it here would keep clobbering
+-- legitimate new 'Sold' rows going forward, not just the old ad-hoc ones
+-- this migration was originally written to clean up.
