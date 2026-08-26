@@ -1049,10 +1049,19 @@ async def get_audit_log(
 @app.get("/api/exchange-rates/current")
 async def get_current_exchange_rate(db=Depends(get_db)):
     """Get current active USD/MXN exchange rate"""
+    # from_currency/to_currency filter is load-bearing, not decorative: every
+    # consumer of this endpoint (CostManagementModal's grand total,
+    # App_COMPLETE.jsx's displayed rate) assumes the result is USD->MXN
+    # (~17) and multiplies by it directly. Without this filter, an MXN->USD
+    # row (~0.057) with a later effective_date would silently win and wreck
+    # every MXN total downstream. Today's only writer (AccountingDashboard.jsx)
+    # always inserts USD->MXN, so this has stayed dormant - but nothing
+    # stops a future caller of POST /api/exchange-rates from adding the
+    # other direction, so this is the one place to hold that invariant.
     row = await db.fetchrow("""
         SELECT rate_id, from_currency, to_currency, rate, effective_date, created_at, is_active
         FROM exchange_rates
-        WHERE is_active = TRUE
+        WHERE is_active = TRUE AND from_currency = 'USD' AND to_currency = 'MXN'
         ORDER BY effective_date DESC
         LIMIT 1
     """)
@@ -1394,7 +1403,16 @@ async def record_purchase_payment(
         )
         if not bank_account:
             raise HTTPException(status_code=404, detail="Bank account not found")
-        
+        # purchase_price is always purchase_price_usd - recorded below at face
+        # value with no currency conversion, so an MXN account would silently
+        # misrecord it as that many pesos instead of its USD amount converted.
+        if (bank_account['currency'] or 'USD') != 'USD':
+            raise HTTPException(
+                status_code=400,
+                detail=f"{bank_account['account_name']} is a {bank_account['currency']} account, "
+                       f"but the purchase price is in USD. Select a USD account."
+            )
+
         line_currency = bank_account['currency'] or 'USD'
         
         trans_row = await db.fetchrow("""
@@ -1799,7 +1817,23 @@ async def add_inventory_cost(
                     status_code=400,
                     detail="Payment account is required when paying immediately."
                 )
-            
+
+            # Recorded below against this account at face value in the cost's
+            # own currency, with no conversion - a mismatched account would
+            # misrecord the payment as that many USD/MXN instead of converting.
+            paid_account = await db.fetchrow(
+                "SELECT account_name, currency FROM accounts WHERE account_id = $1 AND is_active = TRUE",
+                payment_account_id
+            )
+            if not paid_account:
+                raise HTTPException(status_code=404, detail="Payment account not found")
+            if (paid_account['currency'] or 'USD') != currency:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{paid_account['account_name']} is a {paid_account['currency']} account, "
+                           f"but this cost is in {currency}. Select a {currency} account."
+                )
+
             await db.execute(
                 """
                 INSERT INTO transaction_lines (

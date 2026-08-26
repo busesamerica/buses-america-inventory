@@ -55,9 +55,15 @@ const InventoryManagement = () => {
       });
       if (response.ok) {
         const accounts = await response.json();
-        const paymentAccs = accounts.filter(acc => 
-          acc.account_type === 'Asset' && 
-          (acc.account_name.includes('Bank') || acc.account_name.includes('Cash'))
+        // Filter for USD bank/cash accounts only - purchase_price_usd is
+        // always USD, and record-purchase-payment records the raw number
+        // against whichever account is picked with no currency conversion,
+        // so an MXN account here would silently misrecord the payment at
+        // face value instead of its peso equivalent.
+        const paymentAccs = accounts.filter(acc =>
+          acc.account_type === 'Asset' &&
+          (acc.account_subtype === 'Bank' || acc.account_subtype === 'Cash') &&
+          acc.currency === 'USD'
         );
         setPaymentAccounts(paymentAccs);
       }
@@ -341,7 +347,11 @@ const InventoryManagement = () => {
                               </div>
                               <div>
                                 <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Status</div>
-                                <div style={{ fontWeight: '600', fontSize: '0.9rem', color: bus.status === 'Available' ? '#10b981' : '#6b7280' }}>{bus.status}</div>
+                                {/* is_sold, not the status text - 'Available' hasn't been a real
+                                    status value since the status vocabulary was fixed, so this
+                                    used to always render gray regardless of the unit's actual
+                                    status. */}
+                                <div style={{ fontWeight: '600', fontSize: '0.9rem', color: bus.is_sold ? '#6b7280' : '#10b981' }}>{bus.status}</div>
                               </div>
                               <div>
                                 <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Purchase Date</div>

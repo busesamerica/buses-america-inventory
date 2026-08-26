@@ -40,10 +40,15 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
         
         if (response.ok) {
           const accounts = await response.json();
-          // Filter for bank and cash accounts only
-          const paymentAccs = accounts.filter(acc => 
-            acc.account_type === 'Asset' && 
-            (acc.account_name.includes('Bank') || acc.account_name.includes('Cash'))
+          // Filter for USD bank/cash accounts only - purchase_price_usd is
+          // always USD, and record-purchase-payment records the raw number
+          // against whichever account is picked with no currency conversion,
+          // so an MXN account here would silently misrecord the payment at
+          // face value instead of its peso equivalent.
+          const paymentAccs = accounts.filter(acc =>
+            acc.account_type === 'Asset' &&
+            (acc.account_subtype === 'Bank' || acc.account_subtype === 'Cash') &&
+            acc.currency === 'USD'
           );
           setPaymentAccounts(paymentAccs);
         }
