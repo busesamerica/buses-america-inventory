@@ -4447,6 +4447,32 @@ async def get_dashboard(db=Depends(get_db), user=Depends(get_current_user)):
 
     result['us_inventory_value'] = us_value
     result['total_inventory_value'] = total_value
+
+    # Recent Inventory widget: same total-cost fix as above, computed here
+    # (rather than the frontend fetching /api/inventory itself) so it isn't
+    # just purchase_price_usd either, and so showing 5 units doesn't require
+    # fetching and discarding up to 100 full inventory rows.
+    recent_rows = await db.fetch(
+        "SELECT inventory_id, stock_number, vin, year, make, model, status, "
+        "purchase_price_usd FROM inventory WHERE is_deleted = FALSE "
+        "ORDER BY created_at DESC LIMIT 5"
+    )
+    recent_inventory = []
+    for r in recent_rows:
+        cost_data = await calculate_total_costs(db, r['inventory_id'], 'USD')
+        total_cost = float(cost_data['total_cost']) if cost_data else float(r['purchase_price_usd'] or 0)
+        recent_inventory.append({
+            'inventory_id': r['inventory_id'],
+            'stock_number': r['stock_number'],
+            'vin': r['vin'],
+            'year': r['year'],
+            'make': r['make'],
+            'model': r['model'],
+            'status': r['status'],
+            'total_cost_usd': total_cost,
+        })
+    result['recent_inventory'] = recent_inventory
+
     return result
 
 @app.get("/api/reports/us-inventory")
