@@ -756,7 +756,7 @@ const PaymentFormModal = ({ bus, accounts, onClose, onPaymentRecorded }) => {
 
             <div>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
-                Bank Account (Receiving Payment) <span style={{ color: '#dc2626' }}>*</span>
+                {formData.payment_currency} Bank Account (Receiving Payment) <span style={{ color: '#dc2626' }}>*</span>
               </label>
               <select
                 required
@@ -771,7 +771,10 @@ const PaymentFormModal = ({ bus, accounts, onClose, onPaymentRecorded }) => {
                 }}
               >
                 <option value="">-- Select bank account --</option>
-                {accounts.map(account => (
+                {/* Only accounts matching this payment's currency - the backend
+                    records the amount against the account with no conversion,
+                    so a mismatched account would misrecord it at face value. */}
+                {accounts.filter(account => account.currency === formData.payment_currency).map(account => (
                   <option key={account.account_id} value={account.account_id}>
                     {account.account_name}
                   </option>

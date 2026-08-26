@@ -236,7 +236,7 @@ const SalesReports = () => {
         {/* Pending Balance */}
         <div style={{
           padding: '1rem',
-          background: overview.pending_balance > 0 
+          background: (overview.pending_balance_usd > 0 || overview.pending_balance_mxn > 0)
             ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
             : 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)',
           borderRadius: '0.5rem',
@@ -244,8 +244,14 @@ const SalesReports = () => {
           color: 'white'
         }}>
           <div style={{ fontSize: '0.75rem', opacity: 0.9, marginBottom: '0.25rem' }}>Pending Balance</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: '700' }}>
-            {formatCurrency(overview.pending_balance, filters.currency !== 'ALL' ? filters.currency : 'USD')}
+          {/* USD and MXN balances are separate amounts, not one number - a
+              USD sale's balance_due and an MXN sale's balance_due can't be
+              added together without a conversion neither figure applies. */}
+          <div style={{ fontSize: '1.25rem', fontWeight: '700' }}>
+            {overview.pending_balance_usd > 0 && formatCurrency(overview.pending_balance_usd, 'USD')}
+            {overview.pending_balance_usd > 0 && overview.pending_balance_mxn > 0 && ' + '}
+            {overview.pending_balance_mxn > 0 && formatCurrency(overview.pending_balance_mxn, 'MXN')}
+            {overview.pending_balance_usd === 0 && overview.pending_balance_mxn === 0 && formatCurrency(0, 'USD')}
           </div>
           <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '0.25rem' }}>
             Outstanding payments
