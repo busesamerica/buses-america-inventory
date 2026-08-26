@@ -173,7 +173,18 @@ const InventoryManagement = () => {
   };
 
   const getInspectionForBus = (bus) => {
-    return inspections.find(insp => insp.vin === bus.vin);
+    // pre_inspection_id is the real FK set when a unit is created via
+    // "Create Inventory" from an approved inspection - authoritative when
+    // present. Fall back to a VIN match (case-insensitive: VINs typed
+    // before the uppercase-on-entry fix, or entered directly via the API,
+    // may not match casing exactly even though they're the same VIN) for
+    // units added directly rather than from an inspection, which never get
+    // that FK set even if a matching inspection exists.
+    if (bus.pre_inspection_id) {
+      const linked = inspections.find(insp => insp.inspection_id === bus.pre_inspection_id);
+      if (linked) return linked;
+    }
+    return inspections.find(insp => insp.vin?.toUpperCase() === bus.vin?.toUpperCase());
   };
 
   const handleViewInspection = (bus) => {
@@ -193,7 +204,8 @@ const InventoryManagement = () => {
       bus.make?.toLowerCase().includes(searchLower) ||
       bus.model?.toLowerCase().includes(searchLower) ||
       bus.year?.toString().includes(searchLower) ||
-      bus.engine_make?.toLowerCase().includes(searchLower)
+      bus.engine_make?.toLowerCase().includes(searchLower) ||
+      bus.engine_model?.toLowerCase().includes(searchLower)
     );
   });
 
@@ -557,7 +569,10 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    const updated = { ...formData, [name]: value };
+    // Uppercase VIN as entered - getInspectionForBus matches inventory to
+    // its pre-inspection record by exact VIN string, so a casing mismatch
+    // between the two would silently hide that link.
+    const updated = { ...formData, [name]: name === 'vin' ? value.toUpperCase() : value };
 
     // Only auto-derive on creation - `bus` is set when editing an existing
     // unit, and correcting a VIN typo there shouldn't silently overwrite an
