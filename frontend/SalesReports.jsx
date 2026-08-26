@@ -263,13 +263,13 @@ const SalesReports = () => {
           sales_count/revenue_usd/revenue_mxn per month) but nothing ever
           rendered it, despite this file's own header comment promising
           "charts and metrics".
-          Bars encode revenue (not sales_count), one bar per currency, each
-          scaled against its own currency's max across the window - USD and
-          MXN amounts sit on very different numeric scales, so a shared
-          scale would make one currency invisible next to the other. Every
-          month renders the same fixed structure (both bar slots, both
-          revenue lines) so USD-only, MXN-only and mixed months all line up
-          instead of the column shape changing with currency composition. */}
+          One bar per month, sized by revenue_consolidated_usd - USD and
+          MXN sales folded into a single USD-equivalent figure using each
+          sale's own sale-date exchange rate (computed backend-side, next
+          to the same historical-rate machinery calculate_total_costs
+          already uses). That keeps every month's column the same shape
+          regardless of currency mix; the native USD/MXN split is still
+          available on hover and in the line below the bar. */}
       {trends?.monthly?.length > 0 && (
         <div style={{
           padding: '1.5rem',
@@ -278,63 +278,49 @@ const SalesReports = () => {
           boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
           marginBottom: '1.5rem'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.5rem' }}>
-            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '700', color: '#111827' }}>
-              📈 Monthly Trends
-            </h3>
-            <div style={{ display: 'flex', gap: '1rem', fontSize: '0.7rem', color: '#6b7280' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#2563eb', display: 'inline-block' }} />
-                USD Revenue
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#d97706', display: 'inline-block' }} />
-                MXN Revenue
-              </span>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '1rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+          <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1rem', fontWeight: '700', color: '#111827' }}>
+            📈 Monthly Trends
+          </h3>
+          <p style={{ margin: '0 0 1.5rem 0', fontSize: '0.7rem', color: '#9ca3af' }}>
+            Revenue shown as consolidated USD equivalent (USD + MXN converted at each sale's exchange rate)
+          </p>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
             {(() => {
-              const maxUsd = Math.max(1, ...trends.monthly.map(m => m.revenue_usd || 0));
-              const maxMxn = Math.max(1, ...trends.monthly.map(m => m.revenue_mxn || 0));
+              const maxRevenue = Math.max(1, ...trends.monthly.map(m => m.revenue_consolidated_usd || 0));
               return trends.monthly.map((m, idx) => {
-                const usdHeight = m.revenue_usd > 0 ? Math.max(6, (m.revenue_usd / maxUsd) * 120) : 0;
-                const mxnHeight = m.revenue_mxn > 0 ? Math.max(6, (m.revenue_mxn / maxMxn) * 120) : 0;
+                const barHeight = m.revenue_consolidated_usd > 0 ? Math.max(6, (m.revenue_consolidated_usd / maxRevenue) * 120) : 2;
                 const monthStr = String(m.month).split('T')[0];
                 const monthLabel = new Date(monthStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                const breakdown = [
+                  m.revenue_usd > 0 && formatCurrency(m.revenue_usd, 'USD'),
+                  m.revenue_mxn > 0 && formatCurrency(m.revenue_mxn, 'MXN')
+                ].filter(Boolean).join(' + ');
                 return (
-                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '80px', flexShrink: 0 }}>
+                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '84px', flexShrink: 0 }}>
                     <div style={{ fontSize: '0.7rem', fontWeight: '700', color: '#111827', marginBottom: '0.35rem' }}>
                       {m.sales_count} {m.sales_count === 1 ? 'sale' : 'sales'}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', height: '120px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', height: '120px' }}>
                       <div
-                        title={`USD revenue: ${formatCurrency(m.revenue_usd || 0, 'USD')}`}
+                        title={breakdown || 'No sales'}
                         style={{
-                          width: '18px',
-                          height: `${usdHeight || 2}px`,
-                          background: usdHeight > 0 ? 'linear-gradient(180deg, #60a5fa 0%, #2563eb 100%)' : '#e5e7eb',
-                          borderRadius: '3px 3px 0 0'
-                        }}
-                      />
-                      <div
-                        title={`MXN revenue: ${formatCurrency(m.revenue_mxn || 0, 'MXN')}`}
-                        style={{
-                          width: '18px',
-                          height: `${mxnHeight || 2}px`,
-                          background: mxnHeight > 0 ? 'linear-gradient(180deg, #fbbf24 0%, #d97706 100%)' : '#e5e7eb',
-                          borderRadius: '3px 3px 0 0'
+                          width: '32px',
+                          height: `${barHeight}px`,
+                          background: m.revenue_consolidated_usd > 0
+                            ? 'linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)'
+                            : '#e5e7eb',
+                          borderRadius: '4px 4px 0 0'
                         }}
                       />
                     </div>
                     <div style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '0.5rem', fontWeight: '600' }}>
                       {monthLabel}
                     </div>
-                    <div style={{ fontSize: '0.65rem', color: '#2563eb', fontWeight: '600', marginTop: '0.2rem' }}>
-                      {m.revenue_usd > 0 ? formatCurrency(m.revenue_usd, 'USD') : '—'}
+                    <div style={{ fontSize: '0.75rem', color: '#111827', fontWeight: '700', marginTop: '0.2rem' }}>
+                      {formatCurrency(m.revenue_consolidated_usd || 0, 'USD')}
                     </div>
-                    <div style={{ fontSize: '0.65rem', color: '#d97706', fontWeight: '600' }}>
-                      {m.revenue_mxn > 0 ? formatCurrency(m.revenue_mxn, 'MXN') : '—'}
+                    <div style={{ fontSize: '0.65rem', color: '#9ca3af', textAlign: 'center' }}>
+                      {breakdown || '—'}
                     </div>
                   </div>
                 );

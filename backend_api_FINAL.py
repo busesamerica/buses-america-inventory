@@ -2537,7 +2537,13 @@ async def get_sales_analytics(
     detailed_sales = []
     total_profit_usd = 0
     total_profit_mxn = 0
-    
+    # Consolidated (USD-equivalent) revenue per month, keyed by 'YYYY-MM'.
+    # Built here rather than as its own SQL SUM() because each sale already
+    # carries the exchange rate in effect on its own sale date (via
+    # calculate_total_costs -> exchange_rate_used below), which is more
+    # accurate than converting a month's MXN total at a single rate.
+    monthly_consolidated_revenue = {}
+
     for sale in sales_rows:
         # Get costs using centralized calculation (SINGLE SOURCE OF TRUTH)
         sale_currency = sale['sale_currency']
@@ -2554,6 +2560,15 @@ async def get_sales_analytics(
         profit = sale_price - total_cost
         profit_margin = (profit / sale_price * 100) if sale_price > 0 else 0
         
+        # Consolidate this sale into its month's USD-equivalent total.
+        # exchange_rate here is MXN->USD (see calculate_total_costs), so an
+        # MXN sale converts the same way a peso cost is converted to USD
+        # everywhere else in this function.
+        if sale['sale_date']:
+            month_key = sale['sale_date'].strftime('%Y-%m')
+            revenue_usd_equiv = sale_price if sale_currency == 'USD' else sale_price * exchange_rate
+            monthly_consolidated_revenue[month_key] = monthly_consolidated_revenue.get(month_key, 0) + revenue_usd_equiv
+
         # Track profit by currency
         if sale_currency == 'USD':
             total_profit_usd += profit
@@ -2668,7 +2683,10 @@ async def get_sales_analytics(
                     'month': row['month'].isoformat() if row['month'] else None,
                     'sales_count': row['sales_count'],
                     'revenue_usd': float(row['revenue_usd'] or 0),
-                    'revenue_mxn': float(row['revenue_mxn'] or 0)
+                    'revenue_mxn': float(row['revenue_mxn'] or 0),
+                    # USD+MXN consolidated into one USD-equivalent figure
+                    # using each sale's own sale-date exchange rate.
+                    'revenue_consolidated_usd': float(monthly_consolidated_revenue.get(row['month'].strftime('%Y-%m'), 0)) if row['month'] else 0.0
                 }
                 for row in monthly_trends
             ]
