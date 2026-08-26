@@ -8,6 +8,7 @@ const InventoryManagement = () => {
   const [inspections, setInspections] = useState([]);
   const [paymentAccounts, setPaymentAccounts] = useState([]);
   const [search, setSearch] = useState('');
+  const [statusTab, setStatusTab] = useState('all'); // 'available' | 'sold' | 'all'
   const [loading, setLoading] = useState(true);
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [showBusForm, setShowBusForm] = useState(false);
@@ -195,7 +196,13 @@ const InventoryManagement = () => {
     }
   };
 
-  const filteredInventory = inventory.filter(bus => {
+  const matchesStatusTab = (bus) => {
+    if (statusTab === 'available') return !bus.is_sold;
+    if (statusTab === 'sold') return !!bus.is_sold;
+    return true; // 'all'
+  };
+
+  const matchesSearch = (bus) => {
     if (!search) return true;
     const searchLower = search.toLowerCase();
     return (
@@ -207,7 +214,15 @@ const InventoryManagement = () => {
       bus.engine_make?.toLowerCase().includes(searchLower) ||
       bus.engine_model?.toLowerCase().includes(searchLower)
     );
-  });
+  };
+
+  const filteredInventory = inventory.filter(bus => matchesStatusTab(bus) && matchesSearch(bus));
+
+  const statusTabCounts = {
+    available: inventory.filter(bus => !bus.is_sold).length,
+    sold: inventory.filter(bus => bus.is_sold).length,
+    all: inventory.length
+  };
 
   if (loading) {
     return (
@@ -221,6 +236,30 @@ const InventoryManagement = () => {
   return (
     <div style={{ maxWidth: '1400px' }}>
       <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+          {[
+            { id: 'available', label: 'Available' },
+            { id: 'sold', label: 'Sold' },
+            { id: 'all', label: 'All' }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setStatusTab(tab.id)}
+              style={{
+                padding: '0.5rem 1rem',
+                border: statusTab === tab.id ? '2px solid #FFD700' : '1px solid #ddd',
+                background: statusTab === tab.id ? '#fffbea' : 'white',
+                color: statusTab === tab.id ? '#1a1a1a' : '#6b7280',
+                fontWeight: statusTab === tab.id ? '700' : '500',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.9rem'
+              }}
+            >
+              {tab.label} ({statusTabCounts[tab.id]})
+            </button>
+          ))}
+        </div>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <input
             type="text"
@@ -229,8 +268,8 @@ const InventoryManagement = () => {
             onChange={(e) => setSearch(e.target.value)}
             style={{ flex: 1, minWidth: '300px', padding: '0.75rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '1rem' }}
           />
-          <button 
-            onClick={() => setShowBusForm(true)} 
+          <button
+            onClick={() => setShowBusForm(true)}
             style={{ padding: '0.75rem 1.5rem', background: '#FFD700', color: '#1a1a1a', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}
           >
             ➕ Add New Bus
@@ -240,13 +279,19 @@ const InventoryManagement = () => {
 
       <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
         <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
-          <h3 style={{ margin: 0 }}>All Buses ({filteredInventory.length})</h3>
+          <h3 style={{ margin: 0 }}>
+            {statusTab === 'available' ? 'Available Buses' : statusTab === 'sold' ? 'Sold Buses' : 'All Buses'} ({filteredInventory.length})
+          </h3>
         </div>
 
         {filteredInventory.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: '#666' }}>
             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🚌</div>
-            <div>{search ? 'No buses match your search' : 'No inventory yet'}</div>
+            <div>
+              {search
+                ? 'No buses match your search'
+                : statusTab === 'available' ? 'No available buses' : statusTab === 'sold' ? 'No sold buses' : 'No inventory yet'}
+            </div>
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
