@@ -455,7 +455,6 @@ function InventoryApp() {
   const { user } = useAuth();
   const [view, setView] = useState('dashboard');
   const [stats, setStats] = useState(null);
-  const [inventory, setInventory] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [inspections, setInspections] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -496,14 +495,12 @@ function InventoryApp() {
 
   const loadData = async () => {
     try {
-      const [dashboardData, inventoryData, suppliersData, inspectionsData] = await Promise.all([
+      const [dashboardData, suppliersData, inspectionsData] = await Promise.all([
         api.getDashboard(),
-        api.getInventory(),
         api.getSuppliers(),
         api.getPreInspections()
       ]);
       setStats(dashboardData);
-      setInventory(inventoryData);
       setSuppliers(suppliersData);
       setInspections(inspectionsData);
     } catch (error) {
@@ -663,14 +660,14 @@ function InventoryApp() {
                     View All →
                   </button>
                 </div>
-                {inventory.length === 0 ? (
+                {(stats?.recent_inventory || []).length === 0 ? (
                   <div style={{textAlign:'center',padding:'3rem',color:'#666'}}>
                     <div style={{fontSize:'3rem',marginBottom:'1rem'}}>🚌</div>
                     <div>No inventory yet</div>
                   </div>
                 ) : (
                   <div style={{display:'grid',gap:'1rem'}}>
-                    {inventory.slice(0, 5).map((bus) => (
+                    {stats.recent_inventory.map((bus) => (
                       <div key={bus.inventory_id} style={{padding:'1rem',border:'1px solid #ddd',borderRadius:'6px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                         <div>
                           <div style={{fontWeight:'600',fontSize:'1.1rem'}}>{bus.year} {bus.make} {bus.model}</div>
@@ -679,7 +676,7 @@ function InventoryApp() {
                           </div>
                         </div>
                         <div style={{textAlign:'right'}}>
-                          <div style={{fontWeight:'600',color:'#28a745'}}>{formatCurrency(bus.purchase_price_usd)}</div>
+                          <div style={{fontWeight:'600',color:'#28a745'}}>{formatCurrency(bus.total_cost_usd)}</div>
                           <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.25rem'}}>{bus.status}</div>
                         </div>
                       </div>
