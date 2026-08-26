@@ -410,7 +410,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                   </label>
                   <select
                     value={newCost.currency}
-                    onChange={(e) => setNewCost({ ...newCost, currency: e.target.value })}
+                    onChange={(e) => setNewCost({ ...newCost, currency: e.target.value, payment_account_id: '' })}
                     style={{
                       width: '100%',
                       padding: '0.75rem',
@@ -531,14 +531,17 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                       }}
                     >
                       <option value="">Select account...</option>
-                      {bankAccounts.map(account => (
+                      {/* Only accounts matching the cost's own currency - the backend
+                          records this amount against the account with no conversion,
+                          so a mismatched account would misrecord it at face value. */}
+                      {bankAccounts.filter(account => account.currency === newCost.currency).map(account => (
                         <option key={account.account_id} value={account.account_id}>
                           {account.account_name}
                         </option>
                       ))}
                     </select>
                     <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                      Which bank/cash account did you pay this from?
+                      Which {newCost.currency} bank/cash account did you pay this from?
                     </div>
                   </div>
                 )}
