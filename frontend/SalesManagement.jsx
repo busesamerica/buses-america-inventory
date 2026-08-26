@@ -68,15 +68,12 @@ const SalesManagement = () => {
 
   return (
     <div style={{ background: '#f9fafb' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h2 style={SECTION_HEADER_STYLE}>
-          💼 Sales Management
-        </h2>
-        <p style={SECTION_SUBTITLE_STYLE}>
-          Industry-standard sales workflow: Record → Track Payments → Analyze
-        </p>
-      </div>
+      {/* No module-intro header here - the app shell's top bar already
+          shows "Sales Management" as the page title (see App_COMPLETE.jsx);
+          repeating it in a second, same-weight heading just to relabel this
+          screen was pure duplication. InventoryManagement/ClientManagement/
+          QuoteManagement never had one - this now matches them instead of
+          being the odd one out. */}
 
       {/* Tabs */}
       <div style={{
