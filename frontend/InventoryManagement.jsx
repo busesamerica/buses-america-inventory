@@ -238,9 +238,9 @@ const InventoryManagement = () => {
       <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
           {[
+            { id: 'all', label: 'All' },
             { id: 'available', label: 'Available' },
-            { id: 'sold', label: 'Sold' },
-            { id: 'all', label: 'All' }
+            { id: 'sold', label: 'Sold' }
           ].map(tab => (
             <button
               key={tab.id}
