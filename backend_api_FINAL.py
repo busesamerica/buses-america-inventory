@@ -2068,10 +2068,29 @@ async def add_payment(
     
     sale_currency = inventory['sale_currency']
     sale_price = float(inventory['sale_price'])
-    
+
+    # The accounting entry below records payment_amount/payment_currency
+    # against payment_account_id at face value, with no conversion - checked
+    # here, before the payment itself is inserted, rather than inside that
+    # entry's own try/except (which only prints a warning on failure and
+    # would otherwise silently swallow a mismatch: the payment would still
+    # get recorded with no indication its accounting entry never happened).
+    paid_account = await db.fetchrow(
+        "SELECT account_name, currency FROM accounts WHERE account_id = $1 AND is_active = TRUE",
+        payment.payment_account_id
+    )
+    if not paid_account:
+        raise HTTPException(status_code=404, detail="Payment account not found")
+    if (paid_account['currency'] or 'USD') != payment.payment_currency:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{paid_account['account_name']} is a {paid_account['currency']} account, "
+                   f"but this payment is in {payment.payment_currency}. Select a {payment.payment_currency} account."
+        )
+
     # Get exchange rate as of payment date
     exchange_rate = await get_exchange_rate(db, 'USD', 'MXN', payment.payment_date)
-    
+
     # Insert payment
     query = """
         INSERT INTO payments (
@@ -2469,7 +2488,13 @@ async def get_sales_analytics(
             COUNT(DISTINCT i.client_id) as unique_clients,
             SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as revenue_usd,
             SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as revenue_mxn,
-            SUM(CASE WHEN i.payment_status = 'Paid in Full' THEN 0 ELSE COALESCE(i.balance_due, 0) END) as pending_balance_total,
+            -- Split by sale_currency, same as revenue_usd/revenue_mxn above -
+            -- balance_due is denominated in the sale's own currency, so
+            -- summing it across USD and MXN sales together (as a single
+            -- pending_balance_total) added incompatible units as if they
+            -- were the same currency.
+            SUM(CASE WHEN i.sale_currency = 'USD' AND i.payment_status != 'Paid in Full' THEN COALESCE(i.balance_due, 0) ELSE 0 END) as pending_balance_usd,
+            SUM(CASE WHEN i.sale_currency = 'MXN' AND i.payment_status != 'Paid in Full' THEN COALESCE(i.balance_due, 0) ELSE 0 END) as pending_balance_mxn,
             COUNT(CASE WHEN i.payment_status = 'Paid in Full' THEN 1 END) as paid_in_full_count,
             COUNT(CASE WHEN i.payment_status = 'Partial Payment' THEN 1 END) as partial_payment_count,
             COUNT(CASE WHEN i.payment_status = 'Pending Deposit' THEN 1 END) as pending_deposit_count
@@ -2619,7 +2644,8 @@ async def get_sales_analytics(
             'total_profit_usd': total_profit_usd,
             'total_profit_mxn': total_profit_mxn,
             'avg_profit_margin': avg_profit_margin,
-            'pending_balance': float(overview['pending_balance_total'] or 0),
+            'pending_balance_usd': float(overview['pending_balance_usd'] or 0),
+            'pending_balance_mxn': float(overview['pending_balance_mxn'] or 0),
             'payment_status_breakdown': {
                 'paid_in_full': overview['paid_in_full_count'],
                 'partial_payment': overview['partial_payment_count'],
