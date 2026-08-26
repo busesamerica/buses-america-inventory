@@ -470,9 +470,20 @@ function InventoryApp() {
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   useEffect(() => {
-    loadData();
     loadExchangeRate();
   }, []);
+
+  // Refetch every time the Dashboard tab is shown (including the initial
+  // mount, since 'dashboard' is the default view), not just once on load.
+  // Sales Management and Inventory Management manage their own data and
+  // never told this stats/inventory state to refresh, so recording a sale
+  // or editing a unit elsewhere used to leave the dashboard showing
+  // whatever was true when the app first loaded.
+  useEffect(() => {
+    if (view === 'dashboard') {
+      loadData();
+    }
+  }, [view]);
 
   const loadExchangeRate = async () => {
     try {
