@@ -88,12 +88,15 @@ const InventoryManagement = () => {
         body: JSON.stringify(busData)
       });
 
-      if (!response.ok) throw new Error('Failed to save bus');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to save bus');
+      }
       const savedBus = await response.json();
 
       if (!editingBus && (busData.payment_account_id || busData.payment_status === 'on_credit')) {
         try {
-          await fetch(`${API_URL}/inventory/${savedBus.inventory_id}/record-purchase-payment`, {
+          const paymentResponse = await fetch(`${API_URL}/inventory/${savedBus.inventory_id}/record-purchase-payment`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -106,11 +109,19 @@ const InventoryManagement = () => {
               payable_to: busData.payable_to || null
             })
           });
-          alert(busData.payment_status === 'on_credit' 
-            ? '✅ Bus saved! Purchase recorded as Accounts Payable.' 
+          // Was always treated as success even on a 4xx/5xx (fetch only
+          // rejects on a network failure, not an HTTP error status) - a
+          // rejected payment (e.g. the currency-mismatch guard) used to
+          // still show "recorded!" while nothing was actually recorded.
+          if (!paymentResponse.ok) {
+            const errorData = await paymentResponse.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Payment recording failed');
+          }
+          alert(busData.payment_status === 'on_credit'
+            ? '✅ Bus saved! Purchase recorded as Accounts Payable.'
             : '✅ Bus saved and purchase payment recorded!');
         } catch (err) {
-          alert('✅ Bus saved, but payment recording failed. Record manually.');
+          alert(`✅ Bus saved, but payment recording failed: ${err.message}. Record it manually via the Purchase Payment button.`);
         }
       } else {
         alert(editingBus ? '✅ Bus updated!' : '✅ Bus saved!');
@@ -125,13 +136,25 @@ const InventoryManagement = () => {
   };
 
   const handleDeleteBus = async (bus) => {
-    if (!confirm(`Delete ${bus.stock_number}?`)) return;
+    // Delete is a soft delete (is_deleted = TRUE) - it hides the unit from
+    // every inventory view, but any sale, cost, or payment already recorded
+    // against it stays in the accounting records, now referencing a unit
+    // nothing in Inventory/Sales shows any more. Warn before that happens
+    // instead of silently letting it.
+    const warning = bus.is_sold || bus.has_purchase_payment
+      ? `${bus.stock_number} has recorded ${[bus.is_sold && 'sale', bus.has_purchase_payment && 'payment'].filter(Boolean).join('/')} history. ` +
+        `Deleting it will hide it from Inventory and Sales, but that accounting history stays on the books. Delete anyway?`
+      : `Delete ${bus.stock_number}?`;
+    if (!confirm(warning)) return;
     try {
       const response = await fetch(`${API_URL}/inventory/${bus.inventory_id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` }
       });
-      if (!response.ok) throw new Error('Failed to delete');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to delete');
+      }
       alert('✅ Bus deleted');
       loadData();
     } catch (err) {
@@ -536,7 +559,11 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     const { name, value } = e.target;
     const updated = { ...formData, [name]: value };
 
-    if (name === 'vin' && value.length >= 6) {
+    // Only auto-derive on creation - `bus` is set when editing an existing
+    // unit, and correcting a VIN typo there shouldn't silently overwrite an
+    // already-established stock number that other records (quotes, cost
+    // item notes, sale history) may already reference by value.
+    if (!bus && name === 'vin' && value.length >= 6) {
       const last6 = value.slice(-6).toUpperCase();
       updated.stock_number = `BA-${last6}`;
     }
