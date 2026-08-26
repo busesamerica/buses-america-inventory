@@ -259,6 +259,58 @@ const SalesReports = () => {
         </div>
       </div>
 
+      {/* Monthly Trends - the backend already computed this (trends.monthly:
+          sales_count/revenue_usd/revenue_mxn per month) but nothing ever
+          rendered it, despite this file's own header comment promising
+          "charts and metrics". */}
+      {trends?.monthly?.length > 0 && (
+        <div style={{
+          padding: '1.5rem',
+          background: 'white',
+          borderRadius: '0.75rem',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+          marginBottom: '1.5rem'
+        }}>
+          <h3 style={{ margin: '0 0 1.5rem 0', fontSize: '1rem', fontWeight: '700', color: '#111827' }}>
+            📈 Monthly Trends
+          </h3>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+            {(() => {
+              const maxCount = Math.max(1, ...trends.monthly.map(m => m.sales_count));
+              return trends.monthly.map((m, idx) => {
+                const barHeight = Math.max(4, (m.sales_count / maxCount) * 120);
+                const monthStr = String(m.month).split('T')[0];
+                const monthLabel = new Date(monthStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                return (
+                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '72px', flexShrink: 0 }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#111827', marginBottom: '0.25rem' }}>
+                      {m.sales_count}
+                    </div>
+                    <div
+                      title={`${m.sales_count} sale${m.sales_count !== 1 ? 's' : ''}`}
+                      style={{
+                        width: '32px',
+                        height: `${barHeight}px`,
+                        background: 'linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)',
+                        borderRadius: '4px 4px 0 0'
+                      }}
+                    />
+                    <div style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '0.5rem', fontWeight: '600' }}>
+                      {monthLabel}
+                    </div>
+                    <div style={{ fontSize: '0.65rem', color: '#9ca3af', textAlign: 'center', marginTop: '0.15rem', lineHeight: 1.4 }}>
+                      {m.revenue_usd > 0 && formatCurrency(m.revenue_usd, 'USD')}
+                      {m.revenue_usd > 0 && m.revenue_mxn > 0 && <br />}
+                      {m.revenue_mxn > 0 && formatCurrency(m.revenue_mxn, 'MXN')}
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        </div>
+      )}
+
       {/* Two Column Layout */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
         
