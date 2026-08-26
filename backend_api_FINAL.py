@@ -2632,17 +2632,31 @@ async def get_sales_analytics(
     use_case_breakdown = await db.fetch(use_case_query, *params)
     
     # ========== MONTHLY TRENDS ==========
+    # generate_series fills in every month in [start_date, end_date] (params
+    # $1/$2, always the date bounds - see where_clause above), then the sales
+    # aggregate is LEFT JOINed onto it so months with zero sales still get a
+    # row (zeroed via COALESCE) instead of being dropped from the result -
+    # a month the chart skipped entirely used to look identical to one that
+    # was never queried.
     monthly_query = f"""
-        SELECT 
-            DATE_TRUNC('month', i.sale_date) as month,
-            COUNT(*) as sales_count,
-            SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as revenue_usd,
-            SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as revenue_mxn
-        FROM inventory i
-        LEFT JOIN clients c ON i.client_id = c.client_id
-        WHERE {where_clause}
-        GROUP BY DATE_TRUNC('month', i.sale_date)
-        ORDER BY month
+        SELECT
+            gs.month,
+            COALESCE(m.sales_count, 0) as sales_count,
+            COALESCE(m.revenue_usd, 0) as revenue_usd,
+            COALESCE(m.revenue_mxn, 0) as revenue_mxn
+        FROM generate_series(DATE_TRUNC('month', $1::date), DATE_TRUNC('month', $2::date), INTERVAL '1 month') AS gs(month)
+        LEFT JOIN (
+            SELECT
+                DATE_TRUNC('month', i.sale_date) as month,
+                COUNT(*) as sales_count,
+                SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as revenue_usd,
+                SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as revenue_mxn
+            FROM inventory i
+            LEFT JOIN clients c ON i.client_id = c.client_id
+            WHERE {where_clause}
+            GROUP BY DATE_TRUNC('month', i.sale_date)
+        ) m ON gs.month = m.month
+        ORDER BY gs.month
     """
     monthly_trends = await db.fetch(monthly_query, *params)
     

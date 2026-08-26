@@ -294,7 +294,7 @@ const SalesReports = () => {
           <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1rem', fontWeight: '700', color: '#111827' }}>
             📈 Monthly Trends
           </h3>
-          <p style={{ margin: '0 0 1.5rem 0', fontSize: '0.7rem', color: '#9ca3af' }}>
+          <p style={{ margin: '0 0 1.5rem 0', fontSize: '0.875rem', color: '#9ca3af' }}>
             Revenue shown as consolidated USD equivalent (USD + MXN converted at each sale's exchange rate)
           </p>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
@@ -309,8 +309,8 @@ const SalesReports = () => {
                   m.revenue_mxn > 0 && formatCurrency(m.revenue_mxn, 'MXN')
                 ].filter(Boolean).join(' + ');
                 return (
-                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '84px', flexShrink: 0 }}>
-                    <div style={{ fontSize: '0.7rem', fontWeight: '700', color: '#111827', marginBottom: '0.35rem' }}>
+                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '104px', flexShrink: 0 }}>
+                    <div style={{ fontSize: '0.875rem', fontWeight: '700', color: '#111827', marginBottom: '0.35rem' }}>
                       {m.sales_count} {m.sales_count === 1 ? 'sale' : 'sales'}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'flex-end', height: '120px' }}>
@@ -326,13 +326,13 @@ const SalesReports = () => {
                         }}
                       />
                     </div>
-                    <div style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '0.5rem', fontWeight: '600' }}>
+                    <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.5rem', fontWeight: '600' }}>
                       {monthLabel}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#111827', fontWeight: '700', marginTop: '0.2rem' }}>
+                    <div style={{ fontSize: '0.875rem', color: '#111827', fontWeight: '700', marginTop: '0.2rem' }}>
                       {formatCurrency(m.revenue_consolidated_usd || 0, 'USD')}
                     </div>
-                    <div style={{ fontSize: '0.65rem', color: '#9ca3af', textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#9ca3af', textAlign: 'center' }}>
                       {breakdown || '—'}
                     </div>
                   </div>
