@@ -17,11 +17,21 @@ const SalesReports = () => {
 
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
 
+  // /api/reports/sales-analytics recomputes profit per sale with a DB call
+  // per row, so its latency varies with how many sales fall in the
+  // selected range. Without this guard, applying a new date filter before
+  // the previous request finished could let the older, slower response
+  // land last and silently overwrite the newer one - looking exactly like
+  // the date filter "not doing anything". requestIdRef lets an in-flight
+  // request recognize it's been superseded and drop its own response.
+  const requestIdRef = React.useRef(0);
+
   React.useEffect(() => {
     loadAnalytics();
   }, [appliedFilters]);
 
   const loadAnalytics = async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
       const token = localStorage.getItem('session_token');
@@ -35,14 +45,17 @@ const SalesReports = () => {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
+      if (requestId !== requestIdRef.current) return; // a newer filter change superseded this request
+
       if (response.ok) {
         const data = await response.json();
+        if (requestId !== requestIdRef.current) return;
         setAnalytics(data);
       }
     } catch (error) {
       console.error('Error loading analytics:', error);
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   };
 
