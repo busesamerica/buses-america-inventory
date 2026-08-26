@@ -76,10 +76,10 @@ const PreInspectionsList = ({ onViewReport, onCreateInventory }) => {
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
       {/* Header */}
       <div style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '2rem', fontWeight: '700', color: '#1f2937', marginBottom: '0.5rem' }}>
+        <h2 style={SECTION_HEADER_STYLE}>
           🔍 Pre-Purchase Inspections
-        </h1>
-        <p style={{ color: '#6b7280', fontSize: '1rem' }}>
+        </h2>
+        <p style={SECTION_SUBTITLE_STYLE}>
           Manage all vehicle inspections before purchase
         </p>
       </div>

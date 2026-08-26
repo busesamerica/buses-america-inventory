@@ -35,3 +35,20 @@ function formatDate(dateString, style = 'short') {
     day: 'numeric'
   });
 }
+
+// Heading hierarchy, shared the same way as the formatters above.
+//
+// Every screen sits under the app shell's own page title (the top bar
+// <h1>, e.g. "Sales Management" - see App_COMPLETE.jsx), so a module or a
+// tab within it should never render another heading at that same 1.5rem
+// weight: SalesManagement, AccountingDashboard and PreInspectionsList each
+// used to repeat the page name in a same-size (or, for Pre-Inspections,
+// even larger) <h1> of their own, and a tab inside a module (e.g. Sales
+// Management's Analytics tab) matched that same size again - three
+// same-weight titles stacked on one screen with no visual hierarchy
+// between "page", "module" and "tab". SECTION_HEADER_STYLE/
+// SECTION_SUBTITLE_STYLE is the one step below the page title that all of
+// those should use instead, on a <h2> (the page title is the page's only
+// <h1>).
+const SECTION_HEADER_STYLE = { margin: '0 0 0.25rem 0', fontSize: '1.125rem', fontWeight: '700', color: '#111827' };
+const SECTION_SUBTITLE_STYLE = { margin: 0, color: '#6b7280', fontSize: '0.875rem' };
