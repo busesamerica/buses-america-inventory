@@ -70,10 +70,10 @@ const SalesManagement = () => {
     <div style={{ background: '#f9fafb' }}>
       {/* Header */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ margin: '0 0 0.25rem 0', fontSize: '1.5rem', fontWeight: '700', color: '#111827' }}>
+        <h2 style={SECTION_HEADER_STYLE}>
           💼 Sales Management
-        </h1>
-        <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>
+        </h2>
+        <p style={SECTION_SUBTITLE_STYLE}>
           Industry-standard sales workflow: Record → Track Payments → Analyze
         </p>
       </div>
