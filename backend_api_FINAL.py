@@ -4407,7 +4407,7 @@ async def get_warranty_claims(inventory_id: int, db=Depends(get_db), user=Depend
 async def get_dashboard(db=Depends(get_db), user=Depends(get_current_user)):
     """Dashboard statistics"""
     query = """
-        SELECT 
+        SELECT
             COUNT(*) as total_units,
             COUNT(*) FILTER (WHERE current_location = 'US Stock' AND is_sold = FALSE) as us_inventory,
             COUNT(*) FILTER (WHERE current_location = 'Mexico Stock' AND is_sold = FALSE) as mexico_inventory,
@@ -4415,14 +4415,39 @@ async def get_dashboard(db=Depends(get_db), user=Depends(get_current_user)):
             COUNT(*) FILTER (WHERE is_sold = TRUE AND status != 'Delivered') as sold_pending_delivery,
             COUNT(*) FILTER (WHERE status = 'Delivered') as delivered,
             COUNT(*) FILTER (WHERE warranty_status = 'Active') as under_warranty,
-            SUM(cost_in_us_stock_usd) FILTER (WHERE current_location = 'US Stock' AND is_sold = FALSE) as us_inventory_value,
-            SUM(cost_in_us_stock_usd) FILTER (WHERE is_sold = FALSE) as total_inventory_value,
             AVG(days_in_inventory) FILTER (WHERE status != 'Delivered') as avg_days_in_inventory
         FROM inventory
         WHERE is_deleted = FALSE
     """
     row = await db.fetchrow(query)
-    return dict(row)
+    result = dict(row)
+
+    # us_inventory_value / total_inventory_value: purchase price plus every
+    # cost_items entry (transport, reconditioning, import, etc.), not just
+    # cost_in_us_stock_usd's generated total. That column is purchase_price
+    # + transport_to_stock_cost_usd + initial_reconditioning_cost_usd +
+    # other_acquisition_costs_usd, but nothing in the UI ever sets those
+    # three - the real cost-entry flow ("Costs" button -> CostManagement
+    # Modal) writes to cost_items instead, so cost_in_us_stock_usd was
+    # silently always == purchase_price_usd. calculate_total_costs() is
+    # the same single-source-of-truth already used for COGS/profit
+    # elsewhere, so this also handles MXN cost items correctly.
+    available_units = await db.fetch(
+        "SELECT inventory_id, current_location FROM inventory "
+        "WHERE is_deleted = FALSE AND is_sold = FALSE"
+    )
+    us_value = 0.0
+    total_value = 0.0
+    for unit in available_units:
+        cost_data = await calculate_total_costs(db, unit['inventory_id'], 'USD')
+        unit_cost = float(cost_data['total_cost']) if cost_data else 0.0
+        total_value += unit_cost
+        if unit['current_location'] == 'US Stock':
+            us_value += unit_cost
+
+    result['us_inventory_value'] = us_value
+    result['total_inventory_value'] = total_value
+    return result
 
 @app.get("/api/reports/us-inventory")
 async def get_us_inventory_report(db=Depends(get_db), user=Depends(get_current_user)):
