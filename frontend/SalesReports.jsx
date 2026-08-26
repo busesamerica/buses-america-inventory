@@ -281,8 +281,14 @@ const SalesReports = () => {
           sale's own sale-date exchange rate (computed backend-side, next
           to the same historical-rate machinery calculate_total_costs
           already uses). That keeps every month's column the same shape
-          regardless of currency mix; the native USD/MXN split is still
-          available on hover and in the line below the bar. */}
+          regardless of currency mix.
+          Every month in the selected range gets a column (including
+          zero-sale months), which can be a year's worth or more. A grid
+          with auto-fit lets columns shrink and wrap to new rows to fit the
+          browser width instead of forcing one long horizontally-scrolling
+          strip, and only the month + a compact revenue figure are always
+          visible - the sale count and full USD/MXN breakdown move to the
+          bar's tooltip so a wide range doesn't force wide columns. */}
       {trends?.monthly?.length > 0 && (
         <div style={{
           padding: '1.5rem',
@@ -297,43 +303,43 @@ const SalesReports = () => {
           <p style={{ margin: '0 0 1.5rem 0', fontSize: '0.875rem', color: '#9ca3af' }}>
             Revenue shown as consolidated USD equivalent (USD + MXN converted at each sale's exchange rate)
           </p>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(56px, 1fr))', gap: '0.5rem 0.25rem' }}>
             {(() => {
               const maxRevenue = Math.max(1, ...trends.monthly.map(m => m.revenue_consolidated_usd || 0));
+              const formatCompactUSD = (amount) => {
+                const abs = Math.abs(amount);
+                if (abs >= 1000000) return `$${(amount / 1000000).toFixed(1)}M`;
+                if (abs >= 1000) return `$${(amount / 1000).toFixed(1)}K`;
+                return formatCurrency(amount, 'USD');
+              };
               return trends.monthly.map((m, idx) => {
-                const barHeight = m.revenue_consolidated_usd > 0 ? Math.max(6, (m.revenue_consolidated_usd / maxRevenue) * 120) : 2;
+                const barHeight = m.revenue_consolidated_usd > 0 ? Math.max(6, (m.revenue_consolidated_usd / maxRevenue) * 90) : 2;
                 const monthStr = String(m.month).split('T')[0];
                 const monthLabel = new Date(monthStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
                 const breakdown = [
                   m.revenue_usd > 0 && formatCurrency(m.revenue_usd, 'USD'),
                   m.revenue_mxn > 0 && formatCurrency(m.revenue_mxn, 'MXN')
                 ].filter(Boolean).join(' + ');
+                const tooltip = `${monthLabel}: ${m.sales_count} ${m.sales_count === 1 ? 'sale' : 'sales'}${breakdown ? ' - ' + breakdown : ''}`;
                 return (
-                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '104px', flexShrink: 0 }}>
-                    <div style={{ fontSize: '0.875rem', fontWeight: '700', color: '#111827', marginBottom: '0.35rem' }}>
-                      {m.sales_count} {m.sales_count === 1 ? 'sale' : 'sales'}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', height: '120px' }}>
+                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }} title={tooltip}>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', height: '90px' }}>
                       <div
-                        title={breakdown || 'No sales'}
                         style={{
-                          width: '32px',
+                          width: '18px',
                           height: `${barHeight}px`,
                           background: m.revenue_consolidated_usd > 0
                             ? 'linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)'
                             : '#e5e7eb',
-                          borderRadius: '4px 4px 0 0'
+                          borderRadius: '3px 3px 0 0'
                         }}
                       />
                     </div>
-                    <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.5rem', fontWeight: '600' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.4rem', fontWeight: '600' }}>
                       {monthLabel}
                     </div>
-                    <div style={{ fontSize: '0.875rem', color: '#111827', fontWeight: '700', marginTop: '0.2rem' }}>
-                      {formatCurrency(m.revenue_consolidated_usd || 0, 'USD')}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: '#9ca3af', textAlign: 'center' }}>
-                      {breakdown || '—'}
+                    <div style={{ fontSize: '0.75rem', color: '#111827', fontWeight: '700' }}>
+                      {formatCompactUSD(m.revenue_consolidated_usd || 0)}
                     </div>
                   </div>
                 );
