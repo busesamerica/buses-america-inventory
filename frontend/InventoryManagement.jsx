@@ -236,7 +236,7 @@ const InventoryManagement = () => {
   return (
     <div style={{ maxWidth: '1400px' }}>
       <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+        <div style={{ display: 'inline-flex', gap: '0.25rem', padding: '0.3rem', background: '#f3f4f6', borderRadius: '10px', marginBottom: '1rem' }}>
           {[
             { id: 'all', label: 'All' },
             { id: 'available', label: 'Available' },
@@ -246,14 +246,16 @@ const InventoryManagement = () => {
               key={tab.id}
               onClick={() => setStatusTab(tab.id)}
               style={{
-                padding: '0.5rem 1rem',
-                border: statusTab === tab.id ? '2px solid #FFD700' : '1px solid #ddd',
-                background: statusTab === tab.id ? '#fffbea' : 'white',
-                color: statusTab === tab.id ? '#1a1a1a' : '#6b7280',
-                fontWeight: statusTab === tab.id ? '700' : '500',
-                borderRadius: '6px',
+                padding: '0.6rem 1.25rem',
+                border: 'none',
+                background: statusTab === tab.id ? '#FFD700' : 'transparent',
+                color: '#1a1a1a',
+                fontWeight: statusTab === tab.id ? '700' : '600',
+                borderRadius: '8px',
                 cursor: 'pointer',
-                fontSize: '0.9rem'
+                fontSize: '0.95rem',
+                boxShadow: statusTab === tab.id ? '0 2px 5px rgba(0,0,0,0.15)' : 'none',
+                transition: 'background 0.15s, box-shadow 0.15s'
               }}
             >
               {tab.label} ({statusTabCounts[tab.id]})
