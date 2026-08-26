@@ -177,11 +177,16 @@ const api = (() => {
         throw new Error(err.detail || 'Failed to create inventory');
       }
       const newInventory = await res.json();
-      
-      // ADDED: Automatically record purchase payment if payment_account_id provided
+
+      // Automatically record purchase payment if payment_account_id provided.
+      // A rejected payment (e.g. the record-purchase-payment currency-mismatch
+      // guard) used to only be logged to the console - the caller's success
+      // alert fired unconditionally, so nothing ever told the user the
+      // payment wasn't actually recorded. Surface it on the returned object
+      // instead so the caller can show an honest message.
       if (additionalData.payment_account_id) {
         try {
-          await fetch(`${API_URL}/inventory/${newInventory.inventory_id}/record-purchase-payment`, {
+          const paymentRes = await fetch(`${API_URL}/inventory/${newInventory.inventory_id}/record-purchase-payment`, {
             method: 'POST',
             headers: headers(),
             body: JSON.stringify({
@@ -189,12 +194,15 @@ const api = (() => {
               payment_date: additionalData.purchase_date
             })
           });
+          if (!paymentRes.ok) {
+            const err = await paymentRes.json().catch(() => ({}));
+            newInventory.payment_recording_error = err.detail || 'Payment recording failed';
+          }
         } catch (err) {
-          console.error('Failed to record purchase payment:', err);
-          // Don't fail the whole operation if payment recording fails
+          newInventory.payment_recording_error = err.message || 'Payment recording failed';
         }
       }
-      
+
       return newInventory;
     },
     getCurrentExchangeRate: async () => {
@@ -923,11 +931,13 @@ function InventoryApp() {
       }}
       onSave={async (inventoryData) => {
         try {
-          await api.createInventoryFromInspection(selectedInspection.inspection_id, inventoryData);
+          const created = await api.createInventoryFromInspection(selectedInspection.inspection_id, inventoryData);
           setShowCreateInventoryModal(false);
           setSelectedInspection(null);
           await loadData();
-          alert('✅ Inventory created successfully from inspection!');
+          alert(created.payment_recording_error
+            ? `✅ Inventory created, but payment recording failed: ${created.payment_recording_error}. Record it manually from Inventory Management.`
+            : '✅ Inventory created successfully from inspection!');
         } catch (error) {
           alert('Error: ' + error.message);
         }
