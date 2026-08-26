@@ -3185,6 +3185,16 @@ async def record_sale(
         'balance_due': sale_data.sale_price,
         'payment_status': 'Pending'
     }
+    # Move status off whatever pre-sale value it had (e.g. 'In Stock (US)',
+    # or a leftover 'Available' from before the vocabulary fix) so it can't
+    # keep showing a stale pre-sale status forever - this used to be the
+    # only field is_sold changed, so any screen displaying bus.status
+    # directly (e.g. InventoryManagement.jsx's expanded row) kept showing
+    # the unit as available even after it was properly sold here. Only
+    # applies if status isn't already further along the pipeline, so this
+    # can't regress a unit whose import/delivery status was already set.
+    if bus['status'] not in POST_SALE_STATUSES:
+        update_fields['status'] = 'Sold'
     if sale_data.client_id:
         update_fields['client_id'] = sale_data.client_id
 
