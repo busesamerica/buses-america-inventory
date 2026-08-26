@@ -12,74 +12,90 @@ def generate_inspection_summary(inspection_data):
     # Handle asking price with None check
     asking_price = inspection_data.get('seller_asking_price')
     asking_price_str = f"${asking_price:,.2f} USD" if asking_price is not None else "Not provided"
-    
+
+    # dict.get(key, default) only falls back to `default` when the key is
+    # *missing* - inspection_data is a full DB row, so every column is
+    # present as a key even when its value is NULL. A numeric format spec
+    # (:, or :,.2f) or string concatenation applied to that None crashes
+    # this whole function - and this is the function create_inventory_
+    # from_inspection calls to build internal_notes, so a blank odometer,
+    # rust severity, or repair estimate (all genuinely optional on the
+    # inspection form) used to 500 the entire "Create Inventory" flow.
+    odometer = inspection_data.get('odometer')
+    odometer_str = f"{odometer:,}" if odometer is not None else "N/A"
+
+    rust_severity = inspection_data.get('rust_severity') or 'N/A'
+
+    repair_cost = inspection_data.get('estimated_repair_cost_usd')
+    repair_cost_str = f"${repair_cost:,.2f} USD" if repair_cost is not None else "N/A"
+
     summary = f"""
 ═══════════════════════════════════════════════════════════
 PRE-PURCHASE INSPECTION SUMMARY
 ═══════════════════════════════════════════════════════════
 
-Inspection Date: {inspection_data.get('inspection_date', 'N/A')}
-Inspector: {inspection_data.get('inspector_name', 'N/A')}
-Location: {inspection_data.get('inspection_location', 'N/A')}
+Inspection Date: {(inspection_data.get('inspection_date') or 'N/A')}
+Inspector: {(inspection_data.get('inspector_name') or 'N/A')}
+Location: {(inspection_data.get('inspection_location') or 'N/A')}
 
 ───────────────────────────────────────────────────────────
 VEHICLE INFORMATION
 ───────────────────────────────────────────────────────────
-VIN: {inspection_data.get('vin', 'N/A')}
-{inspection_data.get('year', 'N/A')} {inspection_data.get('make', 'N/A')} {inspection_data.get('model', 'N/A')}
-Odometer: {inspection_data.get('odometer', 'N/A'):,} {inspection_data.get('odometer_unit', 'miles')}
-Capacity: {inspection_data.get('passenger_capacity', 'N/A')} passengers
+VIN: {(inspection_data.get('vin') or 'N/A')}
+{(inspection_data.get('year') or 'N/A')} {(inspection_data.get('make') or 'N/A')} {(inspection_data.get('model') or 'N/A')}
+Odometer: {odometer_str} {inspection_data.get('odometer_unit', 'miles')}
+Capacity: {(inspection_data.get('passenger_capacity') or 'N/A')} passengers
 
 ───────────────────────────────────────────────────────────
 SELLER INFORMATION
 ───────────────────────────────────────────────────────────
-Seller: {inspection_data.get('seller_name', 'N/A')}
+Seller: {(inspection_data.get('seller_name') or 'N/A')}
 Asking Price: {asking_price_str}
-Contact: {inspection_data.get('seller_contact', 'N/A')}
+Contact: {(inspection_data.get('seller_contact') or 'N/A')}
 
 ───────────────────────────────────────────────────────────
 INSPECTION RESULTS
 ───────────────────────────────────────────────────────────
 
-ENGINE: {inspection_data.get('engine_condition', 'N/A')}
+ENGINE: {(inspection_data.get('engine_condition') or 'N/A')}
   • Starts: {'✓ Yes' if inspection_data.get('engine_starts') else '✗ No'}
-  • Oil: {inspection_data.get('engine_oil_condition', 'N/A')}
-  • Coolant: {inspection_data.get('engine_coolant_condition', 'N/A')}
+  • Oil: {(inspection_data.get('engine_oil_condition') or 'N/A')}
+  • Coolant: {(inspection_data.get('engine_coolant_condition') or 'N/A')}
   • Leaks: {'⚠ Yes' if inspection_data.get('engine_leaks') else '✓ No'}
   • Noise Issues: {'⚠ Yes' if inspection_data.get('engine_noise') else '✓ No'}
   {f"  Notes: {inspection_data.get('engine_notes')}" if inspection_data.get('engine_notes') else ''}
 
-TRANSMISSION: {inspection_data.get('transmission_condition', 'N/A')}
+TRANSMISSION: {(inspection_data.get('transmission_condition') or 'N/A')}
   • Shifts Properly: {'✓ Yes' if inspection_data.get('transmission_shifts_properly') else '✗ No'}
-  • Fluid: {inspection_data.get('transmission_fluid_condition', 'N/A')}
+  • Fluid: {(inspection_data.get('transmission_fluid_condition') or 'N/A')}
   • Leaks: {'⚠ Yes' if inspection_data.get('transmission_leaks') else '✓ No'}
   {f"  Notes: {inspection_data.get('transmission_notes')}" if inspection_data.get('transmission_notes') else ''}
 
-SUSPENSION & STEERING: {inspection_data.get('suspension_condition', 'N/A')}
-  • Steering: {inspection_data.get('steering_condition', 'N/A')}
+SUSPENSION & STEERING: {(inspection_data.get('suspension_condition') or 'N/A')}
+  • Steering: {(inspection_data.get('steering_condition') or 'N/A')}
   • Alignment: {'✓ OK' if inspection_data.get('alignment_ok') else '✗ Needs Work'}
   {f"  Notes: {inspection_data.get('suspension_notes')}" if inspection_data.get('suspension_notes') else ''}
 
-CHASSIS & BODY: {inspection_data.get('chassis_condition', 'N/A')}
-  • Body: {inspection_data.get('body_condition', 'N/A')}
-  • Rust: {'⚠ Yes (' + inspection_data.get('rust_severity', 'N/A') + ')' if inspection_data.get('rust_present') else '✓ No'}
+CHASSIS & BODY: {(inspection_data.get('chassis_condition') or 'N/A')}
+  • Body: {(inspection_data.get('body_condition') or 'N/A')}
+  • Rust: {f'⚠ Yes ({rust_severity})' if inspection_data.get('rust_present') else '✓ No'}
   • Structural Damage: {'⚠ Yes' if inspection_data.get('structural_damage') else '✓ No'}
   {f"  Notes: {inspection_data.get('chassis_notes')}" if inspection_data.get('chassis_notes') else ''}
 
-BRAKES: {inspection_data.get('brake_condition', 'N/A')}
-  • Pad Life: {inspection_data.get('brake_pads_percentage', 'N/A')}%
-  • Lines: {inspection_data.get('brake_lines_condition', 'N/A')}
+BRAKES: {(inspection_data.get('brake_condition') or 'N/A')}
+  • Pad Life: {(inspection_data.get('brake_pads_percentage') or 'N/A')}%
+  • Lines: {(inspection_data.get('brake_lines_condition') or 'N/A')}
   {f"  Notes: {inspection_data.get('brake_notes')}" if inspection_data.get('brake_notes') else ''}
 
-ELECTRICAL: {inspection_data.get('electrical_system_condition', 'N/A')}
+ELECTRICAL: {(inspection_data.get('electrical_system_condition') or 'N/A')}
   • Lights: {'✓ Working' if inspection_data.get('lights_working') else '✗ Not Working'}
-  • Battery: {inspection_data.get('battery_condition', 'N/A')}
+  • Battery: {(inspection_data.get('battery_condition') or 'N/A')}
   • Alternator: {'✓ Working' if inspection_data.get('alternator_working') else '✗ Not Working'}
   {f"  Notes: {inspection_data.get('electrical_notes')}" if inspection_data.get('electrical_notes') else ''}
 
-INTERIOR: {inspection_data.get('interior_condition', 'N/A')}
-  • Seats: {inspection_data.get('seats_condition', 'N/A')}
-  • Floor: {inspection_data.get('floor_condition', 'N/A')}
+INTERIOR: {(inspection_data.get('interior_condition') or 'N/A')}
+  • Seats: {(inspection_data.get('seats_condition') or 'N/A')}
+  • Floor: {(inspection_data.get('floor_condition') or 'N/A')}
   {f"  Notes: {inspection_data.get('interior_notes')}" if inspection_data.get('interior_notes') else ''}
 
 ROAD TEST: {'✓ Performed' if inspection_data.get('road_test_performed') else '✗ Not Performed'}
@@ -89,9 +105,9 @@ ROAD TEST: {'✓ Performed' if inspection_data.get('road_test_performed') else '
 OVERALL ASSESSMENT
 ───────────────────────────────────────────────────────────
 
-Overall Rating: {inspection_data.get('overall_rating', 'N/A')}
-Recommendation: {inspection_data.get('recommendation', 'N/A')}
-Estimated Repair Cost: ${inspection_data.get('estimated_repair_cost_usd', 0):,.2f} USD
+Overall Rating: {(inspection_data.get('overall_rating') or 'N/A')}
+Recommendation: {(inspection_data.get('recommendation') or 'N/A')}
+Estimated Repair Cost: {repair_cost_str}
 
 {f"Inspector Notes: {inspection_data.get('inspector_notes')}" if inspection_data.get('inspector_notes') else ''}
 

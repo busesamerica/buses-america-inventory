@@ -111,7 +111,11 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      // Uppercase VIN as entered so it matches how it's displayed elsewhere
+      // and how inventory looks it up (InventoryManagement.jsx's
+      // getInspectionForBus matches by VIN) - a casing mismatch between an
+      // inspection and its inventory record silently breaks that lookup.
+      [name]: type === 'checkbox' ? checked : (name === 'vin' ? value.toUpperCase() : value)
     }));
   };
 

@@ -4754,7 +4754,7 @@ async def create_inventory_from_inspection(
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
             $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28,
-            $29, $30, $31, $32, $33, $34, $35
+            $29, $30, $31, $32, $33, $34, $35, $36, $37
         )
         RETURNING *
     """
@@ -4802,10 +4802,12 @@ async def create_inventory_from_inspection(
         user['username']
     )
     
-    # Mark inspection as purchased
+    # Mark inspection as purchased and link back to the inventory unit it
+    # became (inventory.pre_inspection_id is already set above via the
+    # INSERT; this is the same relationship in the other direction).
     await db.execute(
-        "UPDATE pre_purchase_inspections SET purchased = true WHERE inspection_id = $1",
-        inspection_id
+        "UPDATE pre_purchase_inspections SET purchased = true, inventory_id = $1 WHERE inspection_id = $2",
+        inventory_row['inventory_id'], inspection_id
     )
 
     await log_audit(
