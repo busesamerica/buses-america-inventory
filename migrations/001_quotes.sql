@@ -145,8 +145,20 @@ END $$;
 
 -- ============================================================
 -- Convenience view: open quotes with their unit count
+--
+-- DROP + CREATE instead of CREATE OR REPLACE: this file re-runs on every
+-- deploy (migrate.py has no applied-migrations ledger), and any later
+-- migration that ALTER TABLE ADD COLUMNs onto quotes (e.g. 003_quote_
+-- prepared_by.sql) shifts what "q.*" expands to here. CREATE OR REPLACE
+-- VIEW refuses that - Postgres treats a shifted "q.*" as renaming an
+-- existing output column (e.g. "cannot change name of view column
+-- 'unit_count' to 'prepared_by_name'") - which broke every migration
+-- from this file onward on every deploy since 003 first shipped. Nothing
+-- queries this view (grep confirms), so dropping and recreating it is
+-- safe.
 -- ============================================================
-CREATE OR REPLACE VIEW open_quotes AS
+DROP VIEW IF EXISTS open_quotes;
+CREATE VIEW open_quotes AS
 SELECT q.*,
        COUNT(li.line_id) FILTER (WHERE li.line_type = 'bus') AS unit_count,
        (q.valid_until IS NOT NULL AND q.valid_until < CURRENT_DATE) AS is_past_due
