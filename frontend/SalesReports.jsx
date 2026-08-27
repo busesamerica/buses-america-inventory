@@ -81,15 +81,12 @@ const SalesReports = () => {
 
   return (
     <div style={{ background: '#f9fafb' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h2 style={SECTION_HEADER_STYLE}>
-          📊 Sales Reports & Analytics
-        </h2>
-        <p style={SECTION_SUBTITLE_STYLE}>
-          Comprehensive insights into your sales performance
-        </p>
-      </div>
+      {/* No heading here - Record Sale and Manage Sales, this tab's own
+          siblings in the same module, show no heading of their own before
+          their content (see SalesManagement.jsx), and the tab button
+          itself already reads "📊 Analytics". Repeating the label in a
+          heading only this one tab had looked unbalanced next to the
+          other two. */}
 
       {/* Filters */}
       <div style={{
@@ -179,7 +176,14 @@ const SalesReports = () => {
         </button>
       </div>
 
-      {/* Overview Cards */}
+      {/* Overview Cards - white card + colored left border, matching the
+          Dashboard's own stat cards (App_COMPLETE.jsx) and the restrained,
+          meaning-tied color use in this same module's Manage Sales tab
+          (money in green, nothing else colored). The five tiles here used
+          to be five different fully-saturated gradient fills with no
+          consistent reasoning behind which metric got which color - that
+          made this the most "decorated" card style in the whole module
+          while its sibling tabs stayed plain. */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
@@ -189,14 +193,14 @@ const SalesReports = () => {
         {/* Total Sales */}
         <div style={{
           padding: '1rem',
-          background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-          borderRadius: '0.5rem',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-          color: 'white'
+          background: 'white',
+          borderRadius: '0.75rem',
+          borderLeft: '4px solid #3b82f6',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
         }}>
-          <div style={{ fontSize: '0.75rem', opacity: 0.9, marginBottom: '0.25rem' }}>Total Sales</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: '700' }}>{overview.total_sales}</div>
-          <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '0.25rem' }}>
+          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Total Sales</div>
+          <div style={{ fontSize: '1.75rem', fontWeight: '700', color: '#111827' }}>{overview.total_sales}</div>
+          <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.25rem' }}>
             {overview.unique_clients} unique clients
           </div>
         </div>
@@ -204,14 +208,14 @@ const SalesReports = () => {
         {/* Revenue USD */}
         <div style={{
           padding: '1rem',
-          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-          borderRadius: '0.5rem',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-          color: 'white'
+          background: 'white',
+          borderRadius: '0.75rem',
+          borderLeft: '4px solid #10b981',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
         }}>
-          <div style={{ fontSize: '0.75rem', opacity: 0.9, marginBottom: '0.25rem' }}>Revenue (USD)</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: '700' }}>{formatCurrency(overview.revenue_usd, 'USD')}</div>
-          <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '0.25rem' }}>
+          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Revenue (USD)</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#111827' }}>{formatCurrency(overview.revenue_usd, 'USD')}</div>
+          <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.25rem' }}>
             Profit: {formatCurrency(overview.total_profit_usd, 'USD')}
           </div>
         </div>
@@ -219,14 +223,14 @@ const SalesReports = () => {
         {/* Revenue MXN */}
         <div style={{
           padding: '1rem',
-          background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-          borderRadius: '0.5rem',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-          color: 'white'
+          background: 'white',
+          borderRadius: '0.75rem',
+          borderLeft: '4px solid #8b5cf6',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
         }}>
-          <div style={{ fontSize: '0.75rem', opacity: 0.9, marginBottom: '0.25rem' }}>Revenue (MXN)</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: '700' }}>{formatCurrency(overview.revenue_mxn, 'MXN')}</div>
-          <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '0.25rem' }}>
+          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Revenue (MXN)</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#111827' }}>{formatCurrency(overview.revenue_mxn, 'MXN')}</div>
+          <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.25rem' }}>
             Profit: {formatCurrency(overview.total_profit_mxn, 'MXN')}
           </div>
         </div>
@@ -234,39 +238,45 @@ const SalesReports = () => {
         {/* Profit Margin */}
         <div style={{
           padding: '1rem',
-          background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-          borderRadius: '0.5rem',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-          color: 'white'
+          background: 'white',
+          borderRadius: '0.75rem',
+          borderLeft: '4px solid #f59e0b',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
         }}>
-          <div style={{ fontSize: '0.75rem', opacity: 0.9, marginBottom: '0.25rem' }}>Avg Profit Margin</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: '700' }}>{overview.avg_profit_margin.toFixed(1)}%</div>
-          <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '0.25rem' }}>
+          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Avg Profit Margin</div>
+          <div style={{ fontSize: '1.75rem', fontWeight: '700', color: '#111827' }}>{overview.avg_profit_margin.toFixed(1)}%</div>
+          <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.25rem' }}>
             Across all sales
           </div>
         </div>
 
-        {/* Pending Balance */}
+        {/* Pending Balance - the one card where color still carries
+            meaning (something is owed), same principle as the Payment
+            Status card's green/yellow/red rows below. */}
         <div style={{
           padding: '1rem',
-          background: (overview.pending_balance_usd > 0 || overview.pending_balance_mxn > 0)
-            ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
-            : 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)',
-          borderRadius: '0.5rem',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-          color: 'white'
+          background: 'white',
+          borderRadius: '0.75rem',
+          borderLeft: (overview.pending_balance_usd > 0 || overview.pending_balance_mxn > 0)
+            ? '4px solid #ef4444'
+            : '4px solid #9ca3af',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
         }}>
-          <div style={{ fontSize: '0.75rem', opacity: 0.9, marginBottom: '0.25rem' }}>Pending Balance</div>
+          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Pending Balance</div>
           {/* USD and MXN balances are separate amounts, not one number - a
               USD sale's balance_due and an MXN sale's balance_due can't be
               added together without a conversion neither figure applies. */}
-          <div style={{ fontSize: '1.25rem', fontWeight: '700' }}>
+          <div style={{
+            fontSize: '1.25rem',
+            fontWeight: '700',
+            color: (overview.pending_balance_usd > 0 || overview.pending_balance_mxn > 0) ? '#dc2626' : '#111827'
+          }}>
             {overview.pending_balance_usd > 0 && formatCurrency(overview.pending_balance_usd, 'USD')}
             {overview.pending_balance_usd > 0 && overview.pending_balance_mxn > 0 && ' + '}
             {overview.pending_balance_mxn > 0 && formatCurrency(overview.pending_balance_mxn, 'MXN')}
             {overview.pending_balance_usd === 0 && overview.pending_balance_mxn === 0 && formatCurrency(0, 'USD')}
           </div>
-          <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '0.25rem' }}>
+          <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.25rem' }}>
             Outstanding payments
           </div>
         </div>
