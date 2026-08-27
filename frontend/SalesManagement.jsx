@@ -75,25 +75,34 @@ const SalesManagement = () => {
           QuoteManagement never had one - this now matches them instead of
           being the odd one out. */}
 
-      {/* Tabs */}
+      {/* Tabs - rounded segmented control, matching the card/pill corner
+          radius (0.75rem / 0.5rem) used everywhere else in the app. This
+          used to be a flat underline-tab strip with no rounding at all -
+          the only module with squared-off corners at the top of its
+          content while every other module's tab/pill control is rounded
+          (see InventoryManagement's Available/Sold pills, ClientManagement
+          and AccountingDashboard's cards). */}
       <div style={{
-        display: 'flex',
-        gap: '0.5rem',
-        marginBottom: '1.5rem',
-        borderBottom: '2px solid #e5e7eb'
+        display: 'inline-flex',
+        gap: '0.25rem',
+        padding: '0.3rem',
+        background: 'white',
+        borderRadius: '0.75rem',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        marginBottom: '1.5rem'
       }}>
         <button
           onClick={() => setActiveTab('record')}
           style={{
             padding: '0.75rem 1.5rem',
-            background: activeTab === 'record' ? 'white' : 'transparent',
+            background: activeTab === 'record' ? '#3b82f6' : 'transparent',
             border: 'none',
-            borderBottom: activeTab === 'record' ? '3px solid #3b82f6' : '3px solid transparent',
-            color: activeTab === 'record' ? '#3b82f6' : '#6b7280',
+            color: activeTab === 'record' ? 'white' : '#6b7280',
             fontWeight: activeTab === 'record' ? '700' : '500',
+            borderRadius: '0.5rem',
             cursor: 'pointer',
             fontSize: '0.875rem',
-            marginBottom: '-2px'
+            transition: 'background 0.15s, color 0.15s'
           }}
         >
           ➕ Record Sale
@@ -102,14 +111,14 @@ const SalesManagement = () => {
           onClick={() => setActiveTab('manage')}
           style={{
             padding: '0.75rem 1.5rem',
-            background: activeTab === 'manage' ? 'white' : 'transparent',
+            background: activeTab === 'manage' ? '#3b82f6' : 'transparent',
             border: 'none',
-            borderBottom: activeTab === 'manage' ? '3px solid #3b82f6' : '3px solid transparent',
-            color: activeTab === 'manage' ? '#3b82f6' : '#6b7280',
+            color: activeTab === 'manage' ? 'white' : '#6b7280',
             fontWeight: activeTab === 'manage' ? '700' : '500',
+            borderRadius: '0.5rem',
             cursor: 'pointer',
             fontSize: '0.875rem',
-            marginBottom: '-2px'
+            transition: 'background 0.15s, color 0.15s'
           }}
         >
           💰 Manage Sales
@@ -118,14 +127,14 @@ const SalesManagement = () => {
           onClick={() => setActiveTab('analytics')}
           style={{
             padding: '0.75rem 1.5rem',
-            background: activeTab === 'analytics' ? 'white' : 'transparent',
+            background: activeTab === 'analytics' ? '#3b82f6' : 'transparent',
             border: 'none',
-            borderBottom: activeTab === 'analytics' ? '3px solid #3b82f6' : '3px solid transparent',
-            color: activeTab === 'analytics' ? '#3b82f6' : '#6b7280',
+            color: activeTab === 'analytics' ? 'white' : '#6b7280',
             fontWeight: activeTab === 'analytics' ? '700' : '500',
+            borderRadius: '0.5rem',
             cursor: 'pointer',
             fontSize: '0.875rem',
-            marginBottom: '-2px'
+            transition: 'background 0.15s, color 0.15s'
           }}
         >
           📊 Analytics
