@@ -172,16 +172,6 @@ const AccountingDashboard = () => {
     }
   };
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount && amount !== 0) return currency === 'USD' ? '$0.00' : 'MXN $0.00';
-    const formatted = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(Math.abs(amount));
-    const prefix = currency === 'USD' ? '$' : 'MXN $';
-    return amount < 0 ? `(${prefix}${formatted})` : `${prefix}${formatted}`;
-  };
-
   if (loading) {
     return (
       <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
@@ -196,15 +186,12 @@ const AccountingDashboard = () => {
 
   return (
     <div style={{ background: '#f9fafb' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ margin: '0 0 0.25rem 0', fontSize: '1.5rem', fontWeight: '700', color: '#111827' }}>
-          💼 Accounting Dashboard
-        </h1>
-        <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>
-          Real-time cash position and financial management
-        </p>
-      </div>
+      {/* No module-intro header here - the app shell's top bar already
+          shows "Accounting Dashboard" as the page title (see
+          App_COMPLETE.jsx); repeating it in a second, same-weight heading
+          just to relabel this screen was pure duplication.
+          InventoryManagement/ClientManagement/QuoteManagement never had
+          one - this now matches them instead of being the odd one out. */}
 
       {/* Cash Position Summary Cards */}
       <div style={{

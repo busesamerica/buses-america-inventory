@@ -34,15 +34,6 @@ const ClientManagement = () => {
     }
   };
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount && amount !== 0) return currency === 'USD' ? '$0.00' : 'MXN $0.00';
-    const formatted = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-    return currency === 'USD' ? `$${formatted}` : `MXN $${formatted}`;
-  };
-
   const filteredClients = clients.filter(client =>
     client.client_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.client_company?.toLowerCase().includes(searchTerm.toLowerCase()) ||

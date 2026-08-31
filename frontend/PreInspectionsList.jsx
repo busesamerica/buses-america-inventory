@@ -40,16 +40,6 @@ const PreInspectionsList = ({ onViewReport, onCreateInventory }) => {
     }
   };
 
-  const formatCurrency = (amount) => {
-    if (!amount) return '$0.00';
-    return `$${parseFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
   const getBadgeStyle = (recommendation) => {
     const styles = {
       'Approve': { background: '#10b981', color: 'white', icon: '✅' },
@@ -86,10 +76,10 @@ const PreInspectionsList = ({ onViewReport, onCreateInventory }) => {
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
       {/* Header */}
       <div style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '2rem', fontWeight: '700', color: '#1f2937', marginBottom: '0.5rem' }}>
+        <h2 style={SECTION_HEADER_STYLE}>
           🔍 Pre-Purchase Inspections
-        </h1>
-        <p style={{ color: '#6b7280', fontSize: '1rem' }}>
+        </h2>
+        <p style={SECTION_SUBTITLE_STYLE}>
           Manage all vehicle inspections before purchase
         </p>
       </div>

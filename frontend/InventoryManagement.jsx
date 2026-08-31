@@ -8,6 +8,7 @@ const InventoryManagement = () => {
   const [inspections, setInspections] = useState([]);
   const [paymentAccounts, setPaymentAccounts] = useState([]);
   const [search, setSearch] = useState('');
+  const [statusTab, setStatusTab] = useState('all'); // 'available' | 'sold' | 'all'
   const [loading, setLoading] = useState(true);
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [showBusForm, setShowBusForm] = useState(false);
@@ -55,9 +56,15 @@ const InventoryManagement = () => {
       });
       if (response.ok) {
         const accounts = await response.json();
-        const paymentAccs = accounts.filter(acc => 
-          acc.account_type === 'Asset' && 
-          (acc.account_name.includes('Bank') || acc.account_name.includes('Cash'))
+        // Filter for USD bank/cash accounts only - purchase_price_usd is
+        // always USD, and record-purchase-payment records the raw number
+        // against whichever account is picked with no currency conversion,
+        // so an MXN account here would silently misrecord the payment at
+        // face value instead of its peso equivalent.
+        const paymentAccs = accounts.filter(acc =>
+          acc.account_type === 'Asset' &&
+          (acc.account_subtype === 'Bank' || acc.account_subtype === 'Cash') &&
+          acc.currency === 'USD'
         );
         setPaymentAccounts(paymentAccs);
       }
@@ -82,12 +89,15 @@ const InventoryManagement = () => {
         body: JSON.stringify(busData)
       });
 
-      if (!response.ok) throw new Error('Failed to save bus');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to save bus');
+      }
       const savedBus = await response.json();
 
       if (!editingBus && (busData.payment_account_id || busData.payment_status === 'on_credit')) {
         try {
-          await fetch(`${API_URL}/inventory/${savedBus.inventory_id}/record-purchase-payment`, {
+          const paymentResponse = await fetch(`${API_URL}/inventory/${savedBus.inventory_id}/record-purchase-payment`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -100,11 +110,19 @@ const InventoryManagement = () => {
               payable_to: busData.payable_to || null
             })
           });
-          alert(busData.payment_status === 'on_credit' 
-            ? '✅ Bus saved! Purchase recorded as Accounts Payable.' 
+          // Was always treated as success even on a 4xx/5xx (fetch only
+          // rejects on a network failure, not an HTTP error status) - a
+          // rejected payment (e.g. the currency-mismatch guard) used to
+          // still show "recorded!" while nothing was actually recorded.
+          if (!paymentResponse.ok) {
+            const errorData = await paymentResponse.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Payment recording failed');
+          }
+          alert(busData.payment_status === 'on_credit'
+            ? '✅ Bus saved! Purchase recorded as Accounts Payable.'
             : '✅ Bus saved and purchase payment recorded!');
         } catch (err) {
-          alert('✅ Bus saved, but payment recording failed. Record manually.');
+          alert(`✅ Bus saved, but payment recording failed: ${err.message}. Record it manually via the Purchase Payment button.`);
         }
       } else {
         alert(editingBus ? '✅ Bus updated!' : '✅ Bus saved!');
@@ -119,13 +137,25 @@ const InventoryManagement = () => {
   };
 
   const handleDeleteBus = async (bus) => {
-    if (!confirm(`Delete ${bus.stock_number}?`)) return;
+    // Delete is a soft delete (is_deleted = TRUE) - it hides the unit from
+    // every inventory view, but any sale, cost, or payment already recorded
+    // against it stays in the accounting records, now referencing a unit
+    // nothing in Inventory/Sales shows any more. Warn before that happens
+    // instead of silently letting it.
+    const warning = bus.is_sold || bus.has_purchase_payment
+      ? `${bus.stock_number} has recorded ${[bus.is_sold && 'sale', bus.has_purchase_payment && 'payment'].filter(Boolean).join('/')} history. ` +
+        `Deleting it will hide it from Inventory and Sales, but that accounting history stays on the books. Delete anyway?`
+      : `Delete ${bus.stock_number}?`;
+    if (!confirm(warning)) return;
     try {
       const response = await fetch(`${API_URL}/inventory/${bus.inventory_id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` }
       });
-      if (!response.ok) throw new Error('Failed to delete');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to delete');
+      }
       alert('✅ Bus deleted');
       loadData();
     } catch (err) {
@@ -144,7 +174,18 @@ const InventoryManagement = () => {
   };
 
   const getInspectionForBus = (bus) => {
-    return inspections.find(insp => insp.vin === bus.vin);
+    // pre_inspection_id is the real FK set when a unit is created via
+    // "Create Inventory" from an approved inspection - authoritative when
+    // present. Fall back to a VIN match (case-insensitive: VINs typed
+    // before the uppercase-on-entry fix, or entered directly via the API,
+    // may not match casing exactly even though they're the same VIN) for
+    // units added directly rather than from an inspection, which never get
+    // that FK set even if a matching inspection exists.
+    if (bus.pre_inspection_id) {
+      const linked = inspections.find(insp => insp.inspection_id === bus.pre_inspection_id);
+      if (linked) return linked;
+    }
+    return inspections.find(insp => insp.vin?.toUpperCase() === bus.vin?.toUpperCase());
   };
 
   const handleViewInspection = (bus) => {
@@ -155,22 +196,13 @@ const InventoryManagement = () => {
     }
   };
 
-  const formatCurrency = (amount) => {
-    if (!amount && amount !== 0) return '$0.00';
-    return `$${parseFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const matchesStatusTab = (bus) => {
+    if (statusTab === 'available') return !bus.is_sold;
+    if (statusTab === 'sold') return !!bus.is_sold;
+    return true; // 'all'
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    const str = String(dateString).split('T')[0];
-    return new Date(str + 'T00:00:00').toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  const filteredInventory = inventory.filter(bus => {
+  const matchesSearch = (bus) => {
     if (!search) return true;
     const searchLower = search.toLowerCase();
     return (
@@ -179,9 +211,18 @@ const InventoryManagement = () => {
       bus.make?.toLowerCase().includes(searchLower) ||
       bus.model?.toLowerCase().includes(searchLower) ||
       bus.year?.toString().includes(searchLower) ||
-      bus.engine_make?.toLowerCase().includes(searchLower)
+      bus.engine_make?.toLowerCase().includes(searchLower) ||
+      bus.engine_model?.toLowerCase().includes(searchLower)
     );
-  });
+  };
+
+  const filteredInventory = inventory.filter(bus => matchesStatusTab(bus) && matchesSearch(bus));
+
+  const statusTabCounts = {
+    available: inventory.filter(bus => !bus.is_sold).length,
+    sold: inventory.filter(bus => bus.is_sold).length,
+    all: inventory.length
+  };
 
   if (loading) {
     return (
@@ -195,6 +236,32 @@ const InventoryManagement = () => {
   return (
     <div style={{ maxWidth: '1400px' }}>
       <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'inline-flex', gap: '0.25rem', padding: '0.3rem', background: '#f3f4f6', borderRadius: '10px', marginBottom: '1rem' }}>
+          {[
+            { id: 'all', label: 'All' },
+            { id: 'available', label: 'Available' },
+            { id: 'sold', label: 'Sold' }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setStatusTab(tab.id)}
+              style={{
+                padding: '0.6rem 1.25rem',
+                border: 'none',
+                background: statusTab === tab.id ? '#FFD700' : 'transparent',
+                color: '#1a1a1a',
+                fontWeight: statusTab === tab.id ? '700' : '600',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '0.95rem',
+                boxShadow: statusTab === tab.id ? '0 2px 5px rgba(0,0,0,0.15)' : 'none',
+                transition: 'background 0.15s, box-shadow 0.15s'
+              }}
+            >
+              {tab.label} ({statusTabCounts[tab.id]})
+            </button>
+          ))}
+        </div>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <input
             type="text"
@@ -203,8 +270,8 @@ const InventoryManagement = () => {
             onChange={(e) => setSearch(e.target.value)}
             style={{ flex: 1, minWidth: '300px', padding: '0.75rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '1rem' }}
           />
-          <button 
-            onClick={() => setShowBusForm(true)} 
+          <button
+            onClick={() => setShowBusForm(true)}
             style={{ padding: '0.75rem 1.5rem', background: '#FFD700', color: '#1a1a1a', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}
           >
             ➕ Add New Bus
@@ -214,13 +281,19 @@ const InventoryManagement = () => {
 
       <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
         <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
-          <h3 style={{ margin: 0 }}>All Buses ({filteredInventory.length})</h3>
+          <h3 style={{ margin: 0 }}>
+            {statusTab === 'available' ? 'Available Buses' : statusTab === 'sold' ? 'Sold Buses' : 'All Buses'} ({filteredInventory.length})
+          </h3>
         </div>
 
         {filteredInventory.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: '#666' }}>
             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🚌</div>
-            <div>{search ? 'No buses match your search' : 'No inventory yet'}</div>
+            <div>
+              {search
+                ? 'No buses match your search'
+                : statusTab === 'available' ? 'No available buses' : statusTab === 'sold' ? 'No sold buses' : 'No inventory yet'}
+            </div>
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -356,7 +429,11 @@ const InventoryManagement = () => {
                               </div>
                               <div>
                                 <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Status</div>
-                                <div style={{ fontWeight: '600', fontSize: '0.9rem', color: bus.status === 'Available' ? '#10b981' : '#6b7280' }}>{bus.status}</div>
+                                {/* is_sold, not the status text - 'Available' hasn't been a real
+                                    status value since the status vocabulary was fixed, so this
+                                    used to always render gray regardless of the unit's actual
+                                    status. */}
+                                <div style={{ fontWeight: '600', fontSize: '0.9rem', color: bus.is_sold ? '#6b7280' : '#10b981' }}>{bus.status}</div>
                               </div>
                               <div>
                                 <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Purchase Date</div>
@@ -458,7 +535,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     asking_price: '',
     asking_currency: 'USD',
     current_location: 'US Stock',
-    status: 'Available',
+    status: 'Purchased - In Transit to Stock',
     condition: 'Good',
     payment_account_id: '',
     payment_status: 'paid',
@@ -539,9 +616,16 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    const updated = { ...formData, [name]: value };
+    // Uppercase VIN as entered - getInspectionForBus matches inventory to
+    // its pre-inspection record by exact VIN string, so a casing mismatch
+    // between the two would silently hide that link.
+    const updated = { ...formData, [name]: name === 'vin' ? value.toUpperCase() : value };
 
-    if (name === 'vin' && value.length >= 6) {
+    // Only auto-derive on creation - `bus` is set when editing an existing
+    // unit, and correcting a VIN typo there shouldn't silently overwrite an
+    // already-established stock number that other records (quotes, cost
+    // item notes, sale history) may already reference by value.
+    if (!bus && name === 'vin' && value.length >= 6) {
       const last6 = value.slice(-6).toUpperCase();
       updated.stock_number = `BA-${last6}`;
     }
@@ -741,15 +825,27 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
                 <select name="current_location" value={formData.current_location} onChange={handleChange} required style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }}>
                   <option value="US Stock">US Stock</option>
                   <option value="Mexico Stock">Mexico Stock</option>
+                  <option value="In Transit">In Transit</option>
+                  <option value="Client">Client</option>
                 </select>
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Status *</label>
+                {/* Selecting "Sold" or anything from "Sold - Pending Import" onward marks
+                    the unit sold server-side (is_sold), same as recording a sale through
+                    Sales Management - see update_inventory in backend_api_FINAL.py. "Sold"
+                    is the generic milestone for a unit that's sold but hasn't started (or
+                    won't go through) the import pipeline yet. */}
                 <select name="status" value={formData.status} onChange={handleChange} required style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                  <option value="Available">Available</option>
+                  <option value="Purchased - In Transit to Stock">Purchased - In Transit to Stock</option>
+                  <option value="In Stock (US)">In Stock (US)</option>
                   <option value="Sold">Sold</option>
-                  <option value="In Transit">In Transit</option>
-                  <option value="Under Repair">Under Repair</option>
+                  <option value="Sold - Pending Import">Sold - Pending Import</option>
+                  <option value="Import/Customs Processing">Import/Customs Processing</option>
+                  <option value="In Stock (Mexico)">In Stock (Mexico)</option>
+                  <option value="In Preventive Maintenance">In Preventive Maintenance</option>
+                  <option value="Ready for Delivery">Ready for Delivery</option>
+                  <option value="In Transit to Client">In Transit to Client</option>
                   <option value="Delivered">Delivered</option>
                 </select>
               </div>

@@ -16,11 +16,15 @@ import os
 import secrets
 import hashlib
 import json
+import uuid
+import time
 from contextlib import asynccontextmanager
 
 # Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/buses_america")
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
+ALLOWED_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+MAX_PHOTO_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 # Security
 security = HTTPBearer()
@@ -277,6 +281,26 @@ class InventoryUpdate(BaseModel):
     # Exchange rate
     exchange_rate_used: Optional[Decimal] = None
 
+# A unit can't legitimately reach any of these statuses (see the documented
+# inventory.status pipeline in bus_inventory_schema_FINAL.sql, plus the
+# generic 'Sold' milestone for a unit that's sold but hasn't started - or
+# won't go through - the import pipeline) without having been sold.
+# update_inventory() below uses this to keep is_sold in sync no matter how
+# status gets set, instead of relying on every caller (or every frontend
+# form) to also set is_sold correctly on its own - see
+# migrations/004_fix_inventory_location_status.sql for the bug that caused
+# when nothing enforced it.
+#
+# Deliberately narrower than the full documented pipeline: 'Import/Customs
+# Processing' and 'In Stock (Mexico)' are left out because Mexico Stock is
+# also a valid *pre-sale* current_location - a unit can be relocated there
+# before it's sold, not only imported there after, so those two statuses
+# don't unambiguously imply a sale the way the others do.
+POST_SALE_STATUSES = {
+    'Sold', 'Sold - Pending Import', 'In Preventive Maintenance',
+    'Ready for Delivery', 'In Transit to Client', 'Delivered',
+}
+
 class Inventory(BaseModel):
     inventory_id: int
     stock_number: str
@@ -287,9 +311,16 @@ class Inventory(BaseModel):
     body_style: Optional[str]
     bus_type: Optional[str]
     passenger_capacity: Optional[int]
+    wheelchair_capacity: Optional[int] = None
+    engine_make: Optional[str] = None
+    engine_model: Optional[str] = None
+    engine_type: Optional[str] = None
+    transmission: Optional[str] = None
+    fuel_type: Optional[str] = None
     odometer: Optional[int]
     condition: str
     exterior_color: Optional[str]
+    interior_color: Optional[str] = None
     title_status: Optional[str]
     
     supplier_id: Optional[int]
@@ -499,9 +530,19 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Restrict cross-origin requests to known frontend origin(s). "*" combined with
+# allow_credentials=True lets any website make authenticated requests using a
+# visitor's bearer token, so the origin list must be explicit in production.
+_allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+ALLOWED_ORIGINS = [o.strip() for o in _allowed_origins_env.split(",") if o.strip()]
+if not ALLOWED_ORIGINS:
+    # Fail safe to localhost-only when ALLOWED_ORIGINS isn't configured, instead
+    # of silently trusting every origin on the internet.
+    ALLOWED_ORIGINS = ["http://localhost:3000", "http://localhost:5173"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -513,24 +554,69 @@ async def get_db():
 
 # ==================== AUTHENTICATION HELPERS ====================
 
+PBKDF2_ITERATIONS = 600_000  # OWASP-recommended floor for PBKDF2-HMAC-SHA256
+LEGACY_PBKDF2_ITERATIONS = 100_000  # iteration count used by hashes created before this change
+
 def hash_password(password: str) -> str:
-    """Hash password using PBKDF2"""
+    """Hash password using PBKDF2. Format: pbkdf2_sha256$<iterations>$<salt>$<hex hash>."""
     salt = secrets.token_hex(16)
-    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
-    return f"{salt}${pwd_hash.hex()}"
+    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), PBKDF2_ITERATIONS)
+    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt}${pwd_hash.hex()}"
 
 def verify_password(password: str, password_hash: str) -> bool:
-    """Verify password against hash"""
+    """Verify password against hash.
+
+    Supports the current versioned format (which records its own iteration
+    count so it can be strengthened later without invalidating every
+    existing user's password) and the legacy two-field format from before
+    this change, so existing accounts keep working.
+    """
     try:
-        salt, pwd_hash = password_hash.split('$')
-        new_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
-        return new_hash.hex() == pwd_hash
-    except:
+        parts = password_hash.split('$')
+        if len(parts) == 4 and parts[0] == 'pbkdf2_sha256':
+            _, iterations_str, salt, pwd_hash = parts
+            iterations = int(iterations_str)
+        elif len(parts) == 2:
+            salt, pwd_hash = parts
+            iterations = LEGACY_PBKDF2_ITERATIONS
+        else:
+            return False
+        new_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), iterations)
+        return secrets.compare_digest(new_hash.hex(), pwd_hash)
+    except Exception:
         return False
 
 def generate_session_token() -> str:
     """Generate secure session token"""
     return secrets.token_urlsafe(32)
+
+# In-memory login throttling, keyed by username+IP. Not shared across
+# multiple server processes/instances, but on the single-instance deployment
+# this app runs on it stops straightforward credential-stuffing / brute-force
+# attempts against /api/auth/login with no extra infrastructure required.
+_LOGIN_FAILURES: dict = {}
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_LOCKOUT_SECONDS = 15 * 60
+
+def _login_throttle_key(username: str, request: Request) -> str:
+    client_ip = request.client.host if request and request.client else "unknown"
+    return f"{(username or '').lower()}:{client_ip}"
+
+def _check_login_throttle(key: str):
+    now = time.time()
+    attempts = [t for t in _LOGIN_FAILURES.get(key, []) if now - t < LOGIN_LOCKOUT_SECONDS]
+    _LOGIN_FAILURES[key] = attempts
+    if len(attempts) >= LOGIN_MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed login attempts. Please try again in 15 minutes."
+        )
+
+def _record_login_failure(key: str):
+    _LOGIN_FAILURES.setdefault(key, []).append(time.time())
+
+def _clear_login_failures(key: str):
+    _LOGIN_FAILURES.pop(key, None)
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -788,8 +874,8 @@ async def root():
     }
 
 @app.post("/admin/initialize-database")
-async def initialize_database():
-    """Initialize database with schema - ONE TIME USE ONLY"""
+async def initialize_database(user=Depends(require_admin)):
+    """Initialize database with schema - ONE TIME USE ONLY - ADMIN ONLY"""
     try:
         # Read schema file
         with open('bus_inventory_schema_FINAL.sql', 'r') as f:
@@ -837,18 +923,23 @@ async def initialize_database():
 # ==================== AUTHENTICATION ENDPOINTS ====================
 
 @app.post("/api/auth/login", response_model=SessionResponse)
-async def login(credentials: UserLogin, db=Depends(get_db)):
+async def login(credentials: UserLogin, request: Request, db=Depends(get_db)):
     """User login - returns session token"""
+    throttle_key = _login_throttle_key(credentials.username, request)
+    _check_login_throttle(throttle_key)
+
     user = await db.fetchrow("""
-        SELECT * FROM users 
+        SELECT * FROM users
         WHERE username = $1 AND is_active = TRUE
     """, credentials.username)
-    
+
     if not user or not verify_password(credentials.password, user['password_hash']):
+        _record_login_failure(throttle_key)
         await log_audit(db, None, credentials.username, 'login_failed',
                        description=f"Failed login attempt for {credentials.username}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
+
+    _clear_login_failures(throttle_key)
     session_token = generate_session_token()
     expires_at = datetime.utcnow() + timedelta(hours=8)
     
@@ -874,10 +965,12 @@ async def login(credentials: UserLogin, db=Depends(get_db)):
 @app.post("/api/auth/logout")
 async def logout(current_user: dict = Depends(get_current_user), db=Depends(get_db)):
     """User logout"""
+    # Only invalidate the session used for this request, not every session
+    # the user has open on other devices/browsers.
     await db.execute("""
-        DELETE FROM user_sessions 
-        WHERE user_id = $1
-    """, current_user['user_id'])
+        DELETE FROM user_sessions
+        WHERE session_token = $1
+    """, current_user['session_token'])
     
     await log_audit(db, current_user['user_id'], current_user['username'], 'logout',
                    description=f"{current_user['full_name']} logged out")
@@ -896,6 +989,9 @@ async def create_user(
     db=Depends(get_db)
 ):
     """Create new user (admin only)"""
+    if len(user_data.password) < 10:
+        raise HTTPException(status_code=400, detail="Password must be at least 10 characters long")
+
     password_hash = hash_password(user_data.password)
     
     new_user = await db.fetchrow("""
@@ -953,10 +1049,19 @@ async def get_audit_log(
 @app.get("/api/exchange-rates/current")
 async def get_current_exchange_rate(db=Depends(get_db)):
     """Get current active USD/MXN exchange rate"""
+    # from_currency/to_currency filter is load-bearing, not decorative: every
+    # consumer of this endpoint (CostManagementModal's grand total,
+    # App_COMPLETE.jsx's displayed rate) assumes the result is USD->MXN
+    # (~17) and multiplies by it directly. Without this filter, an MXN->USD
+    # row (~0.057) with a later effective_date would silently win and wreck
+    # every MXN total downstream. Today's only writer (AccountingDashboard.jsx)
+    # always inserts USD->MXN, so this has stayed dormant - but nothing
+    # stops a future caller of POST /api/exchange-rates from adding the
+    # other direction, so this is the one place to hold that invariant.
     row = await db.fetchrow("""
         SELECT rate_id, from_currency, to_currency, rate, effective_date, created_at, is_active
         FROM exchange_rates
-        WHERE is_active = TRUE
+        WHERE is_active = TRUE AND from_currency = 'USD' AND to_currency = 'MXN'
         ORDER BY effective_date DESC
         LIMIT 1
     """)
@@ -997,7 +1102,7 @@ async def get_exchange_rate_history(limit: int = 30, db=Depends(get_db)):
 # ==================== SUPPLIER ENDPOINTS ====================
 
 @app.post("/api/suppliers", response_model=Supplier)
-async def create_supplier(supplier: SupplierCreate, db=Depends(get_db)):
+async def create_supplier(supplier: SupplierCreate, db=Depends(get_db), user=Depends(get_current_user)):
     """Create new supplier"""
     query = """
         INSERT INTO suppliers (company_name, contact_person, email, phone, address, 
@@ -1013,7 +1118,7 @@ async def create_supplier(supplier: SupplierCreate, db=Depends(get_db)):
     return dict(row)
 
 @app.get("/api/suppliers", response_model=List[Supplier])
-async def get_suppliers(is_active: Optional[bool] = True, db=Depends(get_db)):
+async def get_suppliers(is_active: Optional[bool] = True, db=Depends(get_db), user=Depends(get_current_user)):
     """Get all suppliers"""
     if is_active is not None:
         query = "SELECT * FROM suppliers WHERE is_active = $1 ORDER BY company_name"
@@ -1026,7 +1131,7 @@ async def get_suppliers(is_active: Optional[bool] = True, db=Depends(get_db)):
 # ==================== PRE-PURCHASE INSPECTION ENDPOINTS ====================
 
 @app.post("/api/inspections/pre-purchase", response_model=PrePurchaseInspection)
-async def create_pre_purchase_inspection(inspection: PrePurchaseInspectionCreate, db=Depends(get_db)):
+async def create_pre_purchase_inspection(inspection: PrePurchaseInspectionCreate, db=Depends(get_db), user=Depends(get_current_user)):
     """Create pre-purchase inspection (before buying the bus)"""
     query = """
         INSERT INTO pre_purchase_inspections (
@@ -1069,7 +1174,8 @@ async def get_pre_purchase_inspections(
     decision: Optional[str] = None,
     recommendation: Optional[str] = None,
     limit: int = 50,
-    db=Depends(get_db)
+    db=Depends(get_db),
+    user=Depends(get_current_user)
 ):
     """Get pre-purchase inspections"""
     conditions = []
@@ -1103,7 +1209,8 @@ async def update_inspection_decision(
     inspection_id: int,
     decision: str,
     decision_notes: Optional[str] = None,
-    db=Depends(get_db)
+    db=Depends(get_db),
+    user=Depends(get_current_user)
 ):
     """Update inspection decision (Approved/Rejected)"""
     query = """
@@ -1296,7 +1403,16 @@ async def record_purchase_payment(
         )
         if not bank_account:
             raise HTTPException(status_code=404, detail="Bank account not found")
-        
+        # purchase_price is always purchase_price_usd - recorded below at face
+        # value with no currency conversion, so an MXN account would silently
+        # misrecord it as that many pesos instead of its USD amount converted.
+        if (bank_account['currency'] or 'USD') != 'USD':
+            raise HTTPException(
+                status_code=400,
+                detail=f"{bank_account['account_name']} is a {bank_account['currency']} account, "
+                       f"but the purchase price is in USD. Select a USD account."
+            )
+
         line_currency = bank_account['currency'] or 'USD'
         
         trans_row = await db.fetchrow("""
@@ -1353,7 +1469,8 @@ async def get_inventory(
     supplier_id: Optional[int] = None,
     limit: int = 100,
     offset: int = 0,
-    db=Depends(get_db)
+    db=Depends(get_db),
+    user=Depends(get_current_user)
 ):
     """Get inventory with filters"""
     conditions = ["i.is_deleted = FALSE"]
@@ -1411,7 +1528,7 @@ async def get_inventory(
     return [dict(row) for row in rows]
 
 @app.get("/api/inventory/{inventory_id}", response_model=Inventory)
-async def get_inventory_item(inventory_id: int, db=Depends(get_db)):
+async def get_inventory_item(inventory_id: int, db=Depends(get_db), user=Depends(get_current_user)):
     """Get specific inventory item"""
     query = "SELECT * FROM inventory WHERE inventory_id = $1 AND is_deleted = FALSE"
     row = await db.fetchrow(query, inventory_id)
@@ -1435,7 +1552,12 @@ async def update_inventory(
         'client_contact', 'client_email', 'client_phone', 'client_use_case'
     }
     update_dict = {k: v for k, v in update_dict.items() if k not in NON_INVENTORY_FIELDS}
-    
+
+    # Force is_sold in step with status, rather than trusting every caller to
+    # send both correctly - see POST_SALE_STATUSES above.
+    if update_dict.get('status') in POST_SALE_STATUSES:
+        update_dict['is_sold'] = True
+
     if not update_dict:
         raise HTTPException(status_code=400, detail="No fields to update")
 
@@ -1695,7 +1817,23 @@ async def add_inventory_cost(
                     status_code=400,
                     detail="Payment account is required when paying immediately."
                 )
-            
+
+            # Recorded below against this account at face value in the cost's
+            # own currency, with no conversion - a mismatched account would
+            # misrecord the payment as that many USD/MXN instead of converting.
+            paid_account = await db.fetchrow(
+                "SELECT account_name, currency FROM accounts WHERE account_id = $1 AND is_active = TRUE",
+                payment_account_id
+            )
+            if not paid_account:
+                raise HTTPException(status_code=404, detail="Payment account not found")
+            if (paid_account['currency'] or 'USD') != currency:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{paid_account['account_name']} is a {paid_account['currency']} account, "
+                           f"but this cost is in {currency}. Select a {currency} account."
+                )
+
             await db.execute(
                 """
                 INSERT INTO transaction_lines (
@@ -1930,10 +2068,29 @@ async def add_payment(
     
     sale_currency = inventory['sale_currency']
     sale_price = float(inventory['sale_price'])
-    
+
+    # The accounting entry below records payment_amount/payment_currency
+    # against payment_account_id at face value, with no conversion - checked
+    # here, before the payment itself is inserted, rather than inside that
+    # entry's own try/except (which only prints a warning on failure and
+    # would otherwise silently swallow a mismatch: the payment would still
+    # get recorded with no indication its accounting entry never happened).
+    paid_account = await db.fetchrow(
+        "SELECT account_name, currency FROM accounts WHERE account_id = $1 AND is_active = TRUE",
+        payment.payment_account_id
+    )
+    if not paid_account:
+        raise HTTPException(status_code=404, detail="Payment account not found")
+    if (paid_account['currency'] or 'USD') != payment.payment_currency:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{paid_account['account_name']} is a {paid_account['currency']} account, "
+                   f"but this payment is in {payment.payment_currency}. Select a {payment.payment_currency} account."
+        )
+
     # Get exchange rate as of payment date
     exchange_rate = await get_exchange_rate(db, 'USD', 'MXN', payment.payment_date)
-    
+
     # Insert payment
     query = """
         INSERT INTO payments (
@@ -2331,7 +2488,13 @@ async def get_sales_analytics(
             COUNT(DISTINCT i.client_id) as unique_clients,
             SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as revenue_usd,
             SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as revenue_mxn,
-            SUM(CASE WHEN i.payment_status = 'Paid in Full' THEN 0 ELSE COALESCE(i.balance_due, 0) END) as pending_balance_total,
+            -- Split by sale_currency, same as revenue_usd/revenue_mxn above -
+            -- balance_due is denominated in the sale's own currency, so
+            -- summing it across USD and MXN sales together (as a single
+            -- pending_balance_total) added incompatible units as if they
+            -- were the same currency.
+            SUM(CASE WHEN i.sale_currency = 'USD' AND i.payment_status != 'Paid in Full' THEN COALESCE(i.balance_due, 0) ELSE 0 END) as pending_balance_usd,
+            SUM(CASE WHEN i.sale_currency = 'MXN' AND i.payment_status != 'Paid in Full' THEN COALESCE(i.balance_due, 0) ELSE 0 END) as pending_balance_mxn,
             COUNT(CASE WHEN i.payment_status = 'Paid in Full' THEN 1 END) as paid_in_full_count,
             COUNT(CASE WHEN i.payment_status = 'Partial Payment' THEN 1 END) as partial_payment_count,
             COUNT(CASE WHEN i.payment_status = 'Pending Deposit' THEN 1 END) as pending_deposit_count
@@ -2374,7 +2537,13 @@ async def get_sales_analytics(
     detailed_sales = []
     total_profit_usd = 0
     total_profit_mxn = 0
-    
+    # Consolidated (USD-equivalent) revenue per month, keyed by 'YYYY-MM'.
+    # Built here rather than as its own SQL SUM() because each sale already
+    # carries the exchange rate in effect on its own sale date (via
+    # calculate_total_costs -> exchange_rate_used below), which is more
+    # accurate than converting a month's MXN total at a single rate.
+    monthly_consolidated_revenue = {}
+
     for sale in sales_rows:
         # Get costs using centralized calculation (SINGLE SOURCE OF TRUTH)
         sale_currency = sale['sale_currency']
@@ -2391,6 +2560,15 @@ async def get_sales_analytics(
         profit = sale_price - total_cost
         profit_margin = (profit / sale_price * 100) if sale_price > 0 else 0
         
+        # Consolidate this sale into its month's USD-equivalent total.
+        # exchange_rate here is MXN->USD (see calculate_total_costs), so an
+        # MXN sale converts the same way a peso cost is converted to USD
+        # everywhere else in this function.
+        if sale['sale_date']:
+            month_key = sale['sale_date'].strftime('%Y-%m')
+            revenue_usd_equiv = sale_price if sale_currency == 'USD' else sale_price * exchange_rate
+            monthly_consolidated_revenue[month_key] = monthly_consolidated_revenue.get(month_key, 0) + revenue_usd_equiv
+
         # Track profit by currency
         if sale_currency == 'USD':
             total_profit_usd += profit
@@ -2454,17 +2632,31 @@ async def get_sales_analytics(
     use_case_breakdown = await db.fetch(use_case_query, *params)
     
     # ========== MONTHLY TRENDS ==========
+    # generate_series fills in every month in [start_date, end_date] (params
+    # $1/$2, always the date bounds - see where_clause above), then the sales
+    # aggregate is LEFT JOINed onto it so months with zero sales still get a
+    # row (zeroed via COALESCE) instead of being dropped from the result -
+    # a month the chart skipped entirely used to look identical to one that
+    # was never queried.
     monthly_query = f"""
-        SELECT 
-            DATE_TRUNC('month', i.sale_date) as month,
-            COUNT(*) as sales_count,
-            SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as revenue_usd,
-            SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as revenue_mxn
-        FROM inventory i
-        LEFT JOIN clients c ON i.client_id = c.client_id
-        WHERE {where_clause}
-        GROUP BY DATE_TRUNC('month', i.sale_date)
-        ORDER BY month
+        SELECT
+            gs.month,
+            COALESCE(m.sales_count, 0) as sales_count,
+            COALESCE(m.revenue_usd, 0) as revenue_usd,
+            COALESCE(m.revenue_mxn, 0) as revenue_mxn
+        FROM generate_series(DATE_TRUNC('month', $1::date), DATE_TRUNC('month', $2::date), INTERVAL '1 month') AS gs(month)
+        LEFT JOIN (
+            SELECT
+                DATE_TRUNC('month', i.sale_date) as month,
+                COUNT(*) as sales_count,
+                SUM(CASE WHEN i.sale_currency = 'USD' THEN i.sale_price ELSE 0 END) as revenue_usd,
+                SUM(CASE WHEN i.sale_currency = 'MXN' THEN i.sale_price ELSE 0 END) as revenue_mxn
+            FROM inventory i
+            LEFT JOIN clients c ON i.client_id = c.client_id
+            WHERE {where_clause}
+            GROUP BY DATE_TRUNC('month', i.sale_date)
+        ) m ON gs.month = m.month
+        ORDER BY gs.month
     """
     monthly_trends = await db.fetch(monthly_query, *params)
     
@@ -2481,7 +2673,8 @@ async def get_sales_analytics(
             'total_profit_usd': total_profit_usd,
             'total_profit_mxn': total_profit_mxn,
             'avg_profit_margin': avg_profit_margin,
-            'pending_balance': float(overview['pending_balance_total'] or 0),
+            'pending_balance_usd': float(overview['pending_balance_usd'] or 0),
+            'pending_balance_mxn': float(overview['pending_balance_mxn'] or 0),
             'payment_status_breakdown': {
                 'paid_in_full': overview['paid_in_full_count'],
                 'partial_payment': overview['partial_payment_count'],
@@ -2504,7 +2697,10 @@ async def get_sales_analytics(
                     'month': row['month'].isoformat() if row['month'] else None,
                     'sales_count': row['sales_count'],
                     'revenue_usd': float(row['revenue_usd'] or 0),
-                    'revenue_mxn': float(row['revenue_mxn'] or 0)
+                    'revenue_mxn': float(row['revenue_mxn'] or 0),
+                    # USD+MXN consolidated into one USD-equivalent figure
+                    # using each sale's own sale-date exchange rate.
+                    'revenue_consolidated_usd': float(monthly_consolidated_revenue.get(row['month'].strftime('%Y-%m'), 0)) if row['month'] else 0.0
                 }
                 for row in monthly_trends
             ]
@@ -3081,6 +3277,16 @@ async def record_sale(
         'balance_due': sale_data.sale_price,
         'payment_status': 'Pending'
     }
+    # Move status off whatever pre-sale value it had (e.g. 'In Stock (US)',
+    # or a leftover 'Available' from before the vocabulary fix) so it can't
+    # keep showing a stale pre-sale status forever - this used to be the
+    # only field is_sold changed, so any screen displaying bus.status
+    # directly (e.g. InventoryManagement.jsx's expanded row) kept showing
+    # the unit as available even after it was properly sold here. Only
+    # applies if status isn't already further along the pipeline, so this
+    # can't regress a unit whose import/delivery status was already set.
+    if bus['status'] not in POST_SALE_STATUSES:
+        update_fields['status'] = 'Sold'
     if sale_data.client_id:
         update_fields['client_id'] = sale_data.client_id
 
@@ -4155,7 +4361,7 @@ async def get_profit_distributions(
 # ==================== WORK PLAN ENDPOINTS ====================
 
 @app.post("/api/inventory/{inventory_id}/work-plan", response_model=WorkPlan)
-async def create_work_plan(inventory_id: int, plan: WorkPlanCreate, db=Depends(get_db)):
+async def create_work_plan(inventory_id: int, plan: WorkPlanCreate, db=Depends(get_db), user=Depends(get_current_user)):
     """Create work plan for a unit"""
     query = """
         INSERT INTO work_plans (
@@ -4172,7 +4378,7 @@ async def create_work_plan(inventory_id: int, plan: WorkPlanCreate, db=Depends(g
     return dict(row)
 
 @app.get("/api/inventory/{inventory_id}/work-plans", response_model=List[WorkPlan])
-async def get_work_plans(inventory_id: int, db=Depends(get_db)):
+async def get_work_plans(inventory_id: int, db=Depends(get_db), user=Depends(get_current_user)):
     """Get all work plans for a unit"""
     query = "SELECT * FROM work_plans WHERE inventory_id = $1 ORDER BY created_at DESC"
     rows = await db.fetch(query, inventory_id)
@@ -4184,7 +4390,8 @@ async def complete_work_plan(
     actual_cost: Optional[Decimal] = None,
     actual_days: Optional[int] = None,
     execution_notes: Optional[str] = None,
-    db=Depends(get_db)
+    db=Depends(get_db),
+    user=Depends(get_current_user)
 ):
     """Mark work plan as complete"""
     query = """
@@ -4208,34 +4415,52 @@ async def upload_photo(
     photo_type: str = Form("Exterior"),
     is_primary: bool = Form(False),
     caption: Optional[str] = Form(None),
-    db=Depends(get_db)
+    db=Depends(get_db),
+    user=Depends(get_current_user)
 ):
     """Upload photo for inventory item"""
     inv_check = await db.fetchval("SELECT inventory_id FROM inventory WHERE inventory_id = $1", inventory_id)
     if not inv_check:
         raise HTTPException(status_code=404, detail="Inventory item not found")
-    
-    os.makedirs(f"{UPLOAD_DIR}/inventory/{inventory_id}", exist_ok=True)
-    file_path = f"{UPLOAD_DIR}/inventory/{inventory_id}/{file.filename}"
-    
+
+    # Never trust the client-supplied filename for the on-disk path — it can
+    # contain "../" sequences or an absolute path and lead to writing files
+    # outside the upload directory. Only the extension is kept (validated
+    # against an allowlist); the on-disk name is generated server-side.
+    original_name = os.path.basename(file.filename or "")
+    ext = os.path.splitext(original_name)[1].lower()
+    if ext not in ALLOWED_PHOTO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed: {', '.join(sorted(ALLOWED_PHOTO_EXTENSIONS))}"
+        )
+
+    content = await file.read()
+    if len(content) > MAX_PHOTO_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+
+    upload_subdir = os.path.join(UPLOAD_DIR, "inventory", str(inventory_id))
+    os.makedirs(upload_subdir, exist_ok=True)
+    safe_filename = f"{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(upload_subdir, safe_filename)
+
     with open(file_path, "wb") as f:
-        content = await file.read()
         f.write(content)
-    
+
     query = """
-        INSERT INTO inventory_photos (inventory_id, file_name, file_path, file_size, 
+        INSERT INTO inventory_photos (inventory_id, file_name, file_path, file_size,
                                      mime_type, photo_type, is_primary, caption)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING *
     """
     row = await db.fetchrow(
-        query, inventory_id, file.filename, file_path, len(content),
+        query, inventory_id, original_name, file_path, len(content),
         file.content_type, photo_type, is_primary, caption
     )
     return dict(row)
 
 @app.get("/api/inventory/{inventory_id}/photos")
-async def get_photos(inventory_id: int, db=Depends(get_db)):
+async def get_photos(inventory_id: int, db=Depends(get_db), user=Depends(get_current_user)):
     """Get all photos for inventory item"""
     query = """
         SELECT * FROM inventory_photos 
@@ -4248,7 +4473,7 @@ async def get_photos(inventory_id: int, db=Depends(get_db)):
 # ==================== WARRANTY ENDPOINTS ====================
 
 @app.post("/api/inventory/{inventory_id}/warranty-claim", response_model=WarrantyClaim)
-async def create_warranty_claim(inventory_id: int, claim: WarrantyClaimCreate, db=Depends(get_db)):
+async def create_warranty_claim(inventory_id: int, claim: WarrantyClaimCreate, db=Depends(get_db), user=Depends(get_current_user)):
     """File warranty claim"""
     query = """
         INSERT INTO warranty_claims (inventory_id, claim_date, claim_type, description, client_name, status)
@@ -4262,7 +4487,7 @@ async def create_warranty_claim(inventory_id: int, claim: WarrantyClaimCreate, d
     return dict(row)
 
 @app.get("/api/inventory/{inventory_id}/warranty-claims", response_model=List[WarrantyClaim])
-async def get_warranty_claims(inventory_id: int, db=Depends(get_db)):
+async def get_warranty_claims(inventory_id: int, db=Depends(get_db), user=Depends(get_current_user)):
     """Get warranty claims for a unit"""
     query = "SELECT * FROM warranty_claims WHERE inventory_id = $1 ORDER BY claim_date DESC"
     rows = await db.fetch(query, inventory_id)
@@ -4271,48 +4496,100 @@ async def get_warranty_claims(inventory_id: int, db=Depends(get_db)):
 # ==================== REPORTING ENDPOINTS ====================
 
 @app.get("/api/reports/dashboard")
-async def get_dashboard(db=Depends(get_db)):
+async def get_dashboard(db=Depends(get_db), user=Depends(get_current_user)):
     """Dashboard statistics"""
     query = """
-        SELECT 
+        SELECT
             COUNT(*) as total_units,
-            COUNT(*) FILTER (WHERE current_location = 'US Stock') as us_inventory,
-            COUNT(*) FILTER (WHERE current_location = 'Mexico Stock') as mexico_inventory,
+            COUNT(*) FILTER (WHERE current_location = 'US Stock' AND is_sold = FALSE) as us_inventory,
+            COUNT(*) FILTER (WHERE current_location = 'Mexico Stock' AND is_sold = FALSE) as mexico_inventory,
             COUNT(*) FILTER (WHERE is_sold = FALSE) as available_for_sale,
             COUNT(*) FILTER (WHERE is_sold = TRUE AND status != 'Delivered') as sold_pending_delivery,
             COUNT(*) FILTER (WHERE status = 'Delivered') as delivered,
             COUNT(*) FILTER (WHERE warranty_status = 'Active') as under_warranty,
-            SUM(cost_in_us_stock_usd) FILTER (WHERE current_location = 'US Stock') as us_inventory_value,
             AVG(days_in_inventory) FILTER (WHERE status != 'Delivered') as avg_days_in_inventory
         FROM inventory
         WHERE is_deleted = FALSE
     """
     row = await db.fetchrow(query)
-    return dict(row)
+    result = dict(row)
+
+    # us_inventory_value / total_inventory_value: purchase price plus every
+    # cost_items entry (transport, reconditioning, import, etc.), not just
+    # cost_in_us_stock_usd's generated total. That column is purchase_price
+    # + transport_to_stock_cost_usd + initial_reconditioning_cost_usd +
+    # other_acquisition_costs_usd, but nothing in the UI ever sets those
+    # three - the real cost-entry flow ("Costs" button -> CostManagement
+    # Modal) writes to cost_items instead, so cost_in_us_stock_usd was
+    # silently always == purchase_price_usd. calculate_total_costs() is
+    # the same single-source-of-truth already used for COGS/profit
+    # elsewhere, so this also handles MXN cost items correctly.
+    available_units = await db.fetch(
+        "SELECT inventory_id, current_location FROM inventory "
+        "WHERE is_deleted = FALSE AND is_sold = FALSE"
+    )
+    us_value = 0.0
+    total_value = 0.0
+    for unit in available_units:
+        cost_data = await calculate_total_costs(db, unit['inventory_id'], 'USD')
+        unit_cost = float(cost_data['total_cost']) if cost_data else 0.0
+        total_value += unit_cost
+        if unit['current_location'] == 'US Stock':
+            us_value += unit_cost
+
+    result['us_inventory_value'] = us_value
+    result['total_inventory_value'] = total_value
+
+    # Recent Inventory widget: same total-cost fix as above, computed here
+    # (rather than the frontend fetching /api/inventory itself) so it isn't
+    # just purchase_price_usd either, and so showing 5 units doesn't require
+    # fetching and discarding up to 100 full inventory rows.
+    recent_rows = await db.fetch(
+        "SELECT inventory_id, stock_number, vin, year, make, model, status, "
+        "purchase_price_usd FROM inventory WHERE is_deleted = FALSE "
+        "ORDER BY created_at DESC LIMIT 5"
+    )
+    recent_inventory = []
+    for r in recent_rows:
+        cost_data = await calculate_total_costs(db, r['inventory_id'], 'USD')
+        total_cost = float(cost_data['total_cost']) if cost_data else float(r['purchase_price_usd'] or 0)
+        recent_inventory.append({
+            'inventory_id': r['inventory_id'],
+            'stock_number': r['stock_number'],
+            'vin': r['vin'],
+            'year': r['year'],
+            'make': r['make'],
+            'model': r['model'],
+            'status': r['status'],
+            'total_cost_usd': total_cost,
+        })
+    result['recent_inventory'] = recent_inventory
+
+    return result
 
 @app.get("/api/reports/us-inventory")
-async def get_us_inventory_report(db=Depends(get_db)):
+async def get_us_inventory_report(db=Depends(get_db), user=Depends(get_current_user)):
     """US inventory report"""
     query = "SELECT * FROM us_inventory"
     rows = await db.fetch(query)
     return [dict(row) for row in rows]
 
 @app.get("/api/reports/mexico-inventory")
-async def get_mexico_inventory_report(db=Depends(get_db)):
+async def get_mexico_inventory_report(db=Depends(get_db), user=Depends(get_current_user)):
     """Mexico inventory report"""
     query = "SELECT * FROM mexico_inventory"
     rows = await db.fetch(query)
     return [dict(row) for row in rows]
 
 @app.get("/api/reports/sold-pending")
-async def get_sold_pending_delivery(db=Depends(get_db)):
+async def get_sold_pending_delivery(db=Depends(get_db), user=Depends(get_current_user)):
     """Sold units pending delivery"""
     query = "SELECT * FROM sold_pending_delivery"
     rows = await db.fetch(query)
     return [dict(row) for row in rows]
 
 @app.get("/api/reports/warranty-active")
-async def get_active_warranties(db=Depends(get_db)):
+async def get_active_warranties(db=Depends(get_db), user=Depends(get_current_user)):
     """Units under active warranty"""
     query = "SELECT * FROM units_under_warranty"
     rows = await db.fetch(query)
@@ -4506,7 +4783,19 @@ async def create_inventory_from_inspection(
         'Poor': 'Needs Major Work'
     }
     condition = condition_map.get(inspection['overall_rating'], 'Used')
-    
+
+    # current_location/status must match the vocabulary the dashboard and
+    # reporting queries filter on ('US Stock' / 'Mexico Stock', and the
+    # documented status pipeline) - see migrations/004_fix_inventory_location_status.sql
+    # for the bug this used to cause when they didn't.
+    resolved_location = additional_data.get('current_location') or 'US Stock'
+    if resolved_location == 'US Stock':
+        initial_status = 'In Stock (US)'
+    elif resolved_location == 'Mexico Stock':
+        initial_status = 'In Stock (Mexico)'
+    else:
+        initial_status = 'Purchased - In Transit to Stock'
+
     # Create inventory
     inventory_query = """
         INSERT INTO inventory (
@@ -4523,7 +4812,7 @@ async def create_inventory_from_inspection(
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
             $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28,
-            $29, $30, $31, $32, $33, $34, $35
+            $29, $30, $31, $32, $33, $34, $35, $36, $37
         )
         RETURNING *
     """
@@ -4566,15 +4855,17 @@ async def create_inventory_from_inspection(
         purchase_date,
         additional_data.get('purchase_price_usd'),
         additional_data.get('supplier_id'),
-        additional_data.get('current_location', 'US Stock'),
-        'Available',
+        resolved_location,
+        initial_status,
         user['username']
     )
     
-    # Mark inspection as purchased
+    # Mark inspection as purchased and link back to the inventory unit it
+    # became (inventory.pre_inspection_id is already set above via the
+    # INSERT; this is the same relationship in the other direction).
     await db.execute(
-        "UPDATE pre_purchase_inspections SET purchased = true WHERE inspection_id = $1",
-        inspection_id
+        "UPDATE pre_purchase_inspections SET purchased = true, inventory_id = $1 WHERE inspection_id = $2",
+        inventory_row['inventory_id'], inspection_id
     )
 
     await log_audit(

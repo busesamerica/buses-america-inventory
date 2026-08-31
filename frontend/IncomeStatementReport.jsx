@@ -37,23 +37,6 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
     }
   };
 
-  const formatCurrency = (amount, currency = filters.currency) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency
-    }).format(amount);
-  };
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    const str = String(dateStr).split('T')[0];
-    return new Date(str + 'T00:00:00').toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
-
   const handleFilterChange = (field, value) => {
     setFilters({...filters, [field]: value});
   };
@@ -222,7 +205,7 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
                   Income Statement
                 </div>
                 <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                  {formatDate(reportData.start_date)} - {formatDate(reportData.end_date)}
+                  {formatDate(reportData.start_date, 'long')} - {formatDate(reportData.end_date, 'long')}
                 </div>
               </div>
 

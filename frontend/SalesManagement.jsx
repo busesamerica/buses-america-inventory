@@ -65,46 +65,44 @@ const SalesManagement = () => {
     }
   };
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount && amount !== 0) return currency === 'USD' ? '$0.00' : 'MXN $0.00';
-    const formatted = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-    return currency === 'USD' ? `$${formatted}` : `MXN $${formatted}`;
-  };
 
   return (
     <div style={{ background: '#f9fafb' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ margin: '0 0 0.25rem 0', fontSize: '1.5rem', fontWeight: '700', color: '#111827' }}>
-          💼 Sales Management
-        </h1>
-        <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>
-          Industry-standard sales workflow: Record → Track Payments → Analyze
-        </p>
-      </div>
+      {/* No module-intro header here - the app shell's top bar already
+          shows "Sales Management" as the page title (see App_COMPLETE.jsx);
+          repeating it in a second, same-weight heading just to relabel this
+          screen was pure duplication. InventoryManagement/ClientManagement/
+          QuoteManagement never had one - this now matches them instead of
+          being the odd one out. */}
 
-      {/* Tabs */}
+      {/* Tabs - rounded segmented control, matching the card/pill corner
+          radius (0.75rem / 0.5rem) used everywhere else in the app. This
+          used to be a flat underline-tab strip with no rounding at all -
+          the only module with squared-off corners at the top of its
+          content while every other module's tab/pill control is rounded
+          (see InventoryManagement's Available/Sold pills, ClientManagement
+          and AccountingDashboard's cards). */}
       <div style={{
-        display: 'flex',
-        gap: '0.5rem',
-        marginBottom: '1.5rem',
-        borderBottom: '2px solid #e5e7eb'
+        display: 'inline-flex',
+        gap: '0.25rem',
+        padding: '0.3rem',
+        background: 'white',
+        borderRadius: '0.75rem',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        marginBottom: '1.5rem'
       }}>
         <button
           onClick={() => setActiveTab('record')}
           style={{
             padding: '0.75rem 1.5rem',
-            background: activeTab === 'record' ? 'white' : 'transparent',
+            background: activeTab === 'record' ? '#3b82f6' : 'transparent',
             border: 'none',
-            borderBottom: activeTab === 'record' ? '3px solid #3b82f6' : '3px solid transparent',
-            color: activeTab === 'record' ? '#3b82f6' : '#6b7280',
+            color: activeTab === 'record' ? 'white' : '#6b7280',
             fontWeight: activeTab === 'record' ? '700' : '500',
+            borderRadius: '0.5rem',
             cursor: 'pointer',
             fontSize: '0.875rem',
-            marginBottom: '-2px'
+            transition: 'background 0.15s, color 0.15s'
           }}
         >
           ➕ Record Sale
@@ -113,14 +111,14 @@ const SalesManagement = () => {
           onClick={() => setActiveTab('manage')}
           style={{
             padding: '0.75rem 1.5rem',
-            background: activeTab === 'manage' ? 'white' : 'transparent',
+            background: activeTab === 'manage' ? '#3b82f6' : 'transparent',
             border: 'none',
-            borderBottom: activeTab === 'manage' ? '3px solid #3b82f6' : '3px solid transparent',
-            color: activeTab === 'manage' ? '#3b82f6' : '#6b7280',
+            color: activeTab === 'manage' ? 'white' : '#6b7280',
             fontWeight: activeTab === 'manage' ? '700' : '500',
+            borderRadius: '0.5rem',
             cursor: 'pointer',
             fontSize: '0.875rem',
-            marginBottom: '-2px'
+            transition: 'background 0.15s, color 0.15s'
           }}
         >
           💰 Manage Sales
@@ -129,14 +127,14 @@ const SalesManagement = () => {
           onClick={() => setActiveTab('analytics')}
           style={{
             padding: '0.75rem 1.5rem',
-            background: activeTab === 'analytics' ? 'white' : 'transparent',
+            background: activeTab === 'analytics' ? '#3b82f6' : 'transparent',
             border: 'none',
-            borderBottom: activeTab === 'analytics' ? '3px solid #3b82f6' : '3px solid transparent',
-            color: activeTab === 'analytics' ? '#3b82f6' : '#6b7280',
+            color: activeTab === 'analytics' ? 'white' : '#6b7280',
             fontWeight: activeTab === 'analytics' ? '700' : '500',
+            borderRadius: '0.5rem',
             cursor: 'pointer',
             fontSize: '0.875rem',
-            marginBottom: '-2px'
+            transition: 'background 0.15s, color 0.15s'
           }}
         >
           📊 Analytics
@@ -244,14 +242,6 @@ const RecordSaleForm = ({ inventory, clients, onSaleRecorded, onClientsChanged }
     }
   };
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount && amount !== 0) return currency === 'USD' ? '$0.00' : 'MXN $0.00';
-    const formatted = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-    return currency === 'USD' ? `$${formatted}` : `MXN $${formatted}`;
-  };
 
   if (inventory.length === 0) {
     return (
@@ -517,23 +507,6 @@ const ManageSales = ({ soldBuses, accounts, onPaymentRecorded, onViewDetails }) 
   const [selectedBus, setSelectedBus] = React.useState(null);
   const [showPaymentForm, setShowPaymentForm] = React.useState(false);
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount && amount !== 0) return currency === 'USD' ? '$0.00' : 'MXN $0.00';
-    const formatted = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-    return currency === 'USD' ? `$${formatted}` : `MXN $${formatted}`;
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    const str = String(dateString).split("T")[0]; return new Date(str + "T00:00:00").toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
 
   if (soldBuses.length === 0) {
     return (
@@ -789,7 +762,7 @@ const PaymentFormModal = ({ bus, accounts, onClose, onPaymentRecorded }) => {
 
             <div>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
-                Bank Account (Receiving Payment) <span style={{ color: '#dc2626' }}>*</span>
+                {formData.payment_currency} Bank Account (Receiving Payment) <span style={{ color: '#dc2626' }}>*</span>
               </label>
               <select
                 required
@@ -804,7 +777,10 @@ const PaymentFormModal = ({ bus, accounts, onClose, onPaymentRecorded }) => {
                 }}
               >
                 <option value="">-- Select bank account --</option>
-                {accounts.map(account => (
+                {/* Only accounts matching this payment's currency - the backend
+                    records the amount against the account with no conversion,
+                    so a mismatched account would misrecord it at face value. */}
+                {accounts.filter(account => account.currency === formData.payment_currency).map(account => (
                   <option key={account.account_id} value={account.account_id}>
                     {account.account_name}
                   </option>
@@ -1008,23 +984,6 @@ const SaleDetailsModal = ({ bus, onClose, onPaymentAdded, accounts }) => {
     }
   };
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount && amount !== 0) return currency === 'USD' ? '$0.00' : 'MXN $0.00';
-    const formatted = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-    return currency === 'USD' ? `$${formatted}` : `MXN $${formatted}`;
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    const str = String(dateString).split("T")[0]; return new Date(str + "T00:00:00").toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
 
   if (loading) {
     return (

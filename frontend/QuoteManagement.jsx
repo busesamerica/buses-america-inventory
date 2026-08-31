@@ -139,20 +139,6 @@ const QuoteManagement = () => {
     loadAll();
   };
 
-  const fmt = (amount, currency) => {
-    const formatted = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2, maximumFractionDigits: 2
-    }).format(Number(amount || 0));
-    return currency === 'MXN' ? `MXN $${formatted}` : `$${formatted}`;
-  };
-
-  const fmtDate = (value) => {
-    if (!value) return '—';
-    return new Date(value).toLocaleDateString('en-US', {
-      year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC'
-    });
-  };
-
   const daysLeft = (quote) => {
     if (!quote.valid_until || !['Draft', 'Sent'].includes(quote.status)) return null;
     const diff = Math.ceil((new Date(quote.valid_until) - new Date()) / 86400000);
@@ -184,8 +170,8 @@ const QuoteManagement = () => {
         }}>
           {[
             { label: '📬 Open quotes', value: stats.open_count, sub: 'draft + sent' },
-            { label: '💵 Open value (USD)', value: fmt(stats.open_value_usd, 'USD'), sub: 'quoted, not yet decided' },
-            { label: '💵 Open value (MXN)', value: fmt(stats.open_value_mxn, 'MXN'), sub: 'quoted, not yet decided' },
+            { label: '💵 Open value (USD)', value: formatCurrency(stats.open_value_usd, 'USD'), sub: 'quoted, not yet decided' },
+            { label: '💵 Open value (MXN)', value: formatCurrency(stats.open_value_mxn, 'MXN'), sub: 'quoted, not yet decided' },
             {
               label: '🏆 Win rate',
               value: stats.win_rate == null ? '—' : `${stats.win_rate}%`,
@@ -320,12 +306,12 @@ const QuoteManagement = () => {
                       </td>
                       <td style={{ padding: '0.75rem', color: '#374151' }}>{q.unit_count || 0}</td>
                       <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '700', whiteSpace: 'nowrap' }}>
-                        {fmt(q.total_amount, q.currency)}
+                        {formatCurrency(q.total_amount, q.currency)}
                       </td>
                       <td style={{ padding: '0.75rem', fontSize: '0.78rem', color: '#6b7280', whiteSpace: 'nowrap' }}>
-                        <div>Issued {fmtDate(q.quote_date)}</div>
+                        <div>Issued {formatDate(q.quote_date)}</div>
                         <div>
-                          Valid to {fmtDate(q.valid_until)}
+                          Valid to {formatDate(q.valid_until)}
                           {remaining != null && (
                             <span style={{ color: remaining < 0 ? '#dc2626' : remaining <= 5 ? '#b45309' : '#6b7280', fontWeight: '600' }}>
                               {' '}({remaining < 0 ? 'past due' : `${remaining}d`})
@@ -456,12 +442,7 @@ const AcceptQuoteModal = ({ quote, onClose, onAccepted, onError }) => {
   const total = Number(quote.total_amount || 0);
   const extras = total - busSubtotal;
 
-  const fmt = (amount) => {
-    const formatted = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2, maximumFractionDigits: 2
-    }).format(Number(amount || 0));
-    return quote.currency === 'MXN' ? `MXN $${formatted}` : `$${formatted}`;
-  };
+  const fmt = (amount) => formatCurrency(amount, quote.currency);
 
   // Mirrors the server's allocation so the preview matches what gets recorded.
   const previewPrice = (line, index) => {

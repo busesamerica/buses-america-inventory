@@ -7,26 +7,8 @@ const { useState, useEffect } = React;
 const API_BASE_URL = window.API_BASE_URL || 'https://buses-america.onrender.com';
 const API_URL = `${API_BASE_URL}/api`;
 
-// ============= UTILITIES =============
-const formatCurrency = (amount, currency = 'USD') => {
-  if (!amount && amount !== 0) return currency === 'USD' ? '$0.00' : 'MXN $0.00';
-  const roundedAmount = Math.round(amount * 100) / 100;
-  const formatted = new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(roundedAmount);
-  return currency === 'USD' ? `$${formatted}` : `MXN $${formatted}`;
-};
-
-const formatDate = (dateString) => {
-  if (!dateString) return 'N/A';
-  const str = String(dateString).split('T')[0];
-  return new Date(str + 'T00:00:00').toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
-};
+// formatCurrency / formatDate now live in utils.js (loaded before this file
+// in index.html) so every screen formats money and dates the same way.
 
 // ============= AUTH =============
 const AuthContext = React.createContext(null);
@@ -195,11 +177,16 @@ const api = (() => {
         throw new Error(err.detail || 'Failed to create inventory');
       }
       const newInventory = await res.json();
-      
-      // ADDED: Automatically record purchase payment if payment_account_id provided
+
+      // Automatically record purchase payment if payment_account_id provided.
+      // A rejected payment (e.g. the record-purchase-payment currency-mismatch
+      // guard) used to only be logged to the console - the caller's success
+      // alert fired unconditionally, so nothing ever told the user the
+      // payment wasn't actually recorded. Surface it on the returned object
+      // instead so the caller can show an honest message.
       if (additionalData.payment_account_id) {
         try {
-          await fetch(`${API_URL}/inventory/${newInventory.inventory_id}/record-purchase-payment`, {
+          const paymentRes = await fetch(`${API_URL}/inventory/${newInventory.inventory_id}/record-purchase-payment`, {
             method: 'POST',
             headers: headers(),
             body: JSON.stringify({
@@ -207,12 +194,15 @@ const api = (() => {
               payment_date: additionalData.purchase_date
             })
           });
+          if (!paymentRes.ok) {
+            const err = await paymentRes.json().catch(() => ({}));
+            newInventory.payment_recording_error = err.detail || 'Payment recording failed';
+          }
         } catch (err) {
-          console.error('Failed to record purchase payment:', err);
-          // Don't fail the whole operation if payment recording fails
+          newInventory.payment_recording_error = err.message || 'Payment recording failed';
         }
       }
-      
+
       return newInventory;
     },
     getCurrentExchangeRate: async () => {
@@ -473,11 +463,9 @@ function InventoryApp() {
   const { user } = useAuth();
   const [view, setView] = useState('dashboard');
   const [stats, setStats] = useState(null);
-  const [inventory, setInventory] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [inspections, setInspections] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [showBusForm, setShowBusForm] = useState(false);
   const [editingBus, setEditingBus] = useState(null);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
@@ -489,9 +477,20 @@ function InventoryApp() {
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   useEffect(() => {
-    loadData();
     loadExchangeRate();
   }, []);
+
+  // Refetch every time the Dashboard tab is shown (including the initial
+  // mount, since 'dashboard' is the default view), not just once on load.
+  // Sales Management and Inventory Management manage their own data and
+  // never told this stats/inventory state to refresh, so recording a sale
+  // or editing a unit elsewhere used to leave the dashboard showing
+  // whatever was true when the app first loaded.
+  useEffect(() => {
+    if (view === 'dashboard') {
+      loadData();
+    }
+  }, [view]);
 
   const loadExchangeRate = async () => {
     try {
@@ -504,14 +503,12 @@ function InventoryApp() {
 
   const loadData = async () => {
     try {
-      const [dashboardData, inventoryData, suppliersData, inspectionsData] = await Promise.all([
+      const [dashboardData, suppliersData, inspectionsData] = await Promise.all([
         api.getDashboard(),
-        api.getInventory(),
         api.getSuppliers(),
         api.getPreInspections()
       ]);
       setStats(dashboardData);
-      setInventory(inventoryData);
       setSuppliers(suppliersData);
       setInspections(inspectionsData);
     } catch (error) {
@@ -554,18 +551,6 @@ function InventoryApp() {
     setShowSupplierForm(false);
     alert('Supplier added successfully!');
   };
-
-  const filteredInventory = inventory.filter(bus => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return (
-      bus.stock_number?.toLowerCase().includes(s) ||
-      bus.vin?.toLowerCase().includes(s) ||
-      bus.make?.toLowerCase().includes(s) ||
-      bus.model?.toLowerCase().includes(s) ||
-      `${bus.year}`.includes(s)
-    );
-  });
 
   if (loading) {
     return (
@@ -683,14 +668,14 @@ function InventoryApp() {
                     View All →
                   </button>
                 </div>
-                {inventory.length === 0 ? (
+                {(stats?.recent_inventory || []).length === 0 ? (
                   <div style={{textAlign:'center',padding:'3rem',color:'#666'}}>
                     <div style={{fontSize:'3rem',marginBottom:'1rem'}}>🚌</div>
                     <div>No inventory yet</div>
                   </div>
                 ) : (
                   <div style={{display:'grid',gap:'1rem'}}>
-                    {inventory.slice(0, 5).map((bus) => (
+                    {stats.recent_inventory.map((bus) => (
                       <div key={bus.inventory_id} style={{padding:'1rem',border:'1px solid #ddd',borderRadius:'6px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                         <div>
                           <div style={{fontWeight:'600',fontSize:'1.1rem'}}>{bus.year} {bus.make} {bus.model}</div>
@@ -699,7 +684,7 @@ function InventoryApp() {
                           </div>
                         </div>
                         <div style={{textAlign:'right'}}>
-                          <div style={{fontWeight:'600',color:'#28a745'}}>{formatCurrency(bus.purchase_price_usd)}</div>
+                          <div style={{fontWeight:'600',color:'#28a745'}}>{formatCurrency(bus.total_cost_usd)}</div>
                           <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.25rem'}}>{bus.status}</div>
                         </div>
                       </div>
@@ -946,11 +931,13 @@ function InventoryApp() {
       }}
       onSave={async (inventoryData) => {
         try {
-          await api.createInventoryFromInspection(selectedInspection.inspection_id, inventoryData);
+          const created = await api.createInventoryFromInspection(selectedInspection.inspection_id, inventoryData);
           setShowCreateInventoryModal(false);
           setSelectedInspection(null);
           await loadData();
-          alert('✅ Inventory created successfully from inspection!');
+          alert(created.payment_recording_error
+            ? `✅ Inventory created, but payment recording failed: ${created.payment_recording_error}. Record it manually from Inventory Management.`
+            : '✅ Inventory created successfully from inspection!');
         } catch (error) {
           alert('Error: ' + error.message);
         }
