@@ -4566,7 +4566,7 @@ async def create_inventory_from_inspection(
         purchase_date,
         additional_data.get('purchase_price_usd'),
         additional_data.get('supplier_id'),
-        additional_data.get('current_location', 'United States'),
+        additional_data.get('current_location', 'US Stock'),
         'Available',
         user['username']
     )

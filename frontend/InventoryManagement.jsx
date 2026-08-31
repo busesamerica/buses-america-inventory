@@ -457,7 +457,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     purchase_price_usd: '',
     asking_price: '',
     asking_currency: 'USD',
-    current_location: 'United States',
+    current_location: 'US Stock',
     status: 'Available',
     condition: 'Good',
     payment_account_id: '',
@@ -739,8 +739,8 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Location *</label>
                 <select name="current_location" value={formData.current_location} onChange={handleChange} required style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                  <option value="United States">United States</option>
-                  <option value="Mexico">Mexico</option>
+                  <option value="US Stock">US Stock</option>
+                  <option value="Mexico Stock">Mexico Stock</option>
                 </select>
               </div>
               <div>

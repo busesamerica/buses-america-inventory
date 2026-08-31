@@ -6,7 +6,7 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
     purchase_price_usd: '',
     purchase_date: new Date().toISOString().split('T')[0],
     supplier_id: '',
-    current_location: 'United States',
+    current_location: 'US Stock',
     payment_account_id: '',  // ADDED: Required payment account
     asking_price: '',  // Our sale price - NOT pre-filled
     asking_currency: 'USD'
@@ -523,8 +523,8 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
                     fontSize: '1rem'
                   }}
                 >
-                  <option value="United States">United States</option>
-                  <option value="Mexico">Mexico</option>
+                  <option value="US Stock">US Stock</option>
+                  <option value="Mexico Stock">Mexico Stock</option>
                   <option value="In Transit">In Transit</option>
                 </select>
               </div>
