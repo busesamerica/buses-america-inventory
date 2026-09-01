@@ -88,22 +88,22 @@ const PreInspectionsList = ({ onViewReport, onCreateInventory }) => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
         <div style={statCardStyle('blue')}>
           <div style={STAT_CARD_LABEL_STYLE}>Total Inspections</div>
-          <div style={{ fontSize: '2.5rem', fontWeight: '700' }}>{stats.total}</div>
+          <div style={statCardValueStyle(stats.total)}>{stats.total}</div>
         </div>
 
         <div style={statCardStyle('green')}>
           <div style={STAT_CARD_LABEL_STYLE}>Ready to Buy</div>
-          <div style={{ fontSize: '2.5rem', fontWeight: '700' }}>{stats.approved}</div>
+          <div style={statCardValueStyle(stats.approved)}>{stats.approved}</div>
         </div>
 
         <div style={statCardStyle('red')}>
           <div style={STAT_CARD_LABEL_STYLE}>Rejected</div>
-          <div style={{ fontSize: '2.5rem', fontWeight: '700' }}>{stats.rejected}</div>
+          <div style={statCardValueStyle(stats.rejected)}>{stats.rejected}</div>
         </div>
 
         <div style={statCardStyle('purple')}>
           <div style={STAT_CARD_LABEL_STYLE}>Purchased</div>
-          <div style={{ fontSize: '2.5rem', fontWeight: '700' }}>{stats.purchased}</div>
+          <div style={statCardValueStyle(stats.purchased)}>{stats.purchased}</div>
         </div>
       </div>
 

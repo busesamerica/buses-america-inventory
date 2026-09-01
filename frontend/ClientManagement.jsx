@@ -112,19 +112,19 @@ const ClientManagement = () => {
         }}>
           <div style={statCardStyle('blue')}>
             <div style={STAT_CARD_LABEL_STYLE}>Total Clients</div>
-            <div style={STAT_CARD_VALUE_STYLE}>{clients.length}</div>
+            <div style={statCardValueStyle(clients.length)}>{clients.length}</div>
           </div>
 
           <div style={statCardStyle('green')}>
             <div style={STAT_CARD_LABEL_STYLE}>Active Buyers</div>
-            <div style={STAT_CARD_VALUE_STYLE}>
+            <div style={statCardValueStyle(clients.filter(c => c.total_purchases > 0).length)}>
               {clients.filter(c => c.total_purchases > 0).length}
             </div>
           </div>
 
           <div style={statCardStyle('orange')}>
             <div style={STAT_CARD_LABEL_STYLE}>Total Purchases</div>
-            <div style={STAT_CARD_VALUE_STYLE}>
+            <div style={statCardValueStyle(clients.reduce((sum, c) => sum + (c.total_purchases || 0), 0))}>
               {clients.reduce((sum, c) => sum + (c.total_purchases || 0), 0)}
             </div>
           </div>

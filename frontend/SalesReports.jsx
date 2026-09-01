@@ -188,7 +188,7 @@ const SalesReports = () => {
         {/* Total Sales */}
         <div style={statCardStyle('blue')}>
           <div style={STAT_CARD_LABEL_STYLE}>Total Sales</div>
-          <div style={STAT_CARD_VALUE_STYLE}>{overview.total_sales}</div>
+          <div style={statCardValueStyle(overview.total_sales)}>{overview.total_sales}</div>
           <div style={STAT_CARD_SUBTEXT_STYLE}>
             {overview.unique_clients} unique clients
           </div>
@@ -197,7 +197,7 @@ const SalesReports = () => {
         {/* Revenue USD */}
         <div style={statCardStyle('green')}>
           <div style={STAT_CARD_LABEL_STYLE}>Revenue (USD)</div>
-          <div style={STAT_CARD_VALUE_STYLE}>{formatCurrency(overview.revenue_usd, 'USD')}</div>
+          <div style={statCardValueStyle(formatCurrency(overview.revenue_usd, 'USD'))}>{formatCurrency(overview.revenue_usd, 'USD')}</div>
           <div style={STAT_CARD_SUBTEXT_STYLE}>
             Profit: {formatCurrency(overview.total_profit_usd, 'USD')}
           </div>
@@ -206,7 +206,7 @@ const SalesReports = () => {
         {/* Revenue MXN */}
         <div style={statCardStyle('purple')}>
           <div style={STAT_CARD_LABEL_STYLE}>Revenue (MXN)</div>
-          <div style={STAT_CARD_VALUE_STYLE}>{formatCurrency(overview.revenue_mxn, 'MXN')}</div>
+          <div style={statCardValueStyle(formatCurrency(overview.revenue_mxn, 'MXN'))}>{formatCurrency(overview.revenue_mxn, 'MXN')}</div>
           <div style={STAT_CARD_SUBTEXT_STYLE}>
             Profit: {formatCurrency(overview.total_profit_mxn, 'MXN')}
           </div>
@@ -215,7 +215,7 @@ const SalesReports = () => {
         {/* Profit Margin */}
         <div style={statCardStyle('orange')}>
           <div style={STAT_CARD_LABEL_STYLE}>Avg Profit Margin</div>
-          <div style={STAT_CARD_VALUE_STYLE}>{overview.avg_profit_margin.toFixed(1)}%</div>
+          <div style={statCardValueStyle(`${overview.avg_profit_margin.toFixed(1)}%`)}>{overview.avg_profit_margin.toFixed(1)}%</div>
           <div style={STAT_CARD_SUBTEXT_STYLE}>
             Across all sales
           </div>
@@ -229,12 +229,13 @@ const SalesReports = () => {
           {/* USD and MXN balances are separate amounts, not one number - a
               USD sale's balance_due and an MXN sale's balance_due can't be
               added together without a conversion neither figure applies. */}
-          <div style={{ fontSize: '1.25rem', fontWeight: '700' }}>
-            {overview.pending_balance_usd > 0 && formatCurrency(overview.pending_balance_usd, 'USD')}
-            {overview.pending_balance_usd > 0 && overview.pending_balance_mxn > 0 && ' + '}
-            {overview.pending_balance_mxn > 0 && formatCurrency(overview.pending_balance_mxn, 'MXN')}
-            {overview.pending_balance_usd === 0 && overview.pending_balance_mxn === 0 && formatCurrency(0, 'USD')}
-          </div>
+          {(() => {
+            const pendingText = [
+              overview.pending_balance_usd > 0 && formatCurrency(overview.pending_balance_usd, 'USD'),
+              overview.pending_balance_mxn > 0 && formatCurrency(overview.pending_balance_mxn, 'MXN')
+            ].filter(Boolean).join(' + ') || formatCurrency(0, 'USD');
+            return <div style={statCardValueStyle(pendingText)}>{pendingText}</div>;
+          })()}
           <div style={STAT_CARD_SUBTEXT_STYLE}>
             Outstanding payments
           </div>

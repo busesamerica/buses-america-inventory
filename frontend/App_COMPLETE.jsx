@@ -641,22 +641,22 @@ function InventoryApp() {
               <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))',gap:'1.5rem',marginBottom:'3rem'}}>
                 <div style={statCardStyle('blue')}>
                   <div style={STAT_CARD_LABEL_STYLE}>🇺🇸 US Inventory</div>
-                  <div style={STAT_CARD_VALUE_STYLE}>{stats?.us_inventory || 0}</div>
+                  <div style={statCardValueStyle(stats?.us_inventory || 0)}>{stats?.us_inventory || 0}</div>
                   <div style={STAT_CARD_SUBTEXT_STYLE}>units in stock</div>
                 </div>
                 <div style={statCardStyle('red')}>
                   <div style={STAT_CARD_LABEL_STYLE}>🇲🇽 Mexico Inventory</div>
-                  <div style={STAT_CARD_VALUE_STYLE}>{stats?.mexico_inventory || 0}</div>
+                  <div style={statCardValueStyle(stats?.mexico_inventory || 0)}>{stats?.mexico_inventory || 0}</div>
                   <div style={STAT_CARD_SUBTEXT_STYLE}>units in stock</div>
                 </div>
                 <div style={statCardStyle('green')}>
                   <div style={STAT_CARD_LABEL_STYLE}>✅ Available</div>
-                  <div style={STAT_CARD_VALUE_STYLE}>{stats?.available_for_sale || 0}</div>
+                  <div style={statCardValueStyle(stats?.available_for_sale || 0)}>{stats?.available_for_sale || 0}</div>
                   <div style={STAT_CARD_SUBTEXT_STYLE}>ready to sell</div>
                 </div>
                 <div style={statCardStyle('orange')}>
                   <div style={STAT_CARD_LABEL_STYLE}>💰 Total Value</div>
-                  <div style={STAT_CARD_VALUE_STYLE}>{formatCurrency(stats?.total_inventory_value || 0)}</div>
+                  <div style={statCardValueStyle(formatCurrency(stats?.total_inventory_value || 0))}>{formatCurrency(stats?.total_inventory_value || 0)}</div>
                   <div style={STAT_CARD_SUBTEXT_STYLE}>inventory value</div>
                 </div>
               </div>

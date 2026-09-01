@@ -181,7 +181,7 @@ const QuoteManagement = () => {
           ].map((s) => (
             <div key={s.label} style={statCardStyle(s.color)}>
               <div style={STAT_CARD_LABEL_STYLE}>{s.label}</div>
-              <div style={STAT_CARD_VALUE_STYLE}>{s.value}</div>
+              <div style={statCardValueStyle(s.value)}>{s.value}</div>
               <div style={STAT_CARD_SUBTEXT_STYLE}>{s.sub}</div>
             </div>
           ))}
