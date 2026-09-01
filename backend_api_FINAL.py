@@ -2088,6 +2088,12 @@ async def add_payment(
                    f"but this payment is in {payment.payment_currency}. Select a {payment.payment_currency} account."
         )
 
+    # Closing a period is supposed to lock it from edits, but this endpoint
+    # never checked - a payment dated inside an already-closed period would
+    # move money and change balances without ever touching the net income
+    # figures that period's closing locked in.
+    await check_period_lock(db, payment.payment_date)
+
     # Get exchange rate as of payment date
     exchange_rate = await get_exchange_rate(db, 'USD', 'MXN', payment.payment_date)
 
@@ -3641,7 +3647,11 @@ async def record_ap_payment(
     user=Depends(get_current_user)
 ):
     """Record a payment against Accounts Payable for a vendor"""
-    
+
+    # See create_transaction for why this matters: closing a period is
+    # supposed to lock it from edits.
+    await check_period_lock(db, payment.payment_date)
+
     # Find AP account for this currency
     ap_account_id = await db.fetchval(
         "SELECT account_id FROM accounts WHERE account_subtype = 'AP' AND currency = $1 AND is_active = TRUE LIMIT 1",
@@ -3808,7 +3818,14 @@ async def create_transaction(
     user=Depends(get_current_user)
 ):
     """Create a new transaction with lines (journal entry)"""
-    
+
+    # Closing a period is supposed to lock it from edits (see close_period),
+    # but this endpoint - the one behind every Deposit/Expense/Transfer/
+    # Exchange in the UI - never checked, so a backdated entry into an
+    # already-closed period would move money without ever touching the net
+    # income/FX figures that period's closing locked in.
+    await check_period_lock(db, transaction.transaction_date)
+
     # Validate: Debits must equal credits
     # Only exchange transactions are exempt (different currencies can't balance numerically)
     total_debits = sum(float(line.debit_amount) for line in transaction.lines)
@@ -4181,7 +4198,11 @@ async def record_profit_distribution(
     user=Depends(get_current_user)
 ):
     """Record a profit distribution"""
-    
+
+    # See create_transaction for why this matters: closing a period is
+    # supposed to lock it from edits.
+    await check_period_lock(db, distribution.distribution_date)
+
     erick_amount = round(float(distribution.total_profit) * float(distribution.erick_percentage) / 100, 2)
     omar_amount = round(float(distribution.total_profit) - erick_amount, 2)  # Remainder ensures exact total
 
