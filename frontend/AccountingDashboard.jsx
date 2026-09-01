@@ -348,8 +348,8 @@ const AccountingDashboard = () => {
             glance. So each button keeps its own distinct color again,
             picked from the shared BUTTON_COLORS palette instead of a
             one-off gradient: blue/green for the two data-entry actions,
-            purple/cyan/indigo/orange for the four reports, dark/gray for
-            the two account settings actions, red for the one genuinely
+            purple/cyan/indigo/orange/teal/pink for the six reports and
+            account-settings actions, red for the one genuinely
             irreversible action, outline for Refresh. */}
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <button onClick={() => setShowTransactionForm(true)} style={buttonStyle('blue', 'md')}>
@@ -370,10 +370,10 @@ const AccountingDashboard = () => {
           <button onClick={() => setShowTransactionJournal(true)} style={buttonStyle('orange', 'md')}>
             📒 Transaction Journal
           </button>
-          <button onClick={() => { setShowExchangeRate(true); loadRateHistory(); }} style={buttonStyle('dark', 'md')}>
+          <button onClick={() => { setShowExchangeRate(true); loadRateHistory(); }} style={buttonStyle('teal', 'md')}>
             💱 Exchange Rate
           </button>
-          <button onClick={() => { setShowAPManagement(true); loadAPData(); }} style={buttonStyle('gray', 'md')}>
+          <button onClick={() => { setShowAPManagement(true); loadAPData(); }} style={buttonStyle('pink', 'md')}>
             📋 Accounts Payable
           </button>
           <button onClick={() => setShowPeriodClosing(true)} style={buttonStyle('red', 'md')}>
