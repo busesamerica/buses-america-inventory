@@ -184,49 +184,61 @@ const DistributionHistoryModal = ({ isOpen, onClose }) => {
           )}
         </div>
 
-        {/* Footer */}
-        {distributions.length > 0 && (
-          <div style={{
-            padding: '1.5rem',
-            borderTop: '1px solid #e5e7eb',
-            background: '#f9fafb',
-            position: 'sticky',
-            bottom: 0
-          }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
-                  TOTAL DISTRIBUTED
+        {/* Footer - distributions can be a mix of USD-sale and MXN-sale
+            payouts, so summing erick_amount/omar_amount across all of them
+            and labeling the total with distributions[0].currency would add
+            raw USD and MXN numbers together and tag the result with
+            whichever currency happened to come first. Split by currency
+            instead, same as every other cross-currency total in this app. */}
+        {distributions.length > 0 && (() => {
+          const sumByCurrency = (field) => distributions.reduce((totals, d) => {
+            const cur = d.currency || 'USD';
+            totals[cur] = (totals[cur] || 0) + parseFloat(d[field] || 0);
+            return totals;
+          }, {});
+          const erickTotals = sumByCurrency('erick_amount');
+          const omarTotals = sumByCurrency('omar_amount');
+          const renderTotals = (totals) => Object.keys(totals).length === 0
+            ? formatCurrency(0, 'USD')
+            : Object.entries(totals).map(([cur, amt]) => formatCurrency(amt, cur)).join(' + ');
+
+          return (
+            <div style={{
+              padding: '1.5rem',
+              borderTop: '1px solid #e5e7eb',
+              background: '#f9fafb',
+              position: 'sticky',
+              bottom: 0
+            }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                    NUMBER OF DISTRIBUTIONS
+                  </div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#111827' }}>
+                    {distributions.length}
+                  </div>
                 </div>
-                <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#111827' }}>
-                  {distributions.length}
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                    ERICK TOTAL
+                  </div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#059669' }}>
+                    {renderTotals(erickTotals)}
+                  </div>
                 </div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
-                  ERICK TOTAL
-                </div>
-                <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#059669' }}>
-                  {formatCurrency(
-                    distributions.reduce((sum, d) => sum + parseFloat(d.erick_amount), 0),
-                    distributions[0].currency
-                  )}
-                </div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
-                  OMAR TOTAL
-                </div>
-                <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#7c3aed' }}>
-                  {formatCurrency(
-                    distributions.reduce((sum, d) => sum + parseFloat(d.omar_amount), 0),
-                    distributions[0].currency
-                  )}
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                    OMAR TOTAL
+                  </div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#7c3aed' }}>
+                    {renderTotals(omarTotals)}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );
