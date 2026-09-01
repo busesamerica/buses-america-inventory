@@ -176,14 +176,9 @@ const SalesReports = () => {
         </button>
       </div>
 
-      {/* Overview Cards - white card + colored left border, matching the
-          Dashboard's own stat cards (App_COMPLETE.jsx) and the restrained,
-          meaning-tied color use in this same module's Manage Sales tab
-          (money in green, nothing else colored). The five tiles here used
-          to be five different fully-saturated gradient fills with no
-          consistent reasoning behind which metric got which color - that
-          made this the most "decorated" card style in the whole module
-          while its sibling tabs stayed plain. */}
+      {/* Overview Cards - the system-wide stat card style (statCardStyle in
+          utils.js), matching ClientManagement's cards: full gradient, white
+          text, one color per metric. */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
@@ -191,92 +186,56 @@ const SalesReports = () => {
         marginBottom: '1.5rem'
       }}>
         {/* Total Sales */}
-        <div style={{
-          padding: '1rem',
-          background: 'white',
-          borderRadius: '0.75rem',
-          borderLeft: '4px solid #3b82f6',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-        }}>
-          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Total Sales</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: '700', color: '#111827' }}>{overview.total_sales}</div>
-          <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+        <div style={statCardStyle('blue')}>
+          <div style={STAT_CARD_LABEL_STYLE}>Total Sales</div>
+          <div style={STAT_CARD_VALUE_STYLE}>{overview.total_sales}</div>
+          <div style={STAT_CARD_SUBTEXT_STYLE}>
             {overview.unique_clients} unique clients
           </div>
         </div>
 
         {/* Revenue USD */}
-        <div style={{
-          padding: '1rem',
-          background: 'white',
-          borderRadius: '0.75rem',
-          borderLeft: '4px solid #10b981',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-        }}>
-          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Revenue (USD)</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#111827' }}>{formatCurrency(overview.revenue_usd, 'USD')}</div>
-          <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+        <div style={statCardStyle('green')}>
+          <div style={STAT_CARD_LABEL_STYLE}>Revenue (USD)</div>
+          <div style={STAT_CARD_VALUE_STYLE}>{formatCurrency(overview.revenue_usd, 'USD')}</div>
+          <div style={STAT_CARD_SUBTEXT_STYLE}>
             Profit: {formatCurrency(overview.total_profit_usd, 'USD')}
           </div>
         </div>
 
         {/* Revenue MXN */}
-        <div style={{
-          padding: '1rem',
-          background: 'white',
-          borderRadius: '0.75rem',
-          borderLeft: '4px solid #8b5cf6',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-        }}>
-          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Revenue (MXN)</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#111827' }}>{formatCurrency(overview.revenue_mxn, 'MXN')}</div>
-          <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+        <div style={statCardStyle('purple')}>
+          <div style={STAT_CARD_LABEL_STYLE}>Revenue (MXN)</div>
+          <div style={STAT_CARD_VALUE_STYLE}>{formatCurrency(overview.revenue_mxn, 'MXN')}</div>
+          <div style={STAT_CARD_SUBTEXT_STYLE}>
             Profit: {formatCurrency(overview.total_profit_mxn, 'MXN')}
           </div>
         </div>
 
         {/* Profit Margin */}
-        <div style={{
-          padding: '1rem',
-          background: 'white',
-          borderRadius: '0.75rem',
-          borderLeft: '4px solid #f59e0b',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-        }}>
-          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Avg Profit Margin</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: '700', color: '#111827' }}>{overview.avg_profit_margin.toFixed(1)}%</div>
-          <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+        <div style={statCardStyle('orange')}>
+          <div style={STAT_CARD_LABEL_STYLE}>Avg Profit Margin</div>
+          <div style={STAT_CARD_VALUE_STYLE}>{overview.avg_profit_margin.toFixed(1)}%</div>
+          <div style={STAT_CARD_SUBTEXT_STYLE}>
             Across all sales
           </div>
         </div>
 
-        {/* Pending Balance - the one card where color still carries
-            meaning (something is owed), same principle as the Payment
-            Status card's green/yellow/red rows below. */}
-        <div style={{
-          padding: '1rem',
-          background: 'white',
-          borderRadius: '0.75rem',
-          borderLeft: (overview.pending_balance_usd > 0 || overview.pending_balance_mxn > 0)
-            ? '4px solid #ef4444'
-            : '4px solid #9ca3af',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-        }}>
-          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Pending Balance</div>
+        {/* Pending Balance - the one card where the color choice itself
+            still carries meaning (something is owed), same principle as
+            the Payment Status card's green/yellow/red rows below. */}
+        <div style={statCardStyle((overview.pending_balance_usd > 0 || overview.pending_balance_mxn > 0) ? 'red' : 'gray')}>
+          <div style={STAT_CARD_LABEL_STYLE}>Pending Balance</div>
           {/* USD and MXN balances are separate amounts, not one number - a
               USD sale's balance_due and an MXN sale's balance_due can't be
               added together without a conversion neither figure applies. */}
-          <div style={{
-            fontSize: '1.25rem',
-            fontWeight: '700',
-            color: (overview.pending_balance_usd > 0 || overview.pending_balance_mxn > 0) ? '#dc2626' : '#111827'
-          }}>
+          <div style={{ fontSize: '1.25rem', fontWeight: '700' }}>
             {overview.pending_balance_usd > 0 && formatCurrency(overview.pending_balance_usd, 'USD')}
             {overview.pending_balance_usd > 0 && overview.pending_balance_mxn > 0 && ' + '}
             {overview.pending_balance_mxn > 0 && formatCurrency(overview.pending_balance_mxn, 'MXN')}
             {overview.pending_balance_usd === 0 && overview.pending_balance_mxn === 0 && formatCurrency(0, 'USD')}
           </div>
-          <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+          <div style={STAT_CARD_SUBTEXT_STYLE}>
             Outstanding payments
           </div>
         </div>

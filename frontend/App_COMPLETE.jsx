@@ -639,25 +639,25 @@ function InventoryApp() {
           {view === 'dashboard' && (
             <div style={{maxWidth:'1400px'}}>
               <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))',gap:'1.5rem',marginBottom:'3rem'}}>
-                <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',borderLeft:'4px solid #007bff'}}>
-                  <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'0.5rem'}}>🇺🇸 US Inventory</div>
-                  <div style={{fontSize:'2rem',fontWeight:'700',color:'#333'}}>{stats?.us_inventory || 0}</div>
-                  <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.5rem'}}>units in stock</div>
+                <div style={statCardStyle('blue')}>
+                  <div style={STAT_CARD_LABEL_STYLE}>🇺🇸 US Inventory</div>
+                  <div style={STAT_CARD_VALUE_STYLE}>{stats?.us_inventory || 0}</div>
+                  <div style={STAT_CARD_SUBTEXT_STYLE}>units in stock</div>
                 </div>
-                <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',borderLeft:'4px solid #dc3545'}}>
-                  <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'0.5rem'}}>🇲🇽 Mexico Inventory</div>
-                  <div style={{fontSize:'2rem',fontWeight:'700',color:'#333'}}>{stats?.mexico_inventory || 0}</div>
-                  <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.5rem'}}>units in stock</div>
+                <div style={statCardStyle('red')}>
+                  <div style={STAT_CARD_LABEL_STYLE}>🇲🇽 Mexico Inventory</div>
+                  <div style={STAT_CARD_VALUE_STYLE}>{stats?.mexico_inventory || 0}</div>
+                  <div style={STAT_CARD_SUBTEXT_STYLE}>units in stock</div>
                 </div>
-                <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',borderLeft:'4px solid #28a745'}}>
-                  <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'0.5rem'}}>✅ Available</div>
-                  <div style={{fontSize:'2rem',fontWeight:'700',color:'#333'}}>{stats?.available_for_sale || 0}</div>
-                  <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.5rem'}}>ready to sell</div>
+                <div style={statCardStyle('green')}>
+                  <div style={STAT_CARD_LABEL_STYLE}>✅ Available</div>
+                  <div style={STAT_CARD_VALUE_STYLE}>{stats?.available_for_sale || 0}</div>
+                  <div style={STAT_CARD_SUBTEXT_STYLE}>ready to sell</div>
                 </div>
-                <div style={{background:'white',padding:'1.5rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',borderLeft:'4px solid #ffc107'}}>
-                  <div style={{fontSize:'0.875rem',color:'#666',marginBottom:'0.5rem'}}>💰 Total Value</div>
-                  <div style={{fontSize:'2rem',fontWeight:'700',color:'#333'}}>{formatCurrency(stats?.total_inventory_value || 0)}</div>
-                  <div style={{fontSize:'0.875rem',color:'#666',marginTop:'0.5rem'}}>inventory value</div>
+                <div style={statCardStyle('orange')}>
+                  <div style={STAT_CARD_LABEL_STYLE}>💰 Total Value</div>
+                  <div style={STAT_CARD_VALUE_STYLE}>{formatCurrency(stats?.total_inventory_value || 0)}</div>
+                  <div style={STAT_CARD_SUBTEXT_STYLE}>inventory value</div>
                 </div>
               </div>
               
