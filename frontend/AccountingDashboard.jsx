@@ -341,14 +341,16 @@ const AccountingDashboard = () => {
             button system (buttonStyle() in utils.js). Nine differently
             colored gradients in one row (one per button, no shared
             reasoning) is exactly the "various buttons with different
-            colors and forms" this consolidates - but dumping every
-            non-primary action into the same flat gray read as "all these
-            buttons lost their color", so the row is grouped by what each
-            button does instead: blue for the primary data-entry action,
-            green for a positive money action, dark for the financial
-            documents/reports (view-only), gray for account
-            settings/config, red for the one genuinely irreversible
-            action, outline for Refresh. */}
+            colors and forms" this consolidates - but grouping every
+            non-primary action into one or two generic buckets (gray, then
+            dark+gray) read as "these buttons lost their color" instead,
+            since most of the row still needs to be told apart at a
+            glance. So each button keeps its own distinct color again,
+            picked from the shared BUTTON_COLORS palette instead of a
+            one-off gradient: blue/green for the two data-entry actions,
+            purple/cyan/indigo/orange for the four reports, dark/gray for
+            the two account settings actions, red for the one genuinely
+            irreversible action, outline for Refresh. */}
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <button onClick={() => setShowTransactionForm(true)} style={buttonStyle('blue', 'md')}>
             📝 Record Transaction
@@ -356,19 +358,19 @@ const AccountingDashboard = () => {
           <button onClick={() => setShowDistributionModal(true)} style={buttonStyle('green', 'md')}>
             💸 Distribute Profit
           </button>
-          <button onClick={() => setShowDistributionHistory(true)} style={buttonStyle('dark', 'md')}>
+          <button onClick={() => setShowDistributionHistory(true)} style={buttonStyle('purple', 'md')}>
             📊 Distribution History
           </button>
-          <button onClick={() => setShowIncomeStatement(true)} style={buttonStyle('dark', 'md')}>
+          <button onClick={() => setShowIncomeStatement(true)} style={buttonStyle('cyan', 'md')}>
             📈 Income Statement
           </button>
-          <button onClick={() => setShowBalanceSheet(true)} style={buttonStyle('dark', 'md')}>
+          <button onClick={() => setShowBalanceSheet(true)} style={buttonStyle('indigo', 'md')}>
             📊 Balance Sheet
           </button>
-          <button onClick={() => setShowTransactionJournal(true)} style={buttonStyle('dark', 'md')}>
+          <button onClick={() => setShowTransactionJournal(true)} style={buttonStyle('orange', 'md')}>
             📒 Transaction Journal
           </button>
-          <button onClick={() => { setShowExchangeRate(true); loadRateHistory(); }} style={buttonStyle('gray', 'md')}>
+          <button onClick={() => { setShowExchangeRate(true); loadRateHistory(); }} style={buttonStyle('dark', 'md')}>
             💱 Exchange Rate
           </button>
           <button onClick={() => { setShowAPManagement(true); loadAPData(); }} style={buttonStyle('gray', 'md')}>

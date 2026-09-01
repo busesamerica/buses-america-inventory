@@ -150,6 +150,12 @@ const STAT_CARD_SUBTEXT_STYLE = { fontSize: '0.75rem', opacity: 0.8, marginTop: 
 // buttons) or 'sm' (compact row-actions, matching Quotes' table buttons).
 // A disabled button always renders as flat gray regardless of colorKey,
 // same convention already used for "Recording…"/"Saving…" submit buttons.
+// purple/orange/cyan/indigo exist so a row of several buttons that don't
+// have a clean danger/success/neutral meaning (e.g. Accounting's Quick
+// Actions) can still each get their own distinct color, the way the
+// module looked before this system existed - just flat and solid instead
+// of a different gradient per button. Same family as STAT_CARD_COLORS so
+// it stays visually related to the rest of the palette.
 const BUTTON_COLORS = {
   primary: { bg: '#FFD700', fg: '#1a1a1a' },  // brand CTA - "New X" creates
   dark:    { bg: '#1a1a1a', fg: 'white' },
@@ -157,6 +163,10 @@ const BUTTON_COLORS = {
   green:   { bg: '#059669', fg: 'white' },
   red:     { bg: '#dc2626', fg: 'white' },     // solid danger - permanent/high-stakes
   redSoft: { bg: '#fee2e2', fg: '#991b1b' },   // soft danger - reversible/lower-stakes
+  purple:  { bg: '#7c3aed', fg: 'white' },
+  orange:  { bg: '#d97706', fg: 'white' },
+  cyan:    { bg: '#0891b2', fg: 'white' },
+  indigo:  { bg: '#4f46e5', fg: 'white' },
   gray:    { bg: '#f3f4f6', fg: '#374151' },
   outline: { bg: 'white', fg: '#374151', border: '#d1d5db' }
 };
