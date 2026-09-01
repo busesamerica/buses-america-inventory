@@ -1215,15 +1215,7 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
             type="button"
             onClick={() => setCurrentSection(Math.max(0, currentSection - 1))}
             disabled={currentSection === 0}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: currentSection === 0 ? '#e5e7eb' : 'white',
-              color: currentSection === 0 ? '#9ca3af' : '#374151',
-              border: '2px solid #e5e7eb',
-              borderRadius: '0.5rem',
-              cursor: currentSection === 0 ? 'not-allowed' : 'pointer',
-              fontWeight: '600'
-            }}
+            style={buttonStyle('outline', 'md', currentSection === 0)}
           >
             ← Previous
           </button>
@@ -1232,15 +1224,7 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
             <button
               type="button"
               onClick={onClose}
-              style={{
-                padding: '0.75rem 1.5rem',
-                background: 'white',
-                color: '#374151',
-                border: '2px solid #e5e7eb',
-                borderRadius: '0.5rem',
-                cursor: 'pointer',
-                fontWeight: '600'
-              }}
+              style={buttonStyle('outline', 'md')}
             >
               Cancel
             </button>
@@ -1249,15 +1233,7 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
               <button
                 type="button"
                 onClick={() => setCurrentSection(currentSection + 1)}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  background: '#FFD700',
-                  color: '#1a1a1a',
-                  border: 'none',
-                  borderRadius: '0.5rem',
-                  cursor: 'pointer',
-                  fontWeight: '700'
-                }}
+                style={buttonStyle('primary', 'md')}
               >
                 Next →
               </button>
@@ -1265,15 +1241,7 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
               <button
                 type="submit"
                 disabled={saving}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  background: saving ? '#9ca3af' : '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '0.5rem',
-                  cursor: saving ? 'not-allowed' : 'pointer',
-                  fontWeight: '700'
-                }}
+                style={buttonStyle('green', 'md', saving)}
               >
                 {saving ? '💾 Saving...' : '✅ Save Inspection'}
               </button>

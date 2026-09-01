@@ -315,16 +315,7 @@ const PreInspectionsList = ({ onViewReport, onCreateInventory }) => {
                         e.stopPropagation();
                         onViewReport(inspection);
                       }}
-                      style={{
-                        padding: '0.75rem 1rem',
-                        background: '#3b82f6',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '0.5rem',
-                        cursor: 'pointer',
-                        fontWeight: '600',
-                        fontSize: '0.875rem'
-                      }}
+                      style={{ ...buttonStyle('blue', 'md'), padding: '0.75rem 1rem' }}
                     >
                       📄 View Report
                     </button>
@@ -335,16 +326,7 @@ const PreInspectionsList = ({ onViewReport, onCreateInventory }) => {
                           e.stopPropagation();
                           onCreateInventory(inspection);
                         }}
-                        style={{
-                          padding: '0.75rem 1rem',
-                          background: '#10b981',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '0.5rem',
-                          cursor: 'pointer',
-                          fontWeight: '600',
-                          fontSize: '0.875rem'
-                        }}
+                        style={{ ...buttonStyle('green', 'md'), padding: '0.75rem 1rem' }}
                       >
                         ➕ Create Inventory
                       </button>

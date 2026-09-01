@@ -594,16 +594,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
               <button
                 type="submit"
                 disabled={saving}
-                style={{
-                  padding: '1rem',
-                  background: saving ? '#9ca3af' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '0.5rem',
-                  cursor: saving ? 'not-allowed' : 'pointer',
-                  fontWeight: '700',
-                  fontSize: '1rem'
-                }}
+                style={{ ...buttonStyle('green', 'md', saving), padding: '1rem' }}
               >
                 {saving ? '💾 Adding Cost...' : '✅ Add Cost'}
               </button>
@@ -623,16 +614,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                   <div>No additional costs yet</div>
                   <button
                     onClick={() => setActiveTab('add-cost')}
-                    style={{
-                      marginTop: '1rem',
-                      padding: '0.75rem 1.5rem',
-                      background: '#10b981',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '0.5rem',
-                      cursor: 'pointer',
-                      fontWeight: '600'
-                    }}
+                    style={{ ...buttonStyle('green', 'md'), marginTop: '1rem' }}
                   >
                     ➕ Add First Cost
                   </button>
@@ -682,15 +664,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                             </div>
                             <button
                               onClick={() => handleDeleteCost(cost.cost_id)}
-                              style={{
-                                padding: '0.5rem',
-                                background: '#fee2e2',
-                                color: '#dc2626',
-                                border: 'none',
-                                borderRadius: '0.375rem',
-                                cursor: 'pointer',
-                                fontSize: '0.875rem'
-                              }}
+                              style={{ ...buttonStyle('redSoft', 'md'), padding: '0.5rem' }}
                             >
                               🗑️
                             </button>
@@ -883,15 +857,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
           </div>
           <button
             onClick={onClose}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: 'white',
-              border: '1px solid #d1d5db',
-              borderRadius: '0.5rem',
-              cursor: 'pointer',
-              fontWeight: '600',
-              fontSize: '0.875rem'
-            }}
+            style={buttonStyle('outline', 'md')}
           >
             Close
           </button>

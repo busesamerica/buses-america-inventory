@@ -159,18 +159,7 @@ const SalesReports = () => {
 
         <button
           onClick={() => setAppliedFilters(filters)}
-          style={{
-            padding: '0.75rem 1.5rem',
-            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-            color: 'white',
-            border: 'none',
-            borderRadius: '0.5rem',
-            fontSize: '0.875rem',
-            fontWeight: '600',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-            boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)'
-          }}
+          style={{ ...buttonStyle('blue', 'md'), whiteSpace: 'nowrap' }}
         >
           🔍 Apply Filters
         </button>

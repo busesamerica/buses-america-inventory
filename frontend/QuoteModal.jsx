@@ -389,19 +389,13 @@ const QuoteModal = ({ quote, clients, currentUser, onClose, onSaved }) => {
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
                   onClick={() => setUnitPickerOpen(!unitPickerOpen)}
-                  style={{
-                    padding: '0.5rem 1rem', background: '#FFD700', color: '#1a1a1a',
-                    border: 'none', borderRadius: '0.4rem', fontWeight: '600', cursor: 'pointer', fontSize: '0.85rem'
-                  }}
+                  style={{ ...buttonStyle('primary', 'sm'), padding: '0.5rem 1rem' }}
                 >
                   ➕ Add unit
                 </button>
                 <button
                   onClick={addChargeLine}
-                  style={{
-                    padding: '0.5rem 1rem', background: '#1a1a1a', color: 'white',
-                    border: 'none', borderRadius: '0.4rem', fontWeight: '600', cursor: 'pointer', fontSize: '0.85rem'
-                  }}
+                  style={{ ...buttonStyle('dark', 'sm'), padding: '0.5rem 1rem' }}
                 >
                   ➕ Add charge
                 </button>
@@ -637,20 +631,14 @@ const QuoteModal = ({ quote, clients, currentUser, onClose, onSaved }) => {
           <div style={{ display: 'flex', gap: '0.75rem' }}>
             <button
               onClick={onClose}
-              style={{
-                padding: '0.7rem 1.4rem', background: 'white', color: '#374151',
-                border: '1px solid #d1d5db', borderRadius: '0.4rem', cursor: 'pointer', fontWeight: '600'
-              }}
+              style={buttonStyle('outline', 'md')}
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
               disabled={saving}
-              style={{
-                padding: '0.7rem 1.75rem', background: saving ? '#9ca3af' : '#FFD700', color: '#1a1a1a',
-                border: 'none', borderRadius: '0.4rem', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: '700'
-              }}
+              style={{ ...buttonStyle('primary', 'md', saving), padding: '0.7rem 1.75rem' }}
             >
               {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create quote'}
             </button>

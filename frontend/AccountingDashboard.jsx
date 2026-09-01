@@ -337,164 +337,43 @@ const AccountingDashboard = () => {
         <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.125rem', fontWeight: '700', color: '#111827' }}>
           ⚡ Quick Actions
         </h3>
+        {/* Flat solid colors, no gradients - matching QuoteManagement's
+            button system (buttonStyle() in utils.js). Nine differently
+            colored gradients in one row (one per button, no shared
+            reasoning) is exactly the "various buttons with different
+            colors and forms" this consolidates: blue for the primary
+            data-entry action, green for a positive money action, gray for
+            everything that just opens a view/report, red for the one
+            genuinely irreversible action, outline for Refresh. */}
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => setShowTransactionForm(true)}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.5rem',
-              fontSize: '0.875rem',
-              fontWeight: '600',
-              cursor: 'pointer',
-              boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)'
-            }}
-          >
+          <button onClick={() => setShowTransactionForm(true)} style={buttonStyle('blue', 'md')}>
             📝 Record Transaction
           </button>
-          <button
-            onClick={() => setShowDistributionModal(true)}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.5rem',
-              fontSize: '0.875rem',
-              fontWeight: '600',
-              cursor: 'pointer',
-              boxShadow: '0 2px 4px rgba(16, 185, 129, 0.3)'
-            }}
-          >
+          <button onClick={() => setShowDistributionModal(true)} style={buttonStyle('green', 'md')}>
             💸 Distribute Profit
           </button>
-          <button
-            onClick={() => setShowDistributionHistory(true)}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.5rem',
-              fontSize: '0.875rem',
-              fontWeight: '600',
-              cursor: 'pointer',
-              boxShadow: '0 2px 4px rgba(139, 92, 246, 0.3)'
-            }}
-          >
+          <button onClick={() => setShowDistributionHistory(true)} style={buttonStyle('gray', 'md')}>
             📊 Distribution History
           </button>
-          <button
-            onClick={() => setShowIncomeStatement(true)}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.5rem',
-              fontSize: '0.875rem',
-              fontWeight: '600',
-              cursor: 'pointer',
-              boxShadow: '0 2px 4px rgba(245, 158, 11, 0.3)'
-            }}
-          >
+          <button onClick={() => setShowIncomeStatement(true)} style={buttonStyle('gray', 'md')}>
             📈 Income Statement
           </button>
-          <button
-            onClick={() => setShowBalanceSheet(true)}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.5rem',
-              fontSize: '0.875rem',
-              fontWeight: '600',
-              cursor: 'pointer',
-              boxShadow: '0 2px 4px rgba(6, 182, 212, 0.3)'
-            }}
-          >
+          <button onClick={() => setShowBalanceSheet(true)} style={buttonStyle('gray', 'md')}>
             📊 Balance Sheet
           </button>
-          <button
-            onClick={() => setShowTransactionJournal(true)}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.5rem',
-              fontSize: '0.875rem',
-              fontWeight: '600',
-              cursor: 'pointer',
-              boxShadow: '0 2px 4px rgba(99, 102, 241, 0.3)'
-            }}
-          >
+          <button onClick={() => setShowTransactionJournal(true)} style={buttonStyle('gray', 'md')}>
             📒 Transaction Journal
           </button>
-          <button
-            onClick={() => { setShowExchangeRate(true); loadRateHistory(); }}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.5rem',
-              fontSize: '0.875rem',
-              fontWeight: '600',
-              cursor: 'pointer',
-              boxShadow: '0 2px 4px rgba(245, 158, 11, 0.3)'
-            }}
-          >
+          <button onClick={() => { setShowExchangeRate(true); loadRateHistory(); }} style={buttonStyle('gray', 'md')}>
             💱 Exchange Rate
           </button>
-          <button
-            onClick={() => { setShowAPManagement(true); loadAPData(); }}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.5rem',
-              fontSize: '0.875rem',
-              fontWeight: '600',
-              cursor: 'pointer',
-              boxShadow: '0 2px 4px rgba(239, 68, 68, 0.3)'
-            }}
-          >
+          <button onClick={() => { setShowAPManagement(true); loadAPData(); }} style={buttonStyle('gray', 'md')}>
             📋 Accounts Payable
           </button>
-          <button
-            onClick={() => setShowPeriodClosing(true)}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.5rem',
-              fontSize: '0.875rem',
-              fontWeight: '600',
-              cursor: 'pointer',
-              boxShadow: '0 2px 4px rgba(220, 38, 38, 0.3)'
-            }}
-          >
+          <button onClick={() => setShowPeriodClosing(true)} style={buttonStyle('red', 'md')}>
             🔒 Close Period
           </button>
-          <button
-            onClick={() => window.location.reload()}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: '#f3f4f6',
-              color: '#374151',
-              border: '1px solid #d1d5db',
-              borderRadius: '0.5rem',
-              fontSize: '0.875rem',
-              fontWeight: '600',
-              cursor: 'pointer'
-            }}
-          >
+          <button onClick={() => window.location.reload()} style={buttonStyle('outline', 'md')}>
             🔄 Refresh
           </button>
         </div>
@@ -628,13 +507,7 @@ const AccountingDashboard = () => {
               <button
                 onClick={saveExchangeRate}
                 disabled={rateSaving || !newRate}
-                style={{
-                  width: '100%', padding: '0.6rem',
-                  background: (!newRate || rateSaving) ? '#9ca3af' : '#F59E0B',
-                  color: 'white', border: 'none', borderRadius: '0.375rem',
-                  fontSize: '0.875rem', fontWeight: '600',
-                  cursor: (!newRate || rateSaving) ? 'not-allowed' : 'pointer'
-                }}
+                style={{ ...buttonStyle('primary', 'md', rateSaving || !newRate), width: '100%', padding: '0.6rem' }}
               >
                 {rateSaving ? 'Saving...' : 'Update Exchange Rate'}
               </button>
@@ -885,11 +758,8 @@ const AccountingDashboard = () => {
                 onClick={recordAPPayment}
                 disabled={apSaving || !apPaymentForm.vendor || !apPaymentForm.payment_amount || !apPaymentForm.payment_account_id}
                 style={{
-                  width: '100%', padding: '0.6rem',
-                  background: (!apPaymentForm.vendor || !apPaymentForm.payment_amount || !apPaymentForm.payment_account_id || apSaving) ? '#9ca3af' : '#dc2626',
-                  color: 'white', border: 'none', borderRadius: '0.375rem',
-                  fontSize: '0.875rem', fontWeight: '600',
-                  cursor: (!apPaymentForm.vendor || !apPaymentForm.payment_amount || !apPaymentForm.payment_account_id || apSaving) ? 'not-allowed' : 'pointer'
+                  ...buttonStyle('red', 'md', apSaving || !apPaymentForm.vendor || !apPaymentForm.payment_amount || !apPaymentForm.payment_account_id),
+                  width: '100%', padding: '0.6rem'
                 }}
               >
                 {apSaving ? 'Processing...' : 'Record AP Payment'}

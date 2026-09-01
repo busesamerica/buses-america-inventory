@@ -116,3 +116,51 @@ function statCardValueStyle(value) {
 }
 const STAT_CARD_VALUE_STYLE = { fontSize: '2rem', fontWeight: '800', overflowWrap: 'break-word', wordBreak: 'break-word' };
 const STAT_CARD_SUBTEXT_STYLE = { fontSize: '0.75rem', opacity: 0.8, marginTop: '0.5rem' };
+
+// Button system, shared the same way as the card/heading/formatter
+// constants above. QuoteManagement's buttons were the reference picked:
+// flat solid colors (no gradients), one radius for regular buttons
+// (0.5rem) and a smaller one for compact row-actions (0.3rem), colors
+// assigned by what the action means rather than per-screen taste. Every
+// other module had its own mix instead - full gradient fills on primary
+// actions (Record Transaction, Apply Filters, Distribute Profit, every
+// Quick Action in Accounting), different radii (4px/6px/8px/0.375rem
+// alongside Quotes' 0.5rem/0.3rem), and gradients even on a disabled
+// button's own "disabled" gray.
+//
+// BUTTON_COLORS keys a named color to its {bg, fg, border} - border is
+// only set for the outline variant. buttonStyle(colorKey, size, disabled)
+// returns the full button style; size is 'md' (default, primary/toolbar
+// buttons) or 'sm' (compact row-actions, matching Quotes' table buttons).
+// A disabled button always renders as flat gray regardless of colorKey,
+// same convention already used for "Recording…"/"Saving…" submit buttons.
+const BUTTON_COLORS = {
+  primary: { bg: '#FFD700', fg: '#1a1a1a' },  // brand CTA - "New X" creates
+  dark:    { bg: '#1a1a1a', fg: 'white' },
+  blue:    { bg: '#2563eb', fg: 'white' },
+  green:   { bg: '#059669', fg: 'white' },
+  red:     { bg: '#dc2626', fg: 'white' },     // solid danger - permanent/high-stakes
+  redSoft: { bg: '#fee2e2', fg: '#991b1b' },   // soft danger - reversible/lower-stakes
+  gray:    { bg: '#f3f4f6', fg: '#374151' },
+  outline: { bg: 'white', fg: '#374151', border: '#d1d5db' }
+};
+const BUTTON_SIZES = {
+  md: { padding: '0.75rem 1.5rem', fontSize: '0.875rem', borderRadius: '0.5rem' },
+  sm: { padding: '0.35rem 0.7rem', fontSize: '0.75rem', borderRadius: '0.3rem' }
+};
+function buttonStyle(colorKey, size, disabled) {
+  if (disabled) {
+    const s = BUTTON_SIZES[size] || BUTTON_SIZES.md;
+    return { ...s, background: '#9ca3af', color: 'white', border: 'none', fontWeight: '700', cursor: 'not-allowed' };
+  }
+  const c = BUTTON_COLORS[colorKey] || BUTTON_COLORS.gray;
+  const s = BUTTON_SIZES[size] || BUTTON_SIZES.md;
+  return {
+    ...s,
+    background: c.bg,
+    color: c.fg,
+    border: c.border ? `1px solid ${c.border}` : 'none',
+    fontWeight: '700',
+    cursor: 'pointer'
+  };
+}

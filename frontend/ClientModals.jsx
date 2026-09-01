@@ -407,35 +407,14 @@ const ClientFormModal = ({ client, onClose, onSave }) => {
             <button
               type="button"
               onClick={onClose}
-              style={{
-                flex: 1,
-                padding: '0.75rem',
-                background: '#e5e7eb',
-                color: '#374151',
-                border: 'none',
-                borderRadius: '0.5rem',
-                fontSize: '1rem',
-                fontWeight: '600',
-                cursor: 'pointer'
-              }}
+              style={{ ...buttonStyle('outline', 'md'), flex: 1 }}
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving}
-              style={{
-                flex: 1,
-                padding: '0.75rem',
-                background: saving ? '#9ca3af' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '0.5rem',
-                fontSize: '1rem',
-                fontWeight: '700',
-                cursor: saving ? 'not-allowed' : 'pointer',
-                boxShadow: saving ? 'none' : '0 4px 6px rgba(16, 185, 129, 0.3)'
-              }}
+              style={{ ...buttonStyle('green', 'md', saving), flex: 1 }}
             >
               {saving ? '⏳ Saving...' : client ? '💾 Update Client' : '➕ Create Client'}
             </button>
@@ -550,16 +529,7 @@ const ClientDetailModal = ({ client, onClose, onEdit }) => {
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <button
               onClick={onEdit}
-              style={{
-                padding: '0.5rem 1rem',
-                background: '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '0.375rem',
-                fontSize: '0.875rem',
-                fontWeight: '600',
-                cursor: 'pointer'
-              }}
+              style={{ ...buttonStyle('blue', 'md'), padding: '0.5rem 1rem' }}
             >
               ✏️ Edit
             </button>
@@ -588,34 +558,19 @@ const ClientDetailModal = ({ client, onClose, onEdit }) => {
             gap: '1rem',
             marginBottom: '2rem'
           }}>
-            <div style={{
-              padding: '1.5rem',
-              background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-              borderRadius: '0.75rem',
-              color: 'white'
-            }}>
-              <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>Total Purchases</div>
-              <div style={{ fontSize: '2rem', fontWeight: '700' }}>{details.analytics.total_purchases}</div>
+            <div style={statCardStyle('blue')}>
+              <div style={STAT_CARD_LABEL_STYLE}>Total Purchases</div>
+              <div style={statCardValueStyle(String(details.analytics.total_purchases))}>{details.analytics.total_purchases}</div>
             </div>
-            
-            <div style={{
-              padding: '1.5rem',
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              borderRadius: '0.75rem',
-              color: 'white'
-            }}>
-              <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>Total Spent (USD)</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: '700' }}>{formatCurrency(details.analytics.total_spent_usd, 'USD')}</div>
+
+            <div style={statCardStyle('green')}>
+              <div style={STAT_CARD_LABEL_STYLE}>Total Spent (USD)</div>
+              <div style={statCardValueStyle(formatCurrency(details.analytics.total_spent_usd, 'USD'))}>{formatCurrency(details.analytics.total_spent_usd, 'USD')}</div>
             </div>
-            
-            <div style={{
-              padding: '1.5rem',
-              background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-              borderRadius: '0.75rem',
-              color: 'white'
-            }}>
-              <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>Total Spent (MXN)</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: '700' }}>{formatCurrency(details.analytics.total_spent_mxn, 'MXN')}</div>
+
+            <div style={statCardStyle('purple')}>
+              <div style={STAT_CARD_LABEL_STYLE}>Total Spent (MXN)</div>
+              <div style={statCardValueStyle(formatCurrency(details.analytics.total_spent_mxn, 'MXN'))}>{formatCurrency(details.analytics.total_spent_mxn, 'MXN')}</div>
             </div>
           </div>
 

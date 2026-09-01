@@ -425,8 +425,8 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-            <button type="button" onClick={handleClose} disabled={loading} style={{ padding: '0.75rem 1.5rem', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem', fontWeight: '600', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1 }}>Cancel</button>
-            <button type="submit" disabled={loading} style={{ padding: '0.75rem 1.5rem', background: loading ? '#9ca3af' : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', color: 'white', border: 'none', borderRadius: '0.5rem', fontSize: '1rem', fontWeight: '600', cursor: loading ? 'not-allowed' : 'pointer' }}>{loading ? 'Recording...' : '✅ Record Transaction'}</button>
+            <button type="button" onClick={handleClose} disabled={loading} style={{ ...buttonStyle('outline', 'md'), opacity: loading ? 0.5 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}>Cancel</button>
+            <button type="submit" disabled={loading} style={buttonStyle('blue', 'md', loading)}>{loading ? 'Recording...' : '✅ Record Transaction'}</button>
           </div>
         </form>
       </div>
