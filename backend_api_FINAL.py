@@ -3650,14 +3650,23 @@ async def record_ap_payment(
     if not ap_account_id:
         raise HTTPException(status_code=400, detail="No AP account found for this currency")
     
-    # Verify bank account exists
+    # Verify bank account exists and matches the payment's currency - same
+    # currency-mismatch guard as sale payments (add_payment): without it,
+    # paying a USD vendor bill from an MXN account would credit the MXN
+    # account's balance by the raw USD number with no conversion.
     bank_account = await db.fetchrow(
-        "SELECT account_id, account_name FROM accounts WHERE account_id = $1 AND is_active = TRUE",
+        "SELECT account_id, account_name, currency FROM accounts WHERE account_id = $1 AND is_active = TRUE",
         payment.payment_account_id
     )
     if not bank_account:
         raise HTTPException(status_code=404, detail="Bank account not found")
-    
+    if bank_account['currency'] != payment.payment_currency:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{bank_account['account_name']} is a {bank_account['currency']} account, "
+                   f"but this payment is in {payment.payment_currency}. Select a {payment.payment_currency} account."
+        )
+
     # Create transaction: Debit AP, Credit Bank
     trans_row = await db.fetchrow("""
         INSERT INTO transactions (transaction_date, description, reference_type, currency, created_by)
@@ -3819,7 +3828,33 @@ async def create_transaction(
                 status_code=400,
                 detail=f"Debits ({total_debits}) must equal credits ({total_credits})"
             )
-    
+
+    # Every line's declared currency must match its account's actual
+    # currency. Without this, a line can be inserted with e.g. currency='USD'
+    # against an MXN account - update_account_balances groups balances by
+    # (account_id, currency), so a mismatched line doesn't land in that
+    # account's real balance at all, it creates a separate phantom-currency
+    # balance for it instead. The money then never shows up in cash
+    # position/balance sheet under any account, with no error raised
+    # anywhere. (Frontend dropdowns are meant to only offer matching-currency
+    # accounts; this is the backend backstop.)
+    account_ids = list({line.account_id for line in transaction.lines})
+    account_rows = await db.fetch(
+        "SELECT account_id, account_name, currency FROM accounts WHERE account_id = ANY($1::int[])",
+        account_ids
+    )
+    accounts_by_id = {row['account_id']: row for row in account_rows}
+    for line in transaction.lines:
+        account = accounts_by_id.get(line.account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail=f"Account {line.account_id} not found")
+        if line.currency != account['currency']:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{account['account_name']} is a {account['currency']} account, but a line for it was submitted in {line.currency}. "
+                       f"Each line's currency must match its account's currency — use an Exchange transaction to move money between currencies."
+            )
+
     async with db.transaction():
         # Create transaction header
         trans_query = """
