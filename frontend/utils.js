@@ -167,6 +167,8 @@ const BUTTON_COLORS = {
   orange:  { bg: '#d97706', fg: 'white' },
   cyan:    { bg: '#0891b2', fg: 'white' },
   indigo:  { bg: '#4f46e5', fg: 'white' },
+  teal:    { bg: '#0d9488', fg: 'white' },
+  pink:    { bg: '#db2777', fg: 'white' },
   gray:    { bg: '#f3f4f6', fg: '#374151' },
   outline: { bg: 'white', fg: '#374151', border: '#d1d5db' }
 };

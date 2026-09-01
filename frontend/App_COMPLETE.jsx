@@ -638,7 +638,10 @@ function InventoryApp() {
           {/* DASHBOARD VIEW */}
           {view === 'dashboard' && (
             <div style={{maxWidth:'1400px'}}>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))',gap:'1.5rem',marginBottom:'3rem'}}>
+              {/* Fixed 4 columns, not auto-fit(minmax(250px,1fr)) - auto-fit
+                  wrapped the 4th card to its own row below the other
+                  three once the content area dropped under ~1080px. */}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'1.5rem',marginBottom:'3rem'}}>
                 <div style={statCardStyle('blue')}>
                   <div style={STAT_CARD_LABEL_STYLE}>🇺🇸 US Inventory</div>
                   <div style={statCardValueStyle(stats?.us_inventory || 0)}>{stats?.us_inventory || 0}</div>
