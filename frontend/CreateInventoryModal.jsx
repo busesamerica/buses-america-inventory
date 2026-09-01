@@ -641,16 +641,7 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
             type="button"
             onClick={onClose}
             disabled={saving}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: 'white',
-              color: '#374151',
-              border: '2px solid #e5e7eb',
-              borderRadius: '0.5rem',
-              cursor: saving ? 'not-allowed' : 'pointer',
-              fontWeight: '600',
-              fontSize: '1rem'
-            }}
+            style={buttonStyle('outline', 'md', saving)}
           >
             Cancel
           </button>
@@ -659,17 +650,7 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
             type="submit"
             onClick={handleSubmit}
             disabled={saving}
-            style={{
-              padding: '0.75rem 2rem',
-              background: saving ? '#9ca3af' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.5rem',
-              cursor: saving ? 'not-allowed' : 'pointer',
-              fontWeight: '700',
-              fontSize: '1rem',
-              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-            }}
+            style={{ ...buttonStyle('green', 'md', saving), padding: '0.75rem 2rem' }}
           >
             {saving ? '💾 Creating Inventory...' : '✅ Create Inventory'}
           </button>

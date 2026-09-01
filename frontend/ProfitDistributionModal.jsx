@@ -483,16 +483,7 @@ const ProfitDistributionModal = ({ isOpen, onClose, onComplete }) => {
               <button
                 onClick={() => setStep(1)}
                 disabled={loading}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  background: '#f3f4f6',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.5rem',
-                  fontSize: '1rem',
-                  fontWeight: '600',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  opacity: loading ? 0.5 : 1
-                }}
+                style={{ ...buttonStyle('outline', 'md'), opacity: loading ? 0.5 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
               >
                 ← Back
               </button>
@@ -500,14 +491,7 @@ const ProfitDistributionModal = ({ isOpen, onClose, onComplete }) => {
                 onClick={recordDistribution}
                 disabled={loading || calculation.profit <= 0 || !erickPaymentAccountId || !omarPaymentAccountId}
                 style={{
-                  padding: '0.75rem 1.5rem',
-                  background: (calculation.profit <= 0 || !erickPaymentAccountId || !omarPaymentAccountId) ? '#9ca3af' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '0.5rem',
-                  fontSize: '1rem',
-                  fontWeight: '600',
-                  cursor: (loading || calculation.profit <= 0 || !erickPaymentAccountId || !omarPaymentAccountId) ? 'not-allowed' : 'pointer',
+                  ...buttonStyle('green', 'md', loading || calculation.profit <= 0 || !erickPaymentAccountId || !omarPaymentAccountId),
                   opacity: loading ? 0.5 : 1
                 }}
               >

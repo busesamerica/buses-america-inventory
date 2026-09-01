@@ -197,17 +197,7 @@ React.useEffect(() => {
             <div className="no-print" style={{ display: 'flex', gap: '0.75rem' }}>
              <button
               onClick={() => window.print()}
-              style={{
-                background: '#FFD700',
-                border: 'none',
-                color: '#1a1a1a',
-                fontSize: '0.9rem',
-                padding: '0.75rem 1.25rem',
-                borderRadius: '0.5rem',
-                cursor: 'pointer',
-                fontWeight: '700',
-                whiteSpace: 'nowrap'
-              }}
+              style={{ ...buttonStyle('primary', 'md'), padding: '0.75rem 1.25rem', whiteSpace: 'nowrap' }}
             >
               🖨️ Print
             </button>
@@ -601,16 +591,7 @@ React.useEffect(() => {
         }}>
           <button
             onClick={onClose}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: 'white',
-              color: '#374151',
-              border: '2px solid #e5e7eb',
-              borderRadius: '0.5rem',
-              cursor: 'pointer',
-              fontWeight: '600',
-              fontSize: '1rem'
-            }}
+            style={buttonStyle('outline', 'md')}
           >
             Close
           </button>
@@ -618,17 +599,7 @@ React.useEffect(() => {
           {inspection.recommendation === 'Approve' && !inspection.purchased && onCreateInventory && (
             <button
               onClick={() => onCreateInventory(inspection)}
-              style={{
-                padding: '0.75rem 2rem',
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '0.5rem',
-                cursor: 'pointer',
-                fontWeight: '700',
-                fontSize: '1rem',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-              }}
+              style={{ ...buttonStyle('green', 'md'), padding: '0.75rem 2rem' }}
             >
               ✅ Create Inventory from This Inspection
             </button>

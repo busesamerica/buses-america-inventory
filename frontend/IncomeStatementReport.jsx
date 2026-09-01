@@ -167,17 +167,7 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
             <button
               onClick={handleRunReport}
               disabled={loading}
-              style={{
-                padding: '0.75rem 1.5rem',
-                background: loading ? '#9ca3af' : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '0.5rem',
-                fontSize: '1rem',
-                fontWeight: '600',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                whiteSpace: 'nowrap'
-              }}
+              style={{ ...buttonStyle('blue', 'md', loading), whiteSpace: 'nowrap' }}
             >
               {loading ? 'Loading...' : '🔄 Run Report'}
             </button>

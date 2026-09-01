@@ -408,17 +408,7 @@ const RecordSaleForm = ({ inventory, clients, onSaleRecorded, onClientsChanged }
               <button
                 type="button"
                 onClick={() => setShowNewClientModal(true)}
-                style={{
-                  padding: '0.75rem 1rem',
-                  background: '#F59E0B',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '0.5rem',
-                  fontSize: '0.875rem',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap'
-                }}
+                style={{ ...buttonStyle('primary', 'md'), padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}
               >
                 + New
               </button>
@@ -468,18 +458,7 @@ const RecordSaleForm = ({ inventory, clients, onSaleRecorded, onClientsChanged }
         <button
           type="submit"
           disabled={saving}
-          style={{
-            width: '100%',
-            padding: '0.875rem',
-            background: saving ? '#9ca3af' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-            color: 'white',
-            border: 'none',
-            borderRadius: '0.5rem',
-            fontSize: '1rem',
-            fontWeight: '700',
-            cursor: saving ? 'not-allowed' : 'pointer',
-            boxShadow: saving ? 'none' : '0 4px 6px rgba(16, 185, 129, 0.3)'
-          }}
+          style={{ ...buttonStyle('green', 'md', saving), width: '100%', padding: '0.875rem', fontSize: '1rem' }}
         >
           {saving ? '⏳ Recording Sale...' : '💰 Record Sale'}
         </button>
@@ -566,16 +545,7 @@ const ManageSales = ({ soldBuses, accounts, onPaymentRecorded, onViewDetails }) 
                 <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '1rem' }}>
                   <button
                     onClick={() => onViewDetails(bus)}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      background: '#3b82f6',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '0.375rem',
-                      fontSize: '0.875rem',
-                      fontWeight: '600',
-                      cursor: 'pointer'
-                    }}
+                    style={{ ...buttonStyle('blue', 'md'), padding: '0.5rem 1rem' }}
                   >
                     📊 Details
                   </button>
@@ -584,16 +554,7 @@ const ManageSales = ({ soldBuses, accounts, onPaymentRecorded, onViewDetails }) 
                       setSelectedBus(bus);
                       setShowPaymentForm(true);
                     }}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      background: '#10b981',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '0.375rem',
-                      fontSize: '0.875rem',
-                      fontWeight: '600',
-                      cursor: 'pointer'
-                    }}
+                    style={{ ...buttonStyle('green', 'md'), padding: '0.5rem 1rem' }}
                   >
                     💵 Add Payment
                   </button>
@@ -879,34 +840,14 @@ const PaymentFormModal = ({ bus, accounts, onClose, onPaymentRecorded }) => {
             <button
               type="button"
               onClick={onClose}
-              style={{
-                flex: 1,
-                padding: '0.75rem',
-                background: '#e5e7eb',
-                color: '#374151',
-                border: 'none',
-                borderRadius: '0.5rem',
-                fontSize: '0.875rem',
-                fontWeight: '600',
-                cursor: 'pointer'
-              }}
+              style={{ ...buttonStyle('outline', 'md'), flex: 1 }}
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving}
-              style={{
-                flex: 1,
-                padding: '0.75rem',
-                background: saving ? '#9ca3af' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '0.5rem',
-                fontSize: '0.875rem',
-                fontWeight: '700',
-                cursor: saving ? 'not-allowed' : 'pointer'
-              }}
+              style={{ ...buttonStyle('green', 'md', saving), flex: 1 }}
             >
               {saving ? 'Recording...' : '💰 Record Payment'}
             </button>
@@ -1166,16 +1107,7 @@ const SaleDetailsModal = ({ bus, onClose, onPaymentAdded, accounts }) => {
               <button
                 onClick={handleImportPayments}
                 disabled={importing}
-                style={{
-                  padding: '0.5rem 1rem',
-                  background: importing ? '#9ca3af' : '#f59e0b',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '0.375rem',
-                  fontSize: '0.875rem',
-                  fontWeight: '600',
-                  cursor: importing ? 'not-allowed' : 'pointer'
-                }}
+                style={{ ...buttonStyle('primary', 'md', importing), padding: '0.5rem 1rem' }}
               >
                 {importing ? '⏳ Importing...' : '📥 Import Payments to Accounting'}
               </button>
@@ -1191,16 +1123,7 @@ const SaleDetailsModal = ({ bus, onClose, onPaymentAdded, accounts }) => {
               {summary.ar_balance > 0 && (
                 <button
                   onClick={() => setShowPaymentForm(true)}
-                  style={{
-                    padding: '0.5rem 1rem',
-                    background: '#10b981',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '0.375rem',
-                    fontSize: '0.875rem',
-                    fontWeight: '600',
-                    cursor: 'pointer'
-                  }}
+                  style={{ ...buttonStyle('green', 'md'), padding: '0.5rem 1rem' }}
                 >
                   ➕ Add Payment
                 </button>

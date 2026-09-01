@@ -167,13 +167,7 @@ const PeriodClosingModal = ({ isOpen, onClose, onComplete }) => {
           h('button', {
             onClick:handleClose,
             disabled:saving,
-            style:{
-              width:'100%',padding:'0.75rem',
-              background:saving?'#9ca3af':'#111827',
-              color:'white',border:'none',borderRadius:'0.375rem',
-              fontSize:'0.875rem',fontWeight:'600',
-              cursor:saving?'not-allowed':'pointer'
-            }
+            style: Object.assign({}, buttonStyle('red', 'md', saving), { width:'100%', padding:'0.75rem' })
           }, saving ? 'Closing period...' : '\uD83D\uDD12 Close Period')
         )
       )

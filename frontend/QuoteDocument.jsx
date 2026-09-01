@@ -195,10 +195,7 @@ const QuoteDocument = ({ quote, onClose, currentUser }) => {
           <div style={{ display: 'flex', gap: '0.75rem' }}>
             <button
               onClick={() => window.print()}
-              style={{
-                padding: '0.7rem 1.4rem', background: '#FFD700', color: '#1a1a1a',
-                border: 'none', borderRadius: '0.4rem', fontWeight: '700', cursor: 'pointer'
-              }}
+              style={{ ...buttonStyle('primary', 'md'), padding: '0.7rem 1.4rem' }}
             >
               🖨️ Imprimir / Guardar PDF
             </button>

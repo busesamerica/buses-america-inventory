@@ -272,7 +272,7 @@ const InventoryManagement = () => {
           />
           <button
             onClick={() => setShowBusForm(true)}
-            style={{ padding: '0.75rem 1.5rem', background: '#FFD700', color: '#1a1a1a', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            style={{ ...buttonStyle('primary', 'md'), whiteSpace: 'nowrap' }}
           >
             ➕ Add New Bus
           </button>
@@ -862,10 +862,10 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
           </div>
 
           <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid #eee' }}>
-            <button type="submit" disabled={saving} style={{ flex: 1, padding: '0.75rem', background: saving ? '#ccc' : '#FFD700', color: '#1a1a1a', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: saving ? 'not-allowed' : 'pointer' }}>
+            <button type="submit" disabled={saving} style={{ ...buttonStyle('primary', 'md', saving), flex: 1 }}>
               {saving ? 'Saving...' : (bus ? '💾 Update Bus' : '💾 Save Bus')}
             </button>
-            <button type="button" onClick={onCancel} style={{ flex: 1, padding: '0.75rem', background: '#e0e0e0', color: '#333', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer' }}>
+            <button type="button" onClick={onCancel} style={{ ...buttonStyle('outline', 'md'), flex: 1 }}>
               Cancel
             </button>
           </div>
@@ -1050,14 +1050,14 @@ function RecordPurchasePaymentModal({ bus, paymentAccounts, onClose, onSuccess }
               type="button"
               onClick={onClose}
               disabled={saving}
-              style={{ padding: '0.5rem 1rem', background: '#f3f4f6', border: 'none', borderRadius: '0.375rem', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem' }}
+              style={buttonStyle('outline', 'md', saving)}
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving}
-              style={{ padding: '0.5rem 1rem', background: saving ? '#9ca3af' : '#10b981', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem' }}
+              style={buttonStyle('green', 'md', saving)}
             >
               {saving ? '⏳ Recording...' : '💳 Record Payment'}
             </button>

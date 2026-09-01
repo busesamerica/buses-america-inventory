@@ -172,7 +172,7 @@ const TransactionJournal = ({ isOpen, onClose }) => {
             h('option',{value:'revaluation'},'FX Revaluations')
           )
         ),
-        h('button', { onClick:function(){loadAccounts();loadTransactions();}, style:{padding:'0.35rem 1rem',background:'#111827',color:'white',border:'none',borderRadius:'0.25rem',fontSize:'0.8rem',fontWeight:'600',cursor:'pointer'} }, 'Run Report'),
+        h('button', { onClick:function(){loadAccounts();loadTransactions();}, style: Object.assign({}, buttonStyle('blue', 'sm'), { padding:'0.35rem 1rem' }) }, 'Run Report'),
         h('div', { style:{marginLeft:'auto',fontSize:'0.8rem',color:'#6b7280',fontWeight:'600'} }, transactions.length + ' entries')
       ),
 

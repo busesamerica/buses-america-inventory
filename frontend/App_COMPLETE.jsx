@@ -298,7 +298,7 @@ function LoginPage() {
             <label style={{display:'block',marginBottom:'0.5rem',color:'#333',fontSize:'0.9rem',fontWeight:'500'}}>Contraseña</label>
             <input type="password" value={password} onChange={(e)=>setPassword(e.target.value)} required style={{width:'100%',padding:'0.75rem',border:'2px solid #ddd',borderRadius:'6px',fontSize:'1rem'}}/>
           </div>
-          <button type="submit" disabled={loading} style={{width:'100%',padding:'0.875rem',background:loading?'#ccc':'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontSize:'1rem',fontWeight:'600',cursor:loading?'not-allowed':'pointer'}}>
+          <button type="submit" disabled={loading} style={{...buttonStyle('primary','md',loading),width:'100%',padding:'0.875rem'}}>
             {loading?'Iniciando sesión...':'Iniciar Sesión'}
           </button>
         </form>
@@ -445,10 +445,10 @@ function SupplierForm({ onSave, onCancel }) {
           </div>
           
           <div style={{display:'flex',gap:'1rem',marginTop:'2rem'}}>
-            <button type="submit" disabled={saving} style={{flex:1,padding:'0.75rem',background:saving?'#ccc':'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:saving?'not-allowed':'pointer'}}>
+            <button type="submit" disabled={saving} style={{...buttonStyle('primary','md',saving),flex:1}}>
               {saving ? 'Saving...' : '💾 Save Supplier'}
             </button>
-            <button type="button" onClick={onCancel} style={{flex:1,padding:'0.75rem',background:'#e0e0e0',color:'#333',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
+            <button type="button" onClick={onCancel} style={{...buttonStyle('outline','md'),flex:1}}>
               Cancel
             </button>
           </div>
@@ -664,7 +664,7 @@ function InventoryApp() {
               <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
                   <h3 style={{margin:0}}>Recent Inventory</h3>
-                  <button onClick={() => setView('inventory')} style={{padding:'0.5rem 1rem',background:'#007bff',color:'white',border:'none',borderRadius:'4px',cursor:'pointer'}}>
+                  <button onClick={() => setView('inventory')} style={{...buttonStyle('blue','md'),padding:'0.5rem 1rem'}}>
                     View All →
                   </button>
                 </div>
@@ -707,7 +707,7 @@ function InventoryApp() {
               <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
                   <h3 style={{margin:0}}>Suppliers ({suppliers.length})</h3>
-                  <button onClick={() => setShowSupplierForm(true)} style={{padding:'0.75rem 1.5rem',background:'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
+                  <button onClick={() => setShowSupplierForm(true)} style={buttonStyle('primary','md')}>
                     ➕ Add Supplier
                   </button>
                 </div>
@@ -753,7 +753,7 @@ function InventoryApp() {
               <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
                   <h3 style={{margin:0}}>Pre-Purchase Inspections ({inspections.length})</h3>
-                  <button onClick={() => setShowInspectionForm(true)} style={{padding:'0.75rem 1.5rem',background:'#FFD700',color:'#1a1a1a',border:'none',borderRadius:'6px',fontWeight:'600',cursor:'pointer'}}>
+                  <button onClick={() => setShowInspectionForm(true)} style={buttonStyle('primary','md')}>
                     ➕ New Inspection
                   </button>
                 </div>
@@ -799,44 +799,22 @@ function InventoryApp() {
                                 ✓ Purchased
                               </div>
                             )}
-                            <button 
+                            <button
                               onClick={() => {
                                 setSelectedInspection(insp);
                                  setShowInspectionReport(true);
                               }}
-                              style={{
-                                width:'100%',
-                                padding:'0.5rem 1rem',
-                                background:'#3b82f6',
-                                color:'white',
-                                border:'none',
-                                borderRadius:'4px',
-                                cursor:'pointer',
-                                fontSize:'0.875rem',
-                                fontWeight:'600',
-                                marginTop:'0.75rem'
-                              }}
+                              style={{...buttonStyle('blue','md'),width:'100%',padding:'0.5rem 1rem',marginTop:'0.75rem'}}
                            >
                               📄 View Report
                             </button>
                             {insp.recommendation === 'Approve' && !insp.purchased && (
-                              <button 
+                              <button
                                 onClick={() => {
                                   setSelectedInspection(insp);
                                   setShowCreateInventoryModal(true);
                                 }}
-                                style={{
-                                  width:'100%',
-                                  padding:'0.5rem 1rem',
-                                  background:'#10b981',
-                                  color:'white',
-                                  border:'none',
-                                  borderRadius:'4px',
-                                  cursor:'pointer',
-                                  fontSize:'0.875rem',
-                                  fontWeight:'600',
-                                  marginTop:'0.5rem'
-                                }}
+                                style={{...buttonStyle('green','md'),width:'100%',padding:'0.5rem 1rem',marginTop:'0.5rem'}}
                               >
                                 🚌 Create Inventory
                               </button>

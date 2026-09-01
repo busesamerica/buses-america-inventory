@@ -86,17 +86,7 @@ const ClientManagement = () => {
         {/* Create Button */}
         <button
           onClick={() => setShowCreateModal(true)}
-          style={{
-            padding: '0.75rem 1.5rem',
-            background: '#F59E0B',
-            color: 'white',
-            border: 'none',
-            borderRadius: '0.5rem',
-            fontSize: '0.875rem',
-            fontWeight: '600',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap'
-          }}
+          style={{ ...buttonStyle('primary', 'md'), whiteSpace: 'nowrap' }}
         >
           + New Client
         </button>
@@ -261,16 +251,7 @@ const ClientManagement = () => {
                             setSelectedClient(client);
                             setShowEditModal(true);
                           }}
-                          style={{
-                            padding: '0.5rem 1rem',
-                            background: '#3b82f6',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '0.375rem',
-                            fontSize: '0.875rem',
-                            fontWeight: '600',
-                            cursor: 'pointer'
-                          }}
+                          style={{ ...buttonStyle('blue', 'md'), padding: '0.5rem 1rem' }}
                         >
                           ✏️ Edit
                         </button>
