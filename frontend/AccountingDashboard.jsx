@@ -203,7 +203,7 @@ const AccountingDashboard = () => {
         {/* Total Cash (USD) */}
         <div style={statCardStyle('green')}>
           <div style={STAT_CARD_LABEL_STYLE}>💵 Cash (USD)</div>
-          <div style={STAT_CARD_VALUE_STYLE}>
+          <div style={statCardValueStyle(formatCurrency(cashPosition?.totals?.usd || 0, 'USD'))}>
             {formatCurrency(cashPosition?.totals?.usd || 0, 'USD')}
           </div>
           <div style={STAT_CARD_SUBTEXT_STYLE}>
@@ -214,7 +214,7 @@ const AccountingDashboard = () => {
         {/* Total Cash (MXN) */}
         <div style={statCardStyle('purple')}>
           <div style={STAT_CARD_LABEL_STYLE}>💵 Cash (MXN)</div>
-          <div style={STAT_CARD_VALUE_STYLE}>
+          <div style={statCardValueStyle(formatCurrency(cashPosition?.totals?.mxn || 0, 'MXN'))}>
             {formatCurrency(cashPosition?.totals?.mxn || 0, 'MXN')}
           </div>
           <div style={STAT_CARD_SUBTEXT_STYLE}>
@@ -225,7 +225,7 @@ const AccountingDashboard = () => {
         {/* USD Equivalent */}
         <div style={statCardStyle('blue')}>
           <div style={STAT_CARD_LABEL_STYLE}>💰 Consolidated Cash Position</div>
-          <div style={STAT_CARD_VALUE_STYLE}>
+          <div style={statCardValueStyle(formatCurrency(cashPosition?.totals?.usd_equivalent || 0, 'USD'))}>
             {formatCurrency(cashPosition?.totals?.usd_equivalent || 0, 'USD')}
           </div>
           <div style={STAT_CARD_SUBTEXT_STYLE}>

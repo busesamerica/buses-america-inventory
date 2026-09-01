@@ -96,5 +96,23 @@ function statCardStyle(colorKey) {
 }
 
 const STAT_CARD_LABEL_STYLE = { fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' };
-const STAT_CARD_VALUE_STYLE = { fontSize: '2rem', fontWeight: '800' };
+// A fixed 2rem worked for short values ("3", "9.5%") but let a longer one
+// (a formatted currency amount, especially MXN's "MXN $900,000.00", or
+// Pending Balance's combined "$X + MXN Y") run past the card's edge instead
+// of shrinking to fit - the number visibly overflowed the gradient tile.
+// statCardValueStyle(value) sizes the text to how long it actually is, and
+// overflowWrap/wordBreak are the fallback for whatever's still too wide for
+// even the smallest step. STAT_CARD_VALUE_STYLE stays as a fixed-2rem
+// constant for the handful of callers that already know their value is
+// always short (a plain count, a percentage).
+function statCardValueStyle(value) {
+  const len = String(value == null ? '' : value).length;
+  let fontSize = '2rem';
+  if (len > 16) fontSize = '1rem';
+  else if (len > 12) fontSize = '1.25rem';
+  else if (len > 9) fontSize = '1.5rem';
+  else if (len > 6) fontSize = '1.75rem';
+  return { fontSize, fontWeight: '800', overflowWrap: 'break-word', wordBreak: 'break-word' };
+}
+const STAT_CARD_VALUE_STYLE = { fontSize: '2rem', fontWeight: '800', overflowWrap: 'break-word', wordBreak: 'break-word' };
 const STAT_CARD_SUBTEXT_STYLE = { fontSize: '0.75rem', opacity: 0.8, marginTop: '0.5rem' };
