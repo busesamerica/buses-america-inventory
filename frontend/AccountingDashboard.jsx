@@ -203,7 +203,7 @@ const AccountingDashboard = () => {
         {/* Total Cash (USD) */}
         <div style={statCardStyle('green')}>
           <div style={STAT_CARD_LABEL_STYLE}>💵 Cash (USD)</div>
-          <div style={statCardValueStyle(formatCurrency(cashPosition?.totals?.usd || 0, 'USD'))}>
+          <div style={statCardValueStyle(formatCurrency(cashPosition?.totals?.usd || 0, 'USD'), true)}>
             {formatCurrency(cashPosition?.totals?.usd || 0, 'USD')}
           </div>
           <div style={STAT_CARD_SUBTEXT_STYLE}>
@@ -214,7 +214,7 @@ const AccountingDashboard = () => {
         {/* Total Cash (MXN) */}
         <div style={statCardStyle('purple')}>
           <div style={STAT_CARD_LABEL_STYLE}>💵 Cash (MXN)</div>
-          <div style={statCardValueStyle(formatCurrency(cashPosition?.totals?.mxn || 0, 'MXN'))}>
+          <div style={statCardValueStyle(formatCurrency(cashPosition?.totals?.mxn || 0, 'MXN'), true)}>
             {formatCurrency(cashPosition?.totals?.mxn || 0, 'MXN')}
           </div>
           <div style={STAT_CARD_SUBTEXT_STYLE}>
@@ -225,7 +225,7 @@ const AccountingDashboard = () => {
         {/* USD Equivalent */}
         <div style={statCardStyle('blue')}>
           <div style={STAT_CARD_LABEL_STYLE}>💰 Consolidated Cash Position</div>
-          <div style={statCardValueStyle(formatCurrency(cashPosition?.totals?.usd_equivalent || 0, 'USD'))}>
+          <div style={statCardValueStyle(formatCurrency(cashPosition?.totals?.usd_equivalent || 0, 'USD'), true)}>
             {formatCurrency(cashPosition?.totals?.usd_equivalent || 0, 'USD')}
           </div>
           <div style={STAT_CARD_SUBTEXT_STYLE}>
@@ -341,10 +341,14 @@ const AccountingDashboard = () => {
             button system (buttonStyle() in utils.js). Nine differently
             colored gradients in one row (one per button, no shared
             reasoning) is exactly the "various buttons with different
-            colors and forms" this consolidates: blue for the primary
-            data-entry action, green for a positive money action, gray for
-            everything that just opens a view/report, red for the one
-            genuinely irreversible action, outline for Refresh. */}
+            colors and forms" this consolidates - but dumping every
+            non-primary action into the same flat gray read as "all these
+            buttons lost their color", so the row is grouped by what each
+            button does instead: blue for the primary data-entry action,
+            green for a positive money action, dark for the financial
+            documents/reports (view-only), gray for account
+            settings/config, red for the one genuinely irreversible
+            action, outline for Refresh. */}
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <button onClick={() => setShowTransactionForm(true)} style={buttonStyle('blue', 'md')}>
             📝 Record Transaction
@@ -352,16 +356,16 @@ const AccountingDashboard = () => {
           <button onClick={() => setShowDistributionModal(true)} style={buttonStyle('green', 'md')}>
             💸 Distribute Profit
           </button>
-          <button onClick={() => setShowDistributionHistory(true)} style={buttonStyle('gray', 'md')}>
+          <button onClick={() => setShowDistributionHistory(true)} style={buttonStyle('dark', 'md')}>
             📊 Distribution History
           </button>
-          <button onClick={() => setShowIncomeStatement(true)} style={buttonStyle('gray', 'md')}>
+          <button onClick={() => setShowIncomeStatement(true)} style={buttonStyle('dark', 'md')}>
             📈 Income Statement
           </button>
-          <button onClick={() => setShowBalanceSheet(true)} style={buttonStyle('gray', 'md')}>
+          <button onClick={() => setShowBalanceSheet(true)} style={buttonStyle('dark', 'md')}>
             📊 Balance Sheet
           </button>
-          <button onClick={() => setShowTransactionJournal(true)} style={buttonStyle('gray', 'md')}>
+          <button onClick={() => setShowTransactionJournal(true)} style={buttonStyle('dark', 'md')}>
             📒 Transaction Journal
           </button>
           <button onClick={() => { setShowExchangeRate(true); loadRateHistory(); }} style={buttonStyle('gray', 'md')}>

@@ -105,8 +105,24 @@ const STAT_CARD_LABEL_STYLE = { fontSize: '0.875rem', opacity: 0.9, marginBottom
 // even the smallest step. STAT_CARD_VALUE_STYLE stays as a fixed-2rem
 // constant for the handful of callers that already know their value is
 // always short (a plain count, a percentage).
-function statCardValueStyle(value) {
+//
+// roomy=true bumps every step up one size. Only pass it for a card that
+// (a) is at least ~250px wide and (b) only ever holds a single plain
+// formatCurrency() value, never a concatenated "$X + MXN Y" string - e.g.
+// Accounting Dashboard's cash cards, which read as too small once real
+// (longer) balances pushed them into the default ladder's lower tiers.
+// Sales' Pending Balance card needs the tighter default ladder since it
+// can render exactly that concatenated string.
+function statCardValueStyle(value, roomy) {
   const len = String(value == null ? '' : value).length;
+  if (roomy) {
+    let fontSize = '2.25rem';
+    if (len > 18) fontSize = '1.25rem';
+    else if (len > 14) fontSize = '1.5rem';
+    else if (len > 11) fontSize = '1.75rem';
+    else if (len > 8) fontSize = '2rem';
+    return { fontSize, fontWeight: '800', overflowWrap: 'break-word', wordBreak: 'break-word' };
+  }
   let fontSize = '2rem';
   if (len > 16) fontSize = '1rem';
   else if (len > 12) fontSize = '1.25rem';
