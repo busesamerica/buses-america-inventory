@@ -4184,7 +4184,30 @@ async def record_profit_distribution(
     
     erick_amount = round(float(distribution.total_profit) * float(distribution.erick_percentage) / 100, 2)
     omar_amount = round(float(distribution.total_profit) - erick_amount, 2)  # Remainder ensures exact total
-    
+
+    # The payout lines below are inserted with currency=distribution.currency
+    # against whichever account the frontend sent, with no check that the
+    # account is actually in that currency - same gap as create_transaction
+    # had (this endpoint builds its own transaction/lines directly, so that
+    # fix doesn't cover it). A bus sold in MXN paid out to a USD account
+    # would silently create a phantom MXN balance on a USD account instead
+    # of ever crediting money anywhere real.
+    for role, account_id in (('Erick', distribution.erick_payment_account_id), ('Omar', distribution.omar_payment_account_id)):
+        if not account_id:
+            continue
+        payout_account = await db.fetchrow(
+            "SELECT account_name, currency FROM accounts WHERE account_id = $1 AND is_active = TRUE",
+            account_id
+        )
+        if not payout_account:
+            raise HTTPException(status_code=404, detail=f"{role}'s payout account not found")
+        if payout_account['currency'] != distribution.currency:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{payout_account['account_name']} is a {payout_account['currency']} account, "
+                       f"but this distribution is in {distribution.currency}. Select a {distribution.currency} account for {role}."
+            )
+
     async with db.transaction():
         # Get stock number for reference
         stock_number = None

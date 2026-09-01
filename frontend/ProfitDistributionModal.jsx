@@ -382,7 +382,11 @@ const ProfitDistributionModal = ({ isOpen, onClose, onComplete }) => {
               <h4 style={{ margin: '0 0 1rem 0', fontSize: '1rem', fontWeight: '700', color: '#374151' }}>
                 🏦 Payout Accounts
               </h4>
-              
+              {/* Erick/Omar's amounts above are in calculation.currency (the
+                  sale's currency) - only offer accounts in that same
+                  currency, otherwise the payout would silently post the raw
+                  number against the wrong-currency account (the backend now
+                  rejects a mismatch too). */}
               <div style={{ display: 'grid', gap: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
@@ -399,8 +403,8 @@ const ProfitDistributionModal = ({ isOpen, onClose, onComplete }) => {
                       fontSize: '0.875rem'
                     }}
                   >
-                    <option value="">-- Select account --</option>
-                    {accounts.map(a => (
+                    <option value="">-- Select {calculation.currency} account --</option>
+                    {accounts.filter(a => a.currency === calculation.currency).map(a => (
                       <option key={a.account_id} value={a.account_id}>
                         {a.account_name} ({a.currency})
                       </option>
@@ -423,8 +427,8 @@ const ProfitDistributionModal = ({ isOpen, onClose, onComplete }) => {
                       fontSize: '0.875rem'
                     }}
                   >
-                    <option value="">-- Select account --</option>
-                    {accounts.map(a => (
+                    <option value="">-- Select {calculation.currency} account --</option>
+                    {accounts.filter(a => a.currency === calculation.currency).map(a => (
                       <option key={a.account_id} value={a.account_id}>
                         {a.account_name} ({a.currency})
                       </option>
