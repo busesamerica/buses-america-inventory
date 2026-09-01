@@ -201,52 +201,34 @@ const AccountingDashboard = () => {
         marginBottom: '1.5rem'
       }}>
         {/* Total Cash (USD) */}
-        <div style={{
-          padding: '1.5rem',
-          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-          borderRadius: '0.75rem',
-          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-          color: 'white'
-        }}>
-          <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>💵 Cash (USD)</div>
-          <div style={{ fontSize: '2rem', fontWeight: '800' }}>
+        <div style={statCardStyle('green')}>
+          <div style={STAT_CARD_LABEL_STYLE}>💵 Cash (USD)</div>
+          <div style={STAT_CARD_VALUE_STYLE}>
             {formatCurrency(cashPosition?.totals?.usd || 0, 'USD')}
           </div>
-          <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '0.5rem' }}>
+          <div style={STAT_CARD_SUBTEXT_STYLE}>
             {usdAccounts.length} account{usdAccounts.length !== 1 ? 's' : ''}
           </div>
         </div>
 
         {/* Total Cash (MXN) */}
-        <div style={{
-          padding: '1.5rem',
-          background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-          borderRadius: '0.75rem',
-          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-          color: 'white'
-        }}>
-          <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>💵 Cash (MXN)</div>
-          <div style={{ fontSize: '2rem', fontWeight: '800' }}>
+        <div style={statCardStyle('purple')}>
+          <div style={STAT_CARD_LABEL_STYLE}>💵 Cash (MXN)</div>
+          <div style={STAT_CARD_VALUE_STYLE}>
             {formatCurrency(cashPosition?.totals?.mxn || 0, 'MXN')}
           </div>
-          <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '0.5rem' }}>
+          <div style={STAT_CARD_SUBTEXT_STYLE}>
             {mxnAccounts.length} account{mxnAccounts.length !== 1 ? 's' : ''}
           </div>
         </div>
 
         {/* USD Equivalent */}
-        <div style={{
-          padding: '1.5rem',
-          background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-          borderRadius: '0.75rem',
-          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-          color: 'white'
-        }}>
-          <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>💰 Consolidated Cash Position</div>
-          <div style={{ fontSize: '2rem', fontWeight: '800' }}>
+        <div style={statCardStyle('blue')}>
+          <div style={STAT_CARD_LABEL_STYLE}>💰 Consolidated Cash Position</div>
+          <div style={STAT_CARD_VALUE_STYLE}>
             {formatCurrency(cashPosition?.totals?.usd_equivalent || 0, 'USD')}
           </div>
-          <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '0.5rem' }}>
+          <div style={STAT_CARD_SUBTEXT_STYLE}>
             Rate: 1 USD = {cashPosition?.exchange_rate?.toFixed(2) || '17.50'} MXN
           </div>
         </div>

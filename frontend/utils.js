@@ -52,3 +52,49 @@ function formatDate(dateString, style = 'short') {
 // <h1>).
 const SECTION_HEADER_STYLE = { margin: '0 0 0.25rem 0', fontSize: '1.125rem', fontWeight: '700', color: '#111827' };
 const SECTION_SUBTITLE_STYLE = { margin: 0, color: '#6b7280', fontSize: '0.875rem' };
+
+// Stat card system, shared the same way as the formatters/headings above.
+//
+// Every module's top-row summary tiles (Total Clients, Cash (USD), Total
+// Sales, Total Inspections...) had drifted into four different styles:
+// full gradient fills with a color-tinted shadow (ClientManagement,
+// PreInspectionsList), full gradient fills with a flat gray shadow
+// (AccountingDashboard), white cards with a colored left border and gray
+// #666 text (the main Dashboard, App_COMPLETE.jsx), and white cards with a
+// single fixed gold left border regardless of metric plus smaller,
+// differently-sized type (QuoteManagement). ClientManagement's cards are
+// the reference everything else now matches: full gradient, white text,
+// 0.75rem radius, a shadow tinted to the card's own color.
+//
+// STAT_CARD_COLORS keys a named accent to its {gradient, shadow} pair -
+// pick the same key for the same kind of metric across modules (e.g.
+// 'blue' for a primary count, 'green' for USD money, 'purple' for MXN
+// money, 'orange' for a rate/achievement metric, 'red' for something
+// outstanding/owed) so a given color keeps one meaning system-wide rather
+// than being reassigned per screen. statCardStyle(colorKey) returns the
+// full card style; STAT_CARD_LABEL_STYLE/VALUE_STYLE/SUBTEXT_STYLE are the
+// three text rows every card uses (label, big number, optional caption).
+const STAT_CARD_COLORS = {
+  blue:   { gradient: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', shadow: 'rgba(59, 130, 246, 0.3)' },
+  green:  { gradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', shadow: 'rgba(16, 185, 129, 0.3)' },
+  purple: { gradient: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', shadow: 'rgba(139, 92, 246, 0.3)' },
+  orange: { gradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', shadow: 'rgba(245, 158, 11, 0.3)' },
+  red:    { gradient: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', shadow: 'rgba(239, 68, 68, 0.3)' },
+  cyan:   { gradient: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', shadow: 'rgba(6, 182, 212, 0.3)' },
+  gray:   { gradient: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)', shadow: 'rgba(107, 114, 128, 0.3)' }
+};
+
+function statCardStyle(colorKey) {
+  const c = STAT_CARD_COLORS[colorKey] || STAT_CARD_COLORS.blue;
+  return {
+    padding: '1.5rem',
+    background: c.gradient,
+    borderRadius: '0.75rem',
+    color: 'white',
+    boxShadow: `0 4px 6px ${c.shadow}`
+  };
+}
+
+const STAT_CARD_LABEL_STYLE = { fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' };
+const STAT_CARD_VALUE_STYLE = { fontSize: '2rem', fontWeight: '800' };
+const STAT_CARD_SUBTEXT_STYLE = { fontSize: '0.75rem', opacity: 0.8, marginTop: '0.5rem' };

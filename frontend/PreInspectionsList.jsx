@@ -86,47 +86,23 @@ const PreInspectionsList = ({ onViewReport, onCreateInventory }) => {
 
       {/* Stats Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
-        <div style={{
-          background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-          color: 'white',
-          padding: '1.5rem',
-          borderRadius: '0.75rem',
-          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-        }}>
-          <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>Total Inspections</div>
+        <div style={statCardStyle('blue')}>
+          <div style={STAT_CARD_LABEL_STYLE}>Total Inspections</div>
           <div style={{ fontSize: '2.5rem', fontWeight: '700' }}>{stats.total}</div>
         </div>
 
-        <div style={{
-          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-          color: 'white',
-          padding: '1.5rem',
-          borderRadius: '0.75rem',
-          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-        }}>
-          <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>Ready to Buy</div>
+        <div style={statCardStyle('green')}>
+          <div style={STAT_CARD_LABEL_STYLE}>Ready to Buy</div>
           <div style={{ fontSize: '2.5rem', fontWeight: '700' }}>{stats.approved}</div>
         </div>
 
-        <div style={{
-          background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-          color: 'white',
-          padding: '1.5rem',
-          borderRadius: '0.75rem',
-          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-        }}>
-          <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>Rejected</div>
+        <div style={statCardStyle('red')}>
+          <div style={STAT_CARD_LABEL_STYLE}>Rejected</div>
           <div style={{ fontSize: '2.5rem', fontWeight: '700' }}>{stats.rejected}</div>
         </div>
 
-        <div style={{
-          background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-          color: 'white',
-          padding: '1.5rem',
-          borderRadius: '0.75rem',
-          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-        }}>
-          <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>Purchased</div>
+        <div style={statCardStyle('purple')}>
+          <div style={STAT_CARD_LABEL_STYLE}>Purchased</div>
           <div style={{ fontSize: '2.5rem', fontWeight: '700' }}>{stats.purchased}</div>
         </div>
       </div>

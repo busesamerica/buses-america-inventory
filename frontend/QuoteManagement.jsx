@@ -169,22 +169,20 @@ const QuoteManagement = () => {
           gap: '1rem', marginBottom: '1.5rem'
         }}>
           {[
-            { label: '📬 Open quotes', value: stats.open_count, sub: 'draft + sent' },
-            { label: '💵 Open value (USD)', value: formatCurrency(stats.open_value_usd, 'USD'), sub: 'quoted, not yet decided' },
-            { label: '💵 Open value (MXN)', value: formatCurrency(stats.open_value_mxn, 'MXN'), sub: 'quoted, not yet decided' },
+            { label: '📬 Open quotes', value: stats.open_count, sub: 'draft + sent', color: 'blue' },
+            { label: '💵 Open value (USD)', value: formatCurrency(stats.open_value_usd, 'USD'), sub: 'quoted, not yet decided', color: 'green' },
+            { label: '💵 Open value (MXN)', value: formatCurrency(stats.open_value_mxn, 'MXN'), sub: 'quoted, not yet decided', color: 'purple' },
             {
               label: '🏆 Win rate',
               value: stats.win_rate == null ? '—' : `${stats.win_rate}%`,
-              sub: `${stats.accepted_count} accepted`
+              sub: `${stats.accepted_count} accepted`,
+              color: 'orange'
             }
           ].map((s) => (
-            <div key={s.label} style={{
-              background: 'white', padding: '1.1rem 1.25rem', borderRadius: '0.5rem',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.08)', borderLeft: '4px solid #FFD700'
-            }}>
-              <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>{s.label}</div>
-              <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#1a1a1a', marginTop: '0.3rem' }}>{s.value}</div>
-              <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '0.2rem' }}>{s.sub}</div>
+            <div key={s.label} style={statCardStyle(s.color)}>
+              <div style={STAT_CARD_LABEL_STYLE}>{s.label}</div>
+              <div style={STAT_CARD_VALUE_STYLE}>{s.value}</div>
+              <div style={STAT_CARD_SUBTEXT_STYLE}>{s.sub}</div>
             </div>
           ))}
         </div>
