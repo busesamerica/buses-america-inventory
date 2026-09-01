@@ -831,10 +831,15 @@ const AccountingDashboard = () => {
                       value={apPaymentForm.vendor}
                       onChange={(e) => {
                         const selected = apData.payables.find(p => p.vendor === e.target.value);
+                        const currency = selected ? selected.currency : apPaymentForm.payment_currency;
                         setApPaymentForm({
                           ...apPaymentForm,
                           vendor: e.target.value,
-                          payment_currency: selected ? selected.currency : apPaymentForm.payment_currency
+                          payment_currency: currency,
+                          // the vendor's currency can differ from whatever was
+                          // previously picked below - drop it rather than
+                          // leave a now-wrong-currency account selected
+                          payment_account_id: currency === apPaymentForm.payment_currency ? apPaymentForm.payment_account_id : ''
                         });
                       }}
                       style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.85rem' }}
@@ -856,7 +861,7 @@ const AccountingDashboard = () => {
                       onChange={(e) => setApPaymentForm({ ...apPaymentForm, payment_amount: e.target.value })}
                       placeholder="0.00" style={{ flex: 1, padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.85rem' }} />
                     <select value={apPaymentForm.payment_currency}
-                      onChange={(e) => setApPaymentForm({ ...apPaymentForm, payment_currency: e.target.value })}
+                      onChange={(e) => setApPaymentForm({ ...apPaymentForm, payment_currency: e.target.value, payment_account_id: '' })}
                       style={{ width: '80px', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.85rem' }}>
                       <option value="USD">USD</option>
                       <option value="MXN">MXN</option>
@@ -873,11 +878,15 @@ const AccountingDashboard = () => {
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Pay From *</label>
+                  {/* Only offer accounts matching the payment's currency - a
+                      USD vendor bill paid "from" an MXN account would credit
+                      that account's balance by the raw USD number with no
+                      conversion (the backend now rejects the mismatch too). */}
                   <select value={apPaymentForm.payment_account_id}
                     onChange={(e) => setApPaymentForm({ ...apPaymentForm, payment_account_id: e.target.value })}
                     style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.85rem' }}>
-                    <option value="">Select account...</option>
-                    {accounts.filter(a => ['Bank', 'Cash'].includes(a.account_subtype) && a.is_active).map(a => (
+                    <option value="">Select {apPaymentForm.payment_currency} account...</option>
+                    {accounts.filter(a => ['Bank', 'Cash'].includes(a.account_subtype) && a.is_active && a.currency === apPaymentForm.payment_currency).map(a => (
                       <option key={a.account_id} value={a.account_id}>{a.account_name} ({a.currency})</option>
                     ))}
                   </select>
