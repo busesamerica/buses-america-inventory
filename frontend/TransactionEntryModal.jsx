@@ -99,11 +99,21 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
       let desc = '';
       
       if (transactionType === 'deposit') {
-        const capitalAccount = accounts.find(a => a.account_name.includes('Capital Contributions'));
+        // Same currency-mismatch trap as the AP account lookup below: if
+        // there's a Capital Contributions account per currency, matching by
+        // name alone can silently grab the wrong one's account_id and pair
+        // it with formData.currency on the line, which the backend now
+        // rejects. Match on currency too, and fail clearly instead of
+        // submitting a mismatched line.
+        const capitalAccount = accounts.find(a => a.account_name.includes('Capital Contributions') && a.currency === formData.currency);
+        if (!capitalAccount) {
+          setError('No Capital Contributions account found for ' + formData.currency);
+          return;
+        }
         desc = `Deposit - ${formData.description}`;
         lines = [
           { account_id: parseInt(formData.bankAccount), debit_amount: parseFloat(formData.amount), credit_amount: 0, currency: formData.currency },
-          { account_id: capitalAccount?.account_id, debit_amount: 0, credit_amount: parseFloat(formData.amount), currency: formData.currency }
+          { account_id: capitalAccount.account_id, debit_amount: 0, credit_amount: parseFloat(formData.amount), currency: formData.currency }
         ];
       } else if (transactionType === 'expense') {
         if (formData.paymentStatus === 'on_credit') {
@@ -165,7 +175,14 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
         })
       });
 
-      if (!response.ok) throw new Error('Failed to record transaction');
+      if (!response.ok) {
+        // The backend's 400s (currency mismatch, period locked, debits !=
+        // credits) carry a specific, actionable `detail` - swallowing it
+        // into one generic message was hiding exactly why the request
+        // failed, forcing a trip to the server logs to find out.
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || 'Failed to record transaction');
+      }
 
       alert('✅ Transaction recorded successfully!');
       onComplete && onComplete();
@@ -193,6 +210,7 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
   // here keeps the accounts that would fail from being offered at all.
   // Only Exchange is meant to cross currencies, so it keeps the full list.
   const sameCurrencyBankAccounts = bankAccounts.filter(a => a.currency === formData.currency);
+  const sameCurrencyExpenseAccounts = expenseAccounts.filter(a => a.currency === formData.currency);
 
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
@@ -265,8 +283,8 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Expense Category *</label>
                   <select value={formData.expenseAccount} onChange={(e) => setFormData({...formData, expenseAccount: e.target.value})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
-                    <option value="">Select category...</option>
-                    {expenseAccounts.map(a => <option key={a.account_id} value={a.account_id}>{a.account_name}</option>)}
+                    <option value="">Select {formData.currency} category...</option>
+                    {sameCurrencyExpenseAccounts.map(a => <option key={a.account_id} value={a.account_id}>{a.account_name}</option>)}
                   </select>
                 </div>
               )}
@@ -278,7 +296,7 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Currency *</label>
-                  <select value={formData.currency} onChange={(e) => setFormData({...formData, currency: e.target.value, bankAccount: '', fromAccount: '', toAccount: ''})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
+                  <select value={formData.currency} onChange={(e) => setFormData({...formData, currency: e.target.value, bankAccount: '', fromAccount: '', toAccount: '', expenseAccount: ''})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
                     <option value="USD">USD</option>
                     <option value="MXN">MXN</option>
                   </select>
@@ -326,7 +344,7 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Currency *</label>
-                  <select value={formData.currency} onChange={(e) => setFormData({...formData, currency: e.target.value, bankAccount: '', fromAccount: '', toAccount: ''})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
+                  <select value={formData.currency} onChange={(e) => setFormData({...formData, currency: e.target.value, bankAccount: '', fromAccount: '', toAccount: '', expenseAccount: ''})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
                     <option value="USD">USD</option>
                     <option value="MXN">MXN</option>
                   </select>
