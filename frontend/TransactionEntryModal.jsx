@@ -17,9 +17,10 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
     toAmount: '',
     exchangeRate: '',
     paymentStatus: 'paid',
-    vendor: ''
+    vendor: '',
+    depositedBy: ''
   });
-  
+
   const [accounts, setAccounts] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -62,7 +63,8 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
       toAmount: '',
       exchangeRate: '',
       paymentStatus: 'paid',
-      vendor: ''
+      vendor: '',
+      depositedBy: ''
     });
     setError('');
   };
@@ -99,11 +101,23 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
       let desc = '';
       
       if (transactionType === 'deposit') {
-        const capitalAccount = accounts.find(a => a.account_name.includes('Capital Contributions'));
+        if (!formData.depositedBy) {
+          setError('Please select who made the deposit');
+          return;
+        }
+        // Match on the specific partner, not just "Capital Contributions" -
+        // a bare substring match grabbed whichever of Erick's/Omar's capital
+        // accounts happened to come first, crediting every deposit to the
+        // same partner regardless of who actually put the money in.
+        const capitalAccount = accounts.find(a => a.account_name.includes('Capital Contributions') && a.account_name.includes(formData.depositedBy));
+        if (!capitalAccount) {
+          setError(`No Capital Contributions account found for ${formData.depositedBy}`);
+          return;
+        }
         desc = `Deposit - ${formData.description}`;
         lines = [
           { account_id: parseInt(formData.bankAccount), debit_amount: parseFloat(formData.amount), credit_amount: 0, currency: formData.currency },
-          { account_id: capitalAccount?.account_id, debit_amount: 0, credit_amount: parseFloat(formData.amount), currency: formData.currency }
+          { account_id: capitalAccount.account_id, debit_amount: 0, credit_amount: parseFloat(formData.amount), currency: formData.currency, notes: `Capital contribution — ${formData.depositedBy}` }
         ];
       } else if (transactionType === 'expense') {
         if (formData.paymentStatus === 'on_credit') {
@@ -247,6 +261,20 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
                       style={{ flex: 1, padding: '0.6rem', border: formData.paymentStatus === 'on_credit' ? '2px solid #d97706' : '1px solid #d1d5db', borderRadius: '0.5rem', background: formData.paymentStatus === 'on_credit' ? '#fef3c7' : 'white', color: formData.paymentStatus === 'on_credit' ? '#92400e' : '#374151', fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer' }}>
                       📋 On Credit
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {transactionType === 'deposit' && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Deposited By *</label>
+                  <select value={formData.depositedBy} onChange={(e) => setFormData({...formData, depositedBy: e.target.value})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
+                    <option value="">Select who made the deposit...</option>
+                    <option value="Erick">Erick</option>
+                    <option value="Omar">Omar</option>
+                  </select>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                    Credits that partner's Capital Contributions account
                   </div>
                 </div>
               )}
