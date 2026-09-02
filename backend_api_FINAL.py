@@ -3846,18 +3846,24 @@ async def create_transaction(
                 detail=f"Debits ({total_debits}) must equal credits ({total_credits})"
             )
 
-    # Every line's declared currency must match its account's actual
-    # currency. Without this, a line can be inserted with e.g. currency='USD'
-    # against an MXN account - update_account_balances groups balances by
-    # (account_id, currency), so a mismatched line doesn't land in that
-    # account's real balance at all, it creates a separate phantom-currency
-    # balance for it instead. The money then never shows up in cash
-    # position/balance sheet under any account, with no error raised
-    # anywhere. (Frontend dropdowns are meant to only offer matching-currency
-    # accounts; this is the backend backstop.)
+    # A line's declared currency must match its account's actual currency,
+    # but ONLY for Bank/Cash accounts. get_cash_position joins
+    # account_balances to accounts ON b.currency = a.currency, scoped to
+    # account_type = 'Asset' AND account_subtype IN ('Bank', 'Cash') - for
+    # those accounts specifically, a mismatched line's balance lands under a
+    # phantom-currency bucket that join never finds, so the money silently
+    # vanishes from the cash dashboard with no error raised anywhere.
+    # Every other report (income-statement, balance-sheet, ap-summary, the
+    # FX revaluation step in close_period) buckets an account's activity by
+    # transaction_lines.currency directly, not accounts.currency - so a
+    # mismatched line on an Expense/Income/Equity/Liability(AP)/Asset(AR)
+    # account is read correctly by all of them. Checking those here too only
+    # blocked legitimate entries (a USD expense against a chart of accounts
+    # that happens to only have an MXN-tagged Expense category, since a
+    # category account's own currency tag is otherwise decorative).
     account_ids = list({line.account_id for line in transaction.lines})
     account_rows = await db.fetch(
-        "SELECT account_id, account_name, currency FROM accounts WHERE account_id = ANY($1::int[])",
+        "SELECT account_id, account_name, currency, account_type, account_subtype FROM accounts WHERE account_id = ANY($1::int[])",
         account_ids
     )
     accounts_by_id = {row['account_id']: row for row in account_rows}
@@ -3865,7 +3871,8 @@ async def create_transaction(
         account = accounts_by_id.get(line.account_id)
         if not account:
             raise HTTPException(status_code=404, detail=f"Account {line.account_id} not found")
-        if line.currency != account['currency']:
+        is_bank_or_cash = account['account_type'] == 'Asset' and account['account_subtype'] in ('Bank', 'Cash')
+        if is_bank_or_cash and line.currency != account['currency']:
             raise HTTPException(
                 status_code=400,
                 detail=f"{account['account_name']} is a {account['currency']} account, but a line for it was submitted in {line.currency}. "
