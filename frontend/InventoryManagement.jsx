@@ -576,6 +576,12 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
   // for 'done' (what got filled in) and 'error' (why it didn't).
   const [vinDecodeState, setVinDecodeState] = useState('idle');
   const [vinDecodeMessage, setVinDecodeMessage] = useState('');
+  // Fields the user has actually edited (or, in edit mode, that already
+  // carry a saved value) - handleDecodeVin only fills fields NOT in this
+  // set. This has to be touch-tracking rather than a "is it blank" check:
+  // `year` defaults to the current year (not blank) so a decoded VIN from
+  // a different year would otherwise never be able to correct it.
+  const [touchedFields, setTouchedFields] = useState(() => new Set());
 
   useEffect(() => {
     if (bus) {
@@ -597,6 +603,15 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
         payment_account_id: bus.payment_account_id || '',
         supplier_id: bus.supplier_id || ''
       });
+      // Editing an existing unit - protect whatever it already has a real
+      // value for (Decode VIN shouldn't overwrite it), but leave any field
+      // that's genuinely blank on this record open to being filled in, same
+      // as before - e.g. an older bus that's missing gvwr can still have it
+      // filled by decoding its VIN while editing.
+      const filledKeys = Object.keys(bus).filter(
+        k => bus[k] !== null && bus[k] !== undefined && bus[k] !== ''
+      );
+      setTouchedFields(new Set(filledKeys));
     }
   }, [bus]);
 
@@ -675,12 +690,15 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     }
 
     setFormData(updated);
+    setTouchedFields(prev => new Set(prev).add(name));
   };
 
-  // Fills in only the fields that are still blank - a decoded VIN should
+  // Fills in only the fields the user hasn't touched - a decoded VIN should
   // never silently overwrite something the user already typed or corrected,
   // the same non-destructive principle handleChange already applies to the
-  // VIN -> stock_number auto-derivation above.
+  // VIN -> stock_number auto-derivation above. This checks touchedFields
+  // rather than "is the field blank", because some fields (year) start out
+  // with a real, non-blank default that isn't real data either.
   const handleDecodeVin = async () => {
     setVinDecodeState('loading');
     setVinDecodeMessage('');
@@ -693,7 +711,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     const filledFields = [];
     const updated = { ...formData };
     Object.entries(result.decoded).forEach(([field, value]) => {
-      if (field in updated && (updated[field] === '' || updated[field] === null || updated[field] === undefined)) {
+      if (field in updated && !touchedFields.has(field)) {
         updated[field] = value;
         filledFields.push(field);
       }
