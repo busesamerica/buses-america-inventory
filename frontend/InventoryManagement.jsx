@@ -541,6 +541,7 @@ const InventoryManagement = () => {
 };
 
 function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
+  const API_URL = `${window.API_BASE_URL || 'https://buses-america.onrender.com'}/api`;
   const [formData, setFormData] = useState({
     stock_number: '',
     vin: '',
@@ -550,6 +551,12 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     passenger_capacity: '',
     engine_make: '',
     engine_model: '',
+    engine_type: '',
+    transmission: '',
+    fuel_type: '',
+    body_style: '',
+    gvwr: '',
+    length_feet: '',
     purchase_date: new Date().toISOString().split('T')[0],
     purchase_price_usd: '',
     asking_price: '',
@@ -564,6 +571,11 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
   });
 
   const [saving, setSaving] = useState(false);
+  // 'idle' | 'loading' | 'done' | 'error' - drives the inline status line
+  // next to the Decode VIN button. vinDecodeMessage holds the text to show
+  // for 'done' (what got filled in) and 'error' (why it didn't).
+  const [vinDecodeState, setVinDecodeState] = useState('idle');
+  const [vinDecodeMessage, setVinDecodeMessage] = useState('');
 
   useEffect(() => {
     if (bus) {
@@ -573,6 +585,12 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
         passenger_capacity: bus.passenger_capacity || '',
         engine_make: bus.engine_make || '',
         engine_model: bus.engine_model || '',
+        engine_type: bus.engine_type || '',
+        transmission: bus.transmission || '',
+        fuel_type: bus.fuel_type || '',
+        body_style: bus.body_style || '',
+        gvwr: bus.gvwr || '',
+        length_feet: bus.length_feet || '',
         asking_price: bus.asking_price || '',
         asking_currency: bus.asking_currency || 'USD',
         purchase_date: bus.purchase_date ? bus.purchase_date.split('T')[0] : new Date().toISOString().split('T')[0],
@@ -623,6 +641,12 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
         supplier_id: formData.supplier_id ? parseInt(formData.supplier_id) : null,
         engine_make: formData.engine_make || null,
         engine_model: formData.engine_model || null,
+        engine_type: formData.engine_type || null,
+        transmission: formData.transmission || null,
+        fuel_type: formData.fuel_type || null,
+        body_style: formData.body_style || null,
+        gvwr: formData.gvwr ? parseInt(formData.gvwr) : null,
+        length_feet: formData.length_feet ? parseFloat(formData.length_feet) : null,
         payment_account_id: formData.payment_account_id ? parseInt(formData.payment_account_id) : null
       };
       console.log('Submitting inventory data:', JSON.stringify(data, null, 2));
@@ -653,6 +677,36 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     setFormData(updated);
   };
 
+  // Fills in only the fields that are still blank - a decoded VIN should
+  // never silently overwrite something the user already typed or corrected,
+  // the same non-destructive principle handleChange already applies to the
+  // VIN -> stock_number auto-derivation above.
+  const handleDecodeVin = async () => {
+    setVinDecodeState('loading');
+    setVinDecodeMessage('');
+    const result = await decodeVin(formData.vin, API_URL);
+    if (!result.ok) {
+      setVinDecodeState('error');
+      setVinDecodeMessage(result.error);
+      return;
+    }
+    const filledFields = [];
+    const updated = { ...formData };
+    Object.entries(result.decoded).forEach(([field, value]) => {
+      if (field in updated && (updated[field] === '' || updated[field] === null || updated[field] === undefined)) {
+        updated[field] = value;
+        filledFields.push(field);
+      }
+    });
+    setFormData(updated);
+    setVinDecodeState('done');
+    setVinDecodeMessage(
+      filledFields.length > 0
+        ? `Auto-filled from VIN: ${filledFields.join(', ')}`
+        : (result.warning || 'Nothing new to fill in from this VIN')
+    );
+  };
+
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
       <div style={{ background: 'white', borderRadius: '8px', maxWidth: '700px', width: '100%', maxHeight: '90vh', overflow: 'auto' }}>
@@ -670,7 +724,23 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>VIN *</label>
-                <input name="vin" value={formData.vin} onChange={handleChange} required style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input name="vin" value={formData.vin} onChange={handleChange} required style={{ flex: 1, padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+                  <button
+                    type="button"
+                    onClick={handleDecodeVin}
+                    disabled={formData.vin.trim().length !== 17 || vinDecodeState === 'loading'}
+                    style={buttonStyle('outline', 'sm', formData.vin.trim().length !== 17 || vinDecodeState === 'loading')}
+                    title="Look up year/make/model/engine from this VIN"
+                  >
+                    {vinDecodeState === 'loading' ? '⏳' : '🔍'} Decode
+                  </button>
+                </div>
+                {vinDecodeMessage && (
+                  <div style={{ fontSize: '0.8rem', marginTop: '0.35rem', color: vinDecodeState === 'error' ? '#dc2626' : '#059669' }}>
+                    {vinDecodeMessage}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -697,6 +767,38 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Engine Model</label>
                 <input name="engine_model" value={formData.engine_model} onChange={handleChange} style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
+            </div>
+
+            {/* Vehicle specs - typically left blank and filled by Decode VIN above, but
+                editable like every other field so a wrong or missing decode can be corrected. */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Engine Type</label>
+                <input name="engine_type" value={formData.engine_type} onChange={handleChange} placeholder="Diesel, Gasoline, CNG..." style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Transmission</label>
+                <input name="transmission" value={formData.transmission} onChange={handleChange} style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Fuel Type</label>
+                <input name="fuel_type" value={formData.fuel_type} onChange={handleChange} style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Body Style</label>
+                <input name="body_style" value={formData.body_style} onChange={handleChange} placeholder="School Bus, Transit Bus, Shuttle..." style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>GVWR (lbs)</label>
+                <input name="gvwr" type="number" value={formData.gvwr} onChange={handleChange} min="0" style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Length (ft)</label>
+                <input name="length_feet" type="number" step="0.1" value={formData.length_feet} onChange={handleChange} min="0" style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
               </div>
             </div>
 

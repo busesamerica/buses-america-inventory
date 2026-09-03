@@ -1,6 +1,7 @@
 const { useState } = React;
 
 const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
+  const API_URL = `${window.API_BASE_URL || 'https://buses-america.onrender.com'}/api`;
   const [formData, setFormData] = useState(initialData || {
     // Section 1: Basic Information
     vin: '',
@@ -106,6 +107,9 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
 
   const [currentSection, setCurrentSection] = useState(0);
   const [saving, setSaving] = useState(false);
+  // 'idle' | 'loading' | 'done' | 'error' - see handleDecodeVin below.
+  const [vinDecodeState, setVinDecodeState] = useState('idle');
+  const [vinDecodeMessage, setVinDecodeMessage] = useState('');
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -121,6 +125,38 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
 
   const handleBooleanChange = (name, value) => {
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Fills in only the fields that are still blank - a decoded VIN should
+  // never silently overwrite something the inspector already measured or
+  // typed by hand (matches the same non-destructive fill used on the Add
+  // New Bus form's Decode VIN button).
+  const handleDecodeVin = async () => {
+    setVinDecodeState('loading');
+    setVinDecodeMessage('');
+    const result = await decodeVin(formData.vin, API_URL);
+    if (!result.ok) {
+      setVinDecodeState('error');
+      setVinDecodeMessage(result.error);
+      return;
+    }
+    const filledFields = [];
+    setFormData(prev => {
+      const updated = { ...prev };
+      Object.entries(result.decoded).forEach(([field, value]) => {
+        if (field in updated && (updated[field] === '' || updated[field] === null || updated[field] === undefined)) {
+          updated[field] = value;
+          filledFields.push(field);
+        }
+      });
+      return updated;
+    });
+    setVinDecodeState('done');
+    setVinDecodeMessage(
+      filledFields.length > 0
+        ? `Auto-filled from VIN: ${filledFields.join(', ')}`
+        : (result.warning || 'Nothing new to fill in from this VIN')
+    );
   };
 
   const handleSubmit = async (e) => {
@@ -207,22 +243,38 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#1f2937' }}>
                 VIN *
               </label>
-              <input
-                type="text"
-                name="vin"
-                value={formData.vin}
-                onChange={handleChange}
-                required
-                maxLength={17}
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  border: '2px solid #e5e7eb',
-                  borderRadius: '0.5rem',
-                  fontSize: '1rem'
-                }}
-                placeholder="1HGBH41JXMN109186"
-              />
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input
+                  type="text"
+                  name="vin"
+                  value={formData.vin}
+                  onChange={handleChange}
+                  required
+                  maxLength={17}
+                  style={{
+                    flex: 1,
+                    padding: '0.75rem',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '0.5rem',
+                    fontSize: '1rem'
+                  }}
+                  placeholder="1HGBH41JXMN109186"
+                />
+                <button
+                  type="button"
+                  onClick={handleDecodeVin}
+                  disabled={formData.vin.trim().length !== 17 || vinDecodeState === 'loading'}
+                  style={buttonStyle('outline', 'md', formData.vin.trim().length !== 17 || vinDecodeState === 'loading')}
+                  title="Look up year/make/model/engine from this VIN"
+                >
+                  {vinDecodeState === 'loading' ? '⏳' : '🔍'} Decode
+                </button>
+              </div>
+              {vinDecodeMessage && (
+                <div style={{ fontSize: '0.8rem', marginTop: '0.35rem', color: vinDecodeState === 'error' ? '#dc2626' : '#059669' }}>
+                  {vinDecodeMessage}
+                </div>
+              )}
             </div>
 
             <div>
