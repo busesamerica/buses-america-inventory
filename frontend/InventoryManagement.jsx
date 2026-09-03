@@ -20,6 +20,24 @@ const InventoryManagement = () => {
   const [showInspectionReport, setShowInspectionReport] = useState(false);
   const [selectedInspection, setSelectedInspection] = useState(null);
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || '{}'));
+  const [openActionMenuId, setOpenActionMenuId] = useState(null);
+  const actionMenuRef = React.useRef(null);
+
+  // Close the open row menu on any click outside it - a re-click on its own
+  // toggle button is left to that button's own handler (which already knows
+  // how to open/close/switch), so it isn't fought over by two setState calls
+  // racing on the same click.
+  useEffect(() => {
+    if (openActionMenuId === null) return;
+    const handleClickOutside = (e) => {
+      if (e.target.closest('[data-action-menu-toggle]')) return;
+      if (actionMenuRef.current && !actionMenuRef.current.contains(e.target)) {
+        setOpenActionMenuId(null);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [openActionMenuId]);
 
   useEffect(() => {
     loadData();
@@ -339,24 +357,25 @@ const InventoryManagement = () => {
                           {bus.asking_price ? `${formatCurrency(bus.asking_price)} ${bus.asking_currency || 'USD'}` : '-'}
                         </td>
                         <td style={{ padding: '1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                          <div style={{ position: 'relative', display: 'inline-block' }}>
+                          <div style={{ position: 'relative', display: 'inline-block' }} ref={openActionMenuId === bus.inventory_id ? actionMenuRef : undefined}>
                             <button
+                              data-action-menu-toggle
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const menu = e.currentTarget.nextElementSibling;
-                                menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+                                setOpenActionMenuId(openActionMenuId === bus.inventory_id ? null : bus.inventory_id);
                               }}
                               style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '0.25rem 0.5rem', color: '#6b7280' }}
                             >
                               ⋮
                             </button>
-                            <div style={{ display: 'none', position: 'absolute', right: 0, top: '100%', background: 'white', border: '1px solid #e5e7eb', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10, minWidth: '150px' }}>
+                            {openActionMenuId === bus.inventory_id && (
+                            <div style={{ position: 'absolute', right: 0, top: '100%', background: 'white', border: '1px solid #e5e7eb', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10, minWidth: '150px' }}>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setEditingBus(bus);
                                   setShowBusForm(true);
-                                  e.currentTarget.parentElement.style.display = 'none';
+                                  setOpenActionMenuId(null);
                                 }}
                                 style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.875rem' }}
                               >
@@ -367,7 +386,7 @@ const InventoryManagement = () => {
                                   e.stopPropagation();
                                   setSelectedBusForCosts(bus);
                                   setShowCostModal(true);
-                                  e.currentTarget.parentElement.style.display = 'none';
+                                  setOpenActionMenuId(null);
                                 }}
                                 style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.875rem' }}
                               >
@@ -379,7 +398,7 @@ const InventoryManagement = () => {
                                   e.stopPropagation();
                                   setSelectedBusForPayment(bus);
                                   setShowPurchasePaymentModal(true);
-                                  e.currentTarget.parentElement.style.display = 'none';
+                                  setOpenActionMenuId(null);
                                 }}
                                 style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.875rem' }}
                               >
@@ -391,7 +410,7 @@ const InventoryManagement = () => {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleViewInspection(bus);
-                                    e.currentTarget.parentElement.style.display = 'none';
+                                    setOpenActionMenuId(null);
                                   }}
                                   style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.875rem' }}
                                 >
@@ -403,7 +422,7 @@ const InventoryManagement = () => {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleDeleteBus(bus);
-                                    e.currentTarget.parentElement.style.display = 'none';
+                                    setOpenActionMenuId(null);
                                   }}
                                   style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.875rem', color: '#dc3545', borderTop: '1px solid #e5e7eb' }}
                                 >
@@ -411,6 +430,7 @@ const InventoryManagement = () => {
                                 </button>
                               )}
                             </div>
+                            )}
                           </div>
                         </td>
                       </tr>
