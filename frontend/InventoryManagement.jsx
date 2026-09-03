@@ -545,7 +545,12 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
   const [formData, setFormData] = useState({
     stock_number: '',
     vin: '',
-    year: new Date().getFullYear(),
+    // Left blank rather than defaulting to the current year - a real-looking
+    // value here reads as "already set" (to the user and, before the
+    // touched-fields fix below existed, to Decode VIN too), when it was
+    // never actually chosen. An empty year forces a real one, typed or
+    // decoded, same as every other required field on this form.
+    year: '',
     make: '',
     model: '',
     passenger_capacity: '',
@@ -576,6 +581,12 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
   // for 'done' (what got filled in) and 'error' (why it didn't).
   const [vinDecodeState, setVinDecodeState] = useState('idle');
   const [vinDecodeMessage, setVinDecodeMessage] = useState('');
+  // Fields the user has actually edited (or, in edit mode, that already
+  // carry a saved value) - handleDecodeVin only fills fields NOT in this
+  // set. This has to be touch-tracking rather than a "is it blank" check:
+  // `year` defaults to the current year (not blank) so a decoded VIN from
+  // a different year would otherwise never be able to correct it.
+  const [touchedFields, setTouchedFields] = useState(() => new Set());
 
   useEffect(() => {
     if (bus) {
@@ -597,6 +608,15 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
         payment_account_id: bus.payment_account_id || '',
         supplier_id: bus.supplier_id || ''
       });
+      // Editing an existing unit - protect whatever it already has a real
+      // value for (Decode VIN shouldn't overwrite it), but leave any field
+      // that's genuinely blank on this record open to being filled in, same
+      // as before - e.g. an older bus that's missing gvwr can still have it
+      // filled by decoding its VIN while editing.
+      const filledKeys = Object.keys(bus).filter(
+        k => bus[k] !== null && bus[k] !== undefined && bus[k] !== ''
+      );
+      setTouchedFields(new Set(filledKeys));
     }
   }, [bus]);
 
@@ -675,12 +695,15 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     }
 
     setFormData(updated);
+    setTouchedFields(prev => new Set(prev).add(name));
   };
 
-  // Fills in only the fields that are still blank - a decoded VIN should
+  // Fills in only the fields the user hasn't touched - a decoded VIN should
   // never silently overwrite something the user already typed or corrected,
   // the same non-destructive principle handleChange already applies to the
-  // VIN -> stock_number auto-derivation above.
+  // VIN -> stock_number auto-derivation above. This checks touchedFields
+  // rather than "is the field blank", because some fields (year) start out
+  // with a real, non-blank default that isn't real data either.
   const handleDecodeVin = async () => {
     setVinDecodeState('loading');
     setVinDecodeMessage('');
@@ -693,7 +716,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     const filledFields = [];
     const updated = { ...formData };
     Object.entries(result.decoded).forEach(([field, value]) => {
-      if (field in updated && (updated[field] === '' || updated[field] === null || updated[field] === undefined)) {
+      if (field in updated && !touchedFields.has(field)) {
         updated[field] = value;
         filledFields.push(field);
       }
@@ -717,11 +740,10 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
 
         <form onSubmit={handleSubmit} style={{ padding: '1.5rem' }}>
           <div style={{ display: 'grid', gap: '1.25rem' }}>
+            {/* VIN before Stock Number - stock_number is auto-derived from the
+                VIN's last 6 characters (handleChange above), so the field it's
+                derived from belongs first. */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Stock Number *</label>
-                <input name="stock_number" value={formData.stock_number} onChange={handleChange} required style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
-              </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>VIN *</label>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -741,6 +763,10 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
                     {vinDecodeMessage}
                   </div>
                 )}
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Stock Number *</label>
+                <input name="stock_number" value={formData.stock_number} onChange={handleChange} required style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
               </div>
             </div>
 
