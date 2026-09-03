@@ -545,7 +545,12 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
   const [formData, setFormData] = useState({
     stock_number: '',
     vin: '',
-    year: new Date().getFullYear(),
+    // Left blank rather than defaulting to the current year - a real-looking
+    // value here reads as "already set" (to the user and, before the
+    // touched-fields fix below existed, to Decode VIN too), when it was
+    // never actually chosen. An empty year forces a real one, typed or
+    // decoded, same as every other required field on this form.
+    year: '',
     make: '',
     model: '',
     passenger_capacity: '',
@@ -735,11 +740,10 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
 
         <form onSubmit={handleSubmit} style={{ padding: '1.5rem' }}>
           <div style={{ display: 'grid', gap: '1.25rem' }}>
+            {/* VIN before Stock Number - stock_number is auto-derived from the
+                VIN's last 6 characters (handleChange above), so the field it's
+                derived from belongs first. */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Stock Number *</label>
-                <input name="stock_number" value={formData.stock_number} onChange={handleChange} required style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
-              </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>VIN *</label>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -759,6 +763,10 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
                     {vinDecodeMessage}
                   </div>
                 )}
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Stock Number *</label>
+                <input name="stock_number" value={formData.stock_number} onChange={handleChange} required style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
               </div>
             </div>
 
