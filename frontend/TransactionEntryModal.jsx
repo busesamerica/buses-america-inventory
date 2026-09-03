@@ -349,7 +349,7 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
                     </select>
                   ) : (
                     // Set by the account selected above - can't drift from it.
-                    <div style={{ width: '100%', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem', background: '#f9fafb', color: formData.bankAccount ? '#111827' : '#9ca3af' }}>
+                    <div style={{ width: '100%', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', fontSize: formData.bankAccount ? '1rem' : '0.75rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', background: '#f9fafb', color: formData.bankAccount ? '#111827' : '#9ca3af' }}>
                       {formData.bankAccount ? formData.currency : 'Select an account first'}
                     </div>
                   )}
