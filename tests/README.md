@@ -4,6 +4,13 @@
 API — create/update/validation, status transitions, expiry, acceptance and conversion
 to sales, charge allocation, supersession, and the guards on accepted quotes.
 
+`test_vin_decode.py` exercises `GET /api/vin-decode/{vin}` — the endpoint the
+Add New Bus and Pre-Purchase Inspection forms call to auto-fill year/make/
+model/engine/etc. from a VIN. Unlike every other test here, it needs
+outbound internet access: it calls NHTSA's real, free vPIC API
+(`vpic.nhtsa.dot.gov`), since there's no mocking infrastructure in this
+project to stand in for it.
+
 ## Setup
 
 `bus_inventory_schema_FINAL.sql` + `migrations/` (applied by `migrate.py`)
@@ -27,6 +34,7 @@ psql buses_test -f tests/seed_dev_data.sql
 uvicorn backend_api_FINAL:app --port 8099 &
 
 python tests/test_quotes.py
+python tests/test_vin_decode.py
 ```
 
 The seed creates the session token `TEST-TOKEN-123`, which the test uses to

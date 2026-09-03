@@ -4,6 +4,7 @@ Complete inventory management system for Buses America's cross-border bus sales 
 
 ## Features
 - Multi-currency support (USD/MXN)
+- VIN auto-decode (year/make/model/engine/etc. via NHTSA vPIC) on registration
 - Pre-purchase inspections
 - Work plan tracking
 - Warranty management

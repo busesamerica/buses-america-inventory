@@ -11,7 +11,9 @@ from typing import Optional, List
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from inspection_summary_helper import generate_inspection_summary, calculate_pre_fill_data
+from vin_decoder import decode_vin
 import asyncpg
+import httpx
 import os
 import secrets
 import hashlib
@@ -165,6 +167,8 @@ class InventoryCreate(BaseModel):
     engine_type: Optional[str] = None
     transmission: Optional[str] = None
     fuel_type: Optional[str] = None
+    gvwr: Optional[int] = None
+    length_feet: Optional[Decimal] = None
     odometer: Optional[int] = None
     condition: str = "Used"
     exterior_color: Optional[str] = None
@@ -220,7 +224,10 @@ class InventoryUpdate(BaseModel):
     engine_model: Optional[str] = None
     engine_type: Optional[str] = None
     transmission: Optional[str] = None
-    
+    fuel_type: Optional[str] = None
+    gvwr: Optional[int] = None
+    length_feet: Optional[Decimal] = None
+
     # Vehicle specs and safety
     body_style: Optional[str] = None
     brake_system: Optional[str] = None
@@ -317,6 +324,8 @@ class Inventory(BaseModel):
     engine_type: Optional[str] = None
     transmission: Optional[str] = None
     fuel_type: Optional[str] = None
+    gvwr: Optional[int] = None
+    length_feet: Optional[Decimal] = None
     odometer: Optional[int]
     condition: str
     exterior_color: Optional[str]
@@ -1224,6 +1233,26 @@ async def update_inspection_decision(
         raise HTTPException(status_code=404, detail="Inspection not found")
     return dict(row)
 
+# ==================== VIN DECODE ====================
+# Auto-populates year/make/model/engine/etc. from a VIN when a unit is being
+# registered - used by both the Pre-Purchase Inspection form and the Add New
+# Bus form (create_inventory below). get_current_user only (not
+# require_manager_or_admin) because inspectors need this as much as
+# managers/admins do, and it's read-only - it never writes anything.
+
+@app.get("/api/vin-decode/{vin}")
+async def vin_decode(vin: str, current_user: dict = Depends(get_current_user)):
+    """Decode a VIN via NHTSA's free vPIC API for auto-fill on registration forms."""
+    try:
+        return await decode_vin(vin)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except (httpx.TimeoutException, httpx.HTTPError):
+        raise HTTPException(
+            status_code=502,
+            detail="VIN decode service unavailable right now - please enter details manually"
+        )
+
 # ==================== INVENTORY ENDPOINTS ====================
 
 @app.post("/api/inventory", response_model=Inventory)
@@ -1237,7 +1266,7 @@ async def create_inventory(
         INSERT INTO inventory (
             stock_number, vin, year, make, model, body_style, bus_type,
             passenger_capacity, wheelchair_capacity, engine_make, engine_model,
-            engine_type, transmission, fuel_type, odometer, condition,
+            engine_type, transmission, fuel_type, gvwr, length_feet, odometer, condition,
             exterior_color, interior_color, title_status, supplier_id,
             purchase_date, purchase_price_usd, purchase_location, purchase_invoice_number,
             transport_to_stock_cost_usd, initial_reconditioning_cost_usd, other_acquisition_costs_usd,
@@ -1247,7 +1276,7 @@ async def create_inventory(
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
             $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31,
-            $32, $33, $34, $35, $36, $37, $38, $39
+            $32, $33, $34, $35, $36, $37, $38, $39, $40, $41
         ) RETURNING *
     """
     try:
@@ -1255,7 +1284,8 @@ async def create_inventory(
             query, inventory.stock_number, inventory.vin, inventory.year, inventory.make,
             inventory.model, inventory.body_style, inventory.bus_type, inventory.passenger_capacity,
             inventory.wheelchair_capacity, inventory.engine_make, inventory.engine_model,
-            inventory.engine_type, inventory.transmission, inventory.fuel_type, inventory.odometer,
+            inventory.engine_type, inventory.transmission, inventory.fuel_type,
+            inventory.gvwr, inventory.length_feet, inventory.odometer,
             inventory.condition, inventory.exterior_color, inventory.interior_color, inventory.title_status,
             inventory.supplier_id, inventory.purchase_date, inventory.purchase_price_usd,
             inventory.purchase_location, inventory.purchase_invoice_number,
