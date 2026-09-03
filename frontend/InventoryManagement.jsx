@@ -8,7 +8,7 @@ const InventoryManagement = () => {
   const [inspections, setInspections] = useState([]);
   const [paymentAccounts, setPaymentAccounts] = useState([]);
   const [search, setSearch] = useState('');
-  const [statusTab, setStatusTab] = useState('all'); // 'available' | 'sold' | 'all'
+  const [statusTab, setStatusTab] = useState('available'); // 'available' | 'sold'
   const [loading, setLoading] = useState(true);
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [showBusForm, setShowBusForm] = useState(false);
@@ -239,11 +239,7 @@ const InventoryManagement = () => {
     }
   };
 
-  const matchesStatusTab = (bus) => {
-    if (statusTab === 'available') return !bus.is_sold;
-    if (statusTab === 'sold') return !!bus.is_sold;
-    return true; // 'all'
-  };
+  const matchesStatusTab = (bus) => statusTab === 'sold' ? !!bus.is_sold : !bus.is_sold;
 
   const matchesSearch = (bus) => {
     if (!search) return true;
@@ -263,8 +259,7 @@ const InventoryManagement = () => {
 
   const statusTabCounts = {
     available: inventory.filter(bus => !bus.is_sold).length,
-    sold: inventory.filter(bus => bus.is_sold).length,
-    all: inventory.length
+    sold: inventory.filter(bus => bus.is_sold).length
   };
 
   if (loading) {
@@ -281,7 +276,6 @@ const InventoryManagement = () => {
       <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', marginBottom: '1.5rem' }}>
         <div style={{ display: 'inline-flex', gap: '0.25rem', padding: '0.3rem', background: '#f3f4f6', borderRadius: '10px', marginBottom: '1rem' }}>
           {[
-            { id: 'all', label: 'All' },
             { id: 'available', label: 'Available' },
             { id: 'sold', label: 'Sold' }
           ].map(tab => (
@@ -325,7 +319,7 @@ const InventoryManagement = () => {
       <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
         <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
           <h3 style={{ margin: 0 }}>
-            {statusTab === 'available' ? 'Available Buses' : statusTab === 'sold' ? 'Sold Buses' : 'All Buses'} ({filteredInventory.length})
+            {statusTab === 'sold' ? 'Sold Buses' : 'Available Buses'} ({filteredInventory.length})
           </h3>
         </div>
 
@@ -335,7 +329,7 @@ const InventoryManagement = () => {
             <div>
               {search
                 ? 'No buses match your search'
-                : statusTab === 'available' ? 'No available buses' : statusTab === 'sold' ? 'No sold buses' : 'No inventory yet'}
+                : statusTab === 'sold' ? 'No sold buses' : 'No available buses'}
             </div>
           </div>
         ) : (
