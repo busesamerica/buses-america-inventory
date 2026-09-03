@@ -524,7 +524,10 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                       padding: '0.75rem',
                       border: '1px solid #e5e7eb',
                       borderRadius: '0.5rem',
-                      fontSize: '1rem',
+                      fontSize: newCost.payment_account_id ? '1rem' : '0.75rem',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
                       background: '#f9fafb',
                       color: newCost.payment_account_id ? '#111827' : '#9ca3af'
                     }}>
