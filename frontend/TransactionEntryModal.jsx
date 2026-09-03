@@ -208,17 +208,38 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
 
   const bankAccounts = accounts.filter(a => a.account_type === 'Asset' && (a.account_subtype === 'Bank' || a.account_subtype === 'Cash'));
   const expenseAccounts = accounts.filter(a => a.account_type === 'Expense');
-  // Deposit/Expense/Transfer all send a single formData.currency for the
-  // Bank/Cash line, which the backend still validates against that
-  // account's own currency (see get_cash_position) - filtering here keeps
-  // the accounts that would fail from being offered at all. Expense
-  // category accounts aren't currency-checked by the backend (every report
-  // buckets them by the line's own currency, not the account's currency
-  // tag), so the Expense Category dropdown intentionally lists every
-  // Expense account regardless of the selected currency.
-  // Only Exchange is meant to cross currencies for bank accounts, so it
-  // keeps the full list.
+  // Deposit/Expense(paid)/Transfer all send a single formData.currency for
+  // the Bank/Cash line, which the backend still validates against that
+  // account's own currency (see get_cash_position). Rather than have the
+  // user pick a currency first and then filter accounts down to it (easy to
+  // forget to switch, leading to a USD amount posted against an MXN account
+  // or vice versa), the account picked drives the currency - see
+  // handleBankAccountChange. Expense category accounts aren't
+  // currency-checked by the backend (every report buckets them by the
+  // line's own currency, not the account's currency tag), so the Expense
+  // Category dropdown intentionally lists every Expense account regardless
+  // of currency. Only Exchange is meant to cross currencies for bank
+  // accounts, so it keeps the full list and reads currency off both ends.
+  // Transfer's "To" account is still filtered - transfers move money within
+  // one currency, and "From" has already fixed what that currency is.
   const sameCurrencyBankAccounts = bankAccounts.filter(a => a.currency === formData.currency);
+
+  // Selecting a bank/cash account sets the transaction's currency to match
+  // it, instead of the other way around - this is the one thing driving
+  // formData.currency for Deposit/Expense(paid)/Transfer's "From" account,
+  // so the two can never disagree.
+  const handleBankAccountChange = (accountId, field = 'bankAccount') => {
+    const selected = bankAccounts.find(a => a.account_id === parseInt(accountId));
+    setFormData({
+      ...formData,
+      [field]: accountId,
+      currency: selected ? selected.currency : formData.currency,
+      // A new "From" account may have changed the currency out from under
+      // a previously-picked "To" account - drop it rather than leave a
+      // now-wrong-currency account selected.
+      ...(field === 'fromAccount' ? { toAccount: '' } : {})
+    });
+  };
 
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
@@ -282,9 +303,9 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
               {(transactionType === 'deposit' || (transactionType === 'expense' && formData.paymentStatus === 'paid')) && (
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>{transactionType === 'deposit' ? 'Deposit To' : 'Paid From'} *</label>
-                  <select value={formData.bankAccount} onChange={(e) => setFormData({...formData, bankAccount: e.target.value})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
-                    <option value="">Select {formData.currency} account...</option>
-                    {sameCurrencyBankAccounts.map(a => <option key={a.account_id} value={a.account_id}>{a.account_name} ({a.currency})</option>)}
+                  <select value={formData.bankAccount} onChange={(e) => handleBankAccountChange(e.target.value)} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
+                    <option value="">Select account...</option>
+                    {bankAccounts.map(a => <option key={a.account_id} value={a.account_id}>{a.account_name} ({a.currency})</option>)}
                   </select>
                 </div>
               )}
@@ -318,10 +339,20 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Currency *</label>
-                  <select value={formData.currency} onChange={(e) => setFormData({...formData, currency: e.target.value, bankAccount: '', fromAccount: '', toAccount: ''})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
-                    <option value="USD">USD</option>
-                    <option value="MXN">MXN</option>
-                  </select>
+                  {transactionType === 'expense' && formData.paymentStatus === 'on_credit' ? (
+                    // No bank account in this branch (money's going to AP,
+                    // not out of an account yet), so there's nothing to
+                    // derive currency from - keep it a manual choice.
+                    <select value={formData.currency} onChange={(e) => setFormData({...formData, currency: e.target.value})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
+                      <option value="USD">USD</option>
+                      <option value="MXN">MXN</option>
+                    </select>
+                  ) : (
+                    // Set by the account selected above - can't drift from it.
+                    <div style={{ width: '100%', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem', background: '#f9fafb', color: formData.bankAccount ? '#111827' : '#9ca3af' }}>
+                      {formData.bankAccount ? formData.currency : 'Select an account first'}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -342,16 +373,16 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>From *</label>
-                  <select value={formData.fromAccount} onChange={(e) => setFormData({...formData, fromAccount: e.target.value})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
-                    <option value="">Select {formData.currency} account...</option>
-                    {sameCurrencyBankAccounts.map(a => <option key={a.account_id} value={a.account_id}>{a.account_name}</option>)}
+                  <select value={formData.fromAccount} onChange={(e) => handleBankAccountChange(e.target.value, 'fromAccount')} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
+                    <option value="">Select account...</option>
+                    {bankAccounts.map(a => <option key={a.account_id} value={a.account_id}>{a.account_name} ({a.currency})</option>)}
                   </select>
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>To *</label>
-                  <select value={formData.toAccount} onChange={(e) => setFormData({...formData, toAccount: e.target.value})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
-                    <option value="">Select {formData.currency} account...</option>
-                    {sameCurrencyBankAccounts.map(a => <option key={a.account_id} value={a.account_id}>{a.account_name}</option>)}
+                  <select value={formData.toAccount} onChange={(e) => setFormData({...formData, toAccount: e.target.value})} required disabled={!formData.fromAccount} style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
+                    <option value="">{formData.fromAccount ? `Select ${formData.currency} account...` : 'Select a From account first'}</option>
+                    {sameCurrencyBankAccounts.filter(a => a.account_id !== parseInt(formData.fromAccount)).map(a => <option key={a.account_id} value={a.account_id}>{a.account_name}</option>)}
                   </select>
                 </div>
               </div>
@@ -366,10 +397,10 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Currency *</label>
-                  <select value={formData.currency} onChange={(e) => setFormData({...formData, currency: e.target.value, bankAccount: '', fromAccount: '', toAccount: ''})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
-                    <option value="USD">USD</option>
-                    <option value="MXN">MXN</option>
-                  </select>
+                  {/* Set by the "From" account selected above - can't drift from it. */}
+                  <div style={{ width: '100%', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem', background: '#f9fafb', color: formData.fromAccount ? '#111827' : '#9ca3af' }}>
+                    {formData.fromAccount ? formData.currency : 'Select a From account first'}
+                  </div>
                 </div>
               </div>
 

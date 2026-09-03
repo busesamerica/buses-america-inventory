@@ -89,6 +89,19 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
     }
   };
 
+  // Selecting a "Paid From" account sets the cost's currency to match it,
+  // instead of the other way around - picking currency first and then
+  // filtering accounts down to it is easy to forget to switch, and can end
+  // up recording a USD cost against an MXN account (or vice versa).
+  const handlePaymentAccountChange = (accountId) => {
+    const selected = bankAccounts.find(a => a.account_id === parseInt(accountId));
+    setNewCost({
+      ...newCost,
+      payment_account_id: accountId,
+      currency: selected ? selected.currency : newCost.currency
+    });
+  };
+
   const handleAddCost = async (e) => {
     e.preventDefault();
     if (!newCost.description || !newCost.amount) {
@@ -403,75 +416,6 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.75rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
-                    Currency *
-                  </label>
-                  <select
-                    value={newCost.currency}
-                    onChange={(e) => setNewCost({ ...newCost, currency: e.target.value, payment_account_id: '' })}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '0.5rem',
-                      fontSize: '1rem'
-                    }}
-                  >
-                    <option value="USD">USD</option>
-                    <option value="MXN">MXN</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
-                    Amount *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={newCost.amount}
-                    onChange={(e) => setNewCost({ ...newCost, amount: e.target.value })}
-                    onBlur={(e) => {
-                      // Format to 2 decimals when user leaves the field
-                      if (e.target.value) {
-                        const formatted = parseFloat(e.target.value).toFixed(2);
-                        setNewCost({ ...newCost, amount: formatted });
-                      }
-                    }}
-                    placeholder="0.00"
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '0.5rem',
-                      fontSize: '1rem'
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
-                  Date
-                </label>
-                <input
-                  type="date"
-                  value={newCost.date_incurred}
-                  onChange={(e) => setNewCost({ ...newCost, date_incurred: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '0.5rem',
-                    fontSize: '1rem'
-                  }}
-                />
-              </div>
-
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
                   Payment Status *
@@ -520,7 +464,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                     </label>
                     <select
                       value={newCost.payment_account_id}
-                      onChange={(e) => setNewCost({ ...newCost, payment_account_id: e.target.value })}
+                      onChange={(e) => handlePaymentAccountChange(e.target.value)}
                       required
                       style={{
                         width: '100%',
@@ -531,17 +475,14 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                       }}
                     >
                       <option value="">Select account...</option>
-                      {/* Only accounts matching the cost's own currency - the backend
-                          records this amount against the account with no conversion,
-                          so a mismatched account would misrecord it at face value. */}
-                      {bankAccounts.filter(account => account.currency === newCost.currency).map(account => (
+                      {bankAccounts.map(account => (
                         <option key={account.account_id} value={account.account_id}>
-                          {account.account_name}
+                          {account.account_name} ({account.currency})
                         </option>
                       ))}
                     </select>
                     <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                      Which {newCost.currency} bank/cash account did you pay this from?
+                      Sets the cost's currency to match the account you paid from.
                     </div>
                   </div>
                 )}
@@ -551,6 +492,93 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                     This cost will be recorded as Accounts Payable. You can pay it later from the Accounting module.
                   </div>
                 )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
+                    Currency *
+                  </label>
+                  {newCost.payment_status === 'on_credit' ? (
+                    // No bank account in this branch (it's going to AP, not
+                    // out of an account), so there's nothing to derive
+                    // currency from - keep it a manual choice.
+                    <select
+                      value={newCost.currency}
+                      onChange={(e) => setNewCost({ ...newCost, currency: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.5rem',
+                        fontSize: '1rem'
+                      }}
+                    >
+                      <option value="USD">USD</option>
+                      <option value="MXN">MXN</option>
+                    </select>
+                  ) : (
+                    // Set by the "Paid From" account selected above - can't drift from it.
+                    <div style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '0.5rem',
+                      fontSize: '1rem',
+                      background: '#f9fafb',
+                      color: newCost.payment_account_id ? '#111827' : '#9ca3af'
+                    }}>
+                      {newCost.payment_account_id ? newCost.currency : 'Select an account first'}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
+                    Amount *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={newCost.amount}
+                    onChange={(e) => setNewCost({ ...newCost, amount: e.target.value })}
+                    onBlur={(e) => {
+                      // Format to 2 decimals when user leaves the field
+                      if (e.target.value) {
+                        const formatted = parseFloat(e.target.value).toFixed(2);
+                        setNewCost({ ...newCost, amount: formatted });
+                      }
+                    }}
+                    placeholder="0.00"
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.5rem',
+                      fontSize: '1rem'
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
+                  Date
+                </label>
+                <input
+                  type="date"
+                  value={newCost.date_incurred}
+                  onChange={(e) => setNewCost({ ...newCost, date_incurred: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '0.5rem',
+                    fontSize: '1rem'
+                  }}
+                />
               </div>
 
               <div>
