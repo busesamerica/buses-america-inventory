@@ -1664,6 +1664,24 @@ async def delete_inventory(
 
 # ==================== COST ITEMS ENDPOINTS ====================
 
+async def check_unit_not_delivered(db, inventory_id: int):
+    """
+    Block cost changes once a unit has reached 'Delivered' - the final
+    pipeline status, only reachable once a unit is sold and fully paid
+    (see record_delivery). Prevents costs being posted to the wrong
+    (already completed) unit by mistake.
+    """
+    unit = await db.fetchrow(
+        "SELECT stock_number, status FROM inventory WHERE inventory_id = $1",
+        inventory_id
+    )
+    if unit and unit['status'] == 'Delivered':
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot add or modify costs on {unit['stock_number']} — "
+                   "this unit has already been delivered."
+        )
+
 @app.get("/api/inventory/{inventory_id}/costs")
 async def get_inventory_costs(
     inventory_id: int,
@@ -1715,7 +1733,8 @@ async def add_inventory_cost(
     )
     if not inv_check:
         raise HTTPException(status_code=404, detail="Inventory item not found")
-    
+    await check_unit_not_delivered(db, inventory_id)
+
     # Get bus info for descriptions
     bus_info = await db.fetchrow(
         "SELECT stock_number, year, make, model FROM inventory WHERE inventory_id = $1",
@@ -1908,7 +1927,8 @@ async def delete_inventory_cost(
     )
     if not cost:
         raise HTTPException(status_code=404, detail="Cost item not found")
-    
+    await check_unit_not_delivered(db, inventory_id)
+
     # Reverse accounting entry
     trans = await db.fetchrow(
         "SELECT transaction_id FROM transactions WHERE reference_type = 'cost' AND reference_id = $1",
@@ -1960,7 +1980,8 @@ async def update_inventory_cost(
     )
     if not cost:
         raise HTTPException(status_code=404, detail="Cost item not found")
-    
+    await check_unit_not_delivered(db, inventory_id)
+
     updates = await request.json()
     
     # Update cost_items row
@@ -3487,7 +3508,56 @@ async def record_sale(
         'payment_status': 'Pending'
     }
 
-    # ==================== ACCOUNTING MODULE BACKEND ENDPOINTS ====================
+@app.post("/api/inventory/{inventory_id}/deliver")
+async def record_delivery(
+    inventory_id: int,
+    delivery_data: dict,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Mark a unit as Delivered - the only sanctioned path into that status.
+    Requires the unit to be sold and fully paid first, so a unit can only
+    ever reach the 'no more costs' lock (see check_unit_not_delivered)
+    once it truly is done - not from an incidental status-dropdown edit.
+    """
+    unit = await db.fetchrow(
+        "SELECT stock_number, is_sold, payment_status, status, delivery_date "
+        "FROM inventory WHERE inventory_id = $1 AND is_deleted = FALSE",
+        inventory_id
+    )
+    if not unit:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    if not unit['is_sold']:
+        raise HTTPException(status_code=400, detail="Cannot mark as delivered — this unit hasn't been sold.")
+    if unit['payment_status'] != 'Paid in Full':
+        raise HTTPException(status_code=400, detail="Cannot mark as delivered — balance is not yet paid in full.")
+    if unit['status'] == 'Delivered':
+        raise HTTPException(status_code=400, detail="This unit is already marked as delivered.")
+
+    row = await db.fetchrow(
+        """
+        UPDATE inventory
+        SET status = 'Delivered',
+            delivery_date = COALESCE($2, delivery_date, CURRENT_DATE),
+            delivery_method = COALESCE($3, delivery_method),
+            delivery_notes = COALESCE($4, delivery_notes)
+        WHERE inventory_id = $1
+        RETURNING *
+        """,
+        inventory_id,
+        delivery_data.get('delivery_date'),
+        delivery_data.get('delivery_method'),
+        delivery_data.get('delivery_notes'),
+    )
+    await log_audit(
+        db, user['user_id'], user['username'], 'update', 'inventory', inventory_id,
+        old_values=dict(unit), new_values=dict(row),
+        description=f"Marked as DELIVERED: {unit['stock_number']}"
+    )
+    return dict(row)
+
+# ==================== ACCOUNTING MODULE BACKEND ENDPOINTS ====================
 
 from decimal import Decimal
 from typing import Optional, List
