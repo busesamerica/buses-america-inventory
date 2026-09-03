@@ -2,7 +2,13 @@
 // Uses cost_items table for unlimited cost entries
 
 const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
-  const [activeTab, setActiveTab] = React.useState('add-cost');
+  // Once a unit is Delivered, backend rejects new/changed cost entries
+  // (see check_unit_not_delivered in backend_api_FINAL.py) - mirror that
+  // here so the form doesn't even let you try, with a clear reason
+  // instead of a network error. Starts straight on the list/history tab
+  // for a delivered unit, since Add Cost isn't usable.
+  const isDelivered = bus.status === 'Delivered';
+  const [activeTab, setActiveTab] = React.useState(isDelivered ? 'cost-list' : 'add-cost');
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
   const [costs, setCosts] = React.useState([]);
@@ -104,6 +110,13 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
 
   const handleAddCost = async (e) => {
     e.preventDefault();
+    if (isDelivered) {
+      // Defense-in-depth - the Add Cost tab is hidden for delivered
+      // units, but guard the submit itself too in case bus.status went
+      // stale (e.g. delivered by someone else after this modal loaded).
+      setError('This unit has already been delivered — new costs can\'t be added to it.');
+      return;
+    }
     if (!newCost.description || !newCost.amount) {
       setError('Description and amount are required');
       return;
@@ -145,7 +158,8 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to add cost');
+        const errorBody = await response.json().catch(() => null);
+        throw new Error(errorBody?.detail || 'Failed to add cost');
       }
 
       // Reset form
@@ -292,6 +306,21 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
           </button>
         </div>
 
+        {isDelivered && (
+          <div style={{
+            padding: '0.75rem 1.5rem',
+            background: '#fef3c7',
+            color: '#92400e',
+            fontSize: '0.8rem',
+            borderBottom: '1px solid #fde68a'
+          }}>
+            ⚠️ <strong>{bus.stock_number}</strong> has already been delivered
+            {bus.client_name ? ` to ${bus.client_name}` : ''}
+            {bus.delivery_date ? ` on ${formatDate(bus.delivery_date)}` : ''} — new costs can't
+            be added to it. Double-check you meant this unit before doing anything else here.
+          </div>
+        )}
+
         {/* Tabs */}
         <div style={{
           display: 'flex',
@@ -299,16 +328,18 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
           background: '#f9fafb'
         }}>
           <button
-            onClick={() => setActiveTab('add-cost')}
+            onClick={() => !isDelivered && setActiveTab('add-cost')}
+            disabled={isDelivered}
+            title={isDelivered ? 'This unit has already been delivered - new costs can\'t be added' : undefined}
             style={{
               flex: 1,
               padding: '1rem',
               border: 'none',
               background: activeTab === 'add-cost' ? 'white' : 'transparent',
               borderBottom: activeTab === 'add-cost' ? '2px solid #10b981' : '2px solid transparent',
-              cursor: 'pointer',
+              cursor: isDelivered ? 'not-allowed' : 'pointer',
               fontWeight: activeTab === 'add-cost' ? '700' : '500',
-              color: activeTab === 'add-cost' ? '#10b981' : '#6b7280',
+              color: isDelivered ? '#d1d5db' : (activeTab === 'add-cost' ? '#10b981' : '#6b7280'),
               fontSize: '0.875rem'
             }}
           >
@@ -364,7 +395,13 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
           )}
 
           {/* Add Cost Tab */}
-          {activeTab === 'add-cost' && (
+          {activeTab === 'add-cost' && isDelivered && (
+            <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280', maxWidth: '600px', margin: '0 auto' }}>
+              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🚫</div>
+              <div>This unit has already been delivered, so new costs can't be added to it.</div>
+            </div>
+          )}
+          {activeTab === 'add-cost' && !isDelivered && (
             <form onSubmit={handleAddCost} style={{ display: 'grid', gap: '1.5rem', maxWidth: '600px', margin: '0 auto' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>

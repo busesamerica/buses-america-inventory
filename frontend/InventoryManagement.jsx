@@ -181,6 +181,31 @@ const InventoryManagement = () => {
     }
   };
 
+  const handleMarkDelivered = async (bus) => {
+    // Delivered is the terminal status - the backend then refuses any new
+    // or changed cost entry against this unit (see check_unit_not_delivered
+    // in backend_api_FINAL.py), so this is a deliberate, one-way action.
+    if (!confirm(`Mark ${bus.stock_number} as Delivered?\n\nOnce delivered, no further costs can be added to this unit.`)) return;
+    try {
+      const response = await fetch(`${API_URL}/inventory/${bus.inventory_id}/deliver`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+        },
+        body: JSON.stringify({})
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to mark as delivered');
+      }
+      alert(`✅ ${bus.stock_number} marked as delivered`);
+      loadData();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  };
+
   const toggleRow = (inventoryId) => {
     const newExpanded = new Set(expandedRows);
     if (newExpanded.has(inventoryId)) {
@@ -392,6 +417,26 @@ const InventoryManagement = () => {
                               >
                                 💰 Costs
                               </button>
+                              {bus.is_sold && bus.status !== 'Delivered' && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (bus.payment_status !== 'Paid in Full') return;
+                                    handleMarkDelivered(bus);
+                                    setOpenActionMenuId(null);
+                                  }}
+                                  disabled={bus.payment_status !== 'Paid in Full'}
+                                  title={bus.payment_status !== 'Paid in Full' ? 'Balance must be paid in full before marking as delivered' : undefined}
+                                  style={{
+                                    display: 'block', width: '100%', padding: '0.5rem 1rem', border: 'none',
+                                    background: 'none', textAlign: 'left', fontSize: '0.875rem',
+                                    cursor: bus.payment_status !== 'Paid in Full' ? 'not-allowed' : 'pointer',
+                                    color: bus.payment_status !== 'Paid in Full' ? '#9ca3af' : 'inherit'
+                                  }}
+                                >
+                                  🚚 Mark as Delivered
+                                </button>
+                              )}
                               {!bus.has_purchase_payment && (
                               <button
                                 onClick={(e) => {

@@ -27,6 +27,13 @@ INSERT INTO accounts (account_code, account_name, account_type, account_subtype,
 SELECT * FROM (VALUES
     ('1100','Accounts Receivable (USD)','Asset','AR','USD'),
     ('1105','Accounts Receivable (MXN)','Asset','AR','MXN'),
+    -- 1200 is what add_inventory_cost/update_inventory_cost actually
+    -- capitalize cost_items to (INVENTORY_ACCOUNT_CODE in
+    -- backend_api_FINAL.py) - distinct from 1300 below, which is looked
+    -- up by account_subtype ('Inventory') for the COGS/purchase-payment
+    -- paths instead. Without this row, POST /api/inventory/{id}/costs
+    -- 500s on a fresh local/test database.
+    ('1200','Bus Inventory (Capitalized Costs)','Asset','Inventory','USD'),
     ('1300','Bus Inventory','Asset','Inventory','USD'),
     ('4000','Bus Sales (USD)','Income','Sales','USD'),
     ('4005','Bus Sales (MXN)','Income','Sales','MXN'),

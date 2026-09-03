@@ -11,6 +11,11 @@ outbound internet access: it calls NHTSA's real, free vPIC API
 (`vpic.nhtsa.dot.gov`), since there's no mocking infrastructure in this
 project to stand in for it.
 
+`test_cost_guard.py` exercises `POST /api/inventory/{id}/deliver` (only
+reachable once a unit is sold and paid in full) and the resulting guard on
+`cost_items` — once a unit is Delivered, adding, editing, or deleting a
+cost against it is rejected.
+
 ## Setup
 
 `bus_inventory_schema_FINAL.sql` + `migrations/` (applied by `migrate.py`)
@@ -35,6 +40,7 @@ uvicorn backend_api_FINAL:app --port 8099 &
 
 python tests/test_quotes.py
 python tests/test_vin_decode.py
+python tests/test_cost_guard.py
 ```
 
 The seed creates the session token `TEST-TOKEN-123`, which the test uses to
