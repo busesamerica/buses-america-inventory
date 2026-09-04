@@ -3614,25 +3614,42 @@ async def get_accounts(
     where_clauses = []
     params = []
     param_count = 1
-    
+
     if is_active is not None:
-        where_clauses.append(f"is_active = ${param_count}")
+        where_clauses.append(f"a.is_active = ${param_count}")
         params.append(is_active)
         param_count += 1
-    
+
     if account_type:
-        where_clauses.append(f"account_type = ${param_count}")
+        where_clauses.append(f"a.account_type = ${param_count}")
         params.append(account_type)
         param_count += 1
-    
+
     where_clause = " AND ".join(where_clauses) if where_clauses else "TRUE"
-    
+
+    # currencies_used is additive - the currencies this account's
+    # transaction_lines actually contain, as opposed to the nominal a.currency
+    # column (set once at creation, never reconciled - there's no account
+    # update endpoint). Most accounts only ever have one and it matches
+    # a.currency, but an account with no USD/MXN split (e.g. equity/
+    # distribution accounts) can legitimately accumulate both - see
+    # get_account_statement's available_currencies, which this mirrors so
+    # a caller never sees the two disagree. GROUP BY a.account_id while
+    # selecting a.* relies on Postgres' functional-dependency-on-primary-key
+    # rule, the same pattern get_transactions already uses.
     query = f"""
-        SELECT * FROM accounts 
+        SELECT a.*,
+               COALESCE(
+                   array_agg(DISTINCT tl.currency) FILTER (WHERE tl.currency IS NOT NULL),
+                   ARRAY[]::VARCHAR[]
+               ) AS currencies_used
+        FROM accounts a
+        LEFT JOIN transaction_lines tl ON tl.account_id = a.account_id
         WHERE {where_clause}
-        ORDER BY account_code
+        GROUP BY a.account_id
+        ORDER BY a.account_code
     """
-    
+
     rows = await db.fetch(query, *params)
     return [dict(row) for row in rows]
 

@@ -139,11 +139,25 @@ const AccountStatementReport = ({ isOpen, initialAccountId, onClose }) => {
                 style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}
               >
                 <option value="">Select an account...</option>
-                {accounts.map(a => (
-                  <option key={a.account_id} value={a.account_id}>
-                    {a.account_code} — {a.account_name} ({a.currency === 'USD' || a.currency === 'MXN' ? a.currency : 'multi-currency'}){a.is_active ? '' : ' [inactive]'}
-                  </option>
-                ))}
+                {accounts.map(a => {
+                  // Label from what this account's transaction_lines actually
+                  // contain (currencies_used), not the nominal a.currency
+                  // column - the two can disagree (e.g. an equity/distribution
+                  // account created as 'USD' that has since had MXN activity
+                  // posted to it too, with nothing to reconcile a.currency
+                  // afterward). Falls back to a.currency only when there's no
+                  // activity yet to go on, matching how the statement endpoint
+                  // itself resolves a currency in that case.
+                  const used = a.currencies_used || [];
+                  const currencyLabel = used.length === 1 ? used[0]
+                    : used.length > 1 ? 'multi-currency'
+                    : (a.currency === 'USD' || a.currency === 'MXN' ? a.currency : 'multi-currency');
+                  return (
+                    <option key={a.account_id} value={a.account_id}>
+                      {a.account_code} — {a.account_name} ({currencyLabel}){a.is_active ? '' : ' [inactive]'}
+                    </option>
+                  );
+                })}
               </select>
             </div>
             <div>
