@@ -3848,6 +3848,118 @@ async def create_account(
     
     return dict(row)
 
+@app.get("/api/accounting/accounts/{account_id}/statement")
+async def get_account_statement(
+    account_id: int,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 500,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Account statement (ledger) — every transaction line posted to this
+    account, in date order, with a running balance. Same shape as a bank
+    statement: opening balance, dated entries, closing balance.
+
+    Always ordered by date (no alternate sort) — a running balance only
+    stays meaningful when the rows are in date order.
+    """
+    account = await db.fetchrow("SELECT * FROM accounts WHERE account_id = $1", account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    # Assets & Expenses: Debit increases, Credit decreases
+    # Liabilities, Equity, Income: Credit increases, Debit decreases
+    # (same direction logic as update_account_balances)
+    increases_on_debit = account['account_type'] in ['Asset', 'Expense']
+
+    start = datetime.strptime(start_date, '%Y-%m-%d').date() if start_date else None
+    end = datetime.strptime(end_date, '%Y-%m-%d').date() if end_date else None
+
+    # Opening balance = everything before start_date. With no start_date the
+    # statement covers full history, so opening balance is 0.
+    opening_balance = 0.0
+    if start:
+        opening_totals = await db.fetchrow(
+            """
+            SELECT COALESCE(SUM(tl.debit_amount), 0) as total_debit,
+                   COALESCE(SUM(tl.credit_amount), 0) as total_credit
+            FROM transaction_lines tl
+            JOIN transactions t ON tl.transaction_id = t.transaction_id
+            WHERE tl.account_id = $1 AND t.transaction_date < $2
+            """,
+            account_id, start
+        )
+        if increases_on_debit:
+            opening_balance = float(opening_totals['total_debit']) - float(opening_totals['total_credit'])
+        else:
+            opening_balance = float(opening_totals['total_credit']) - float(opening_totals['total_debit'])
+
+    where_clauses = ["tl.account_id = $1"]
+    params = [account_id]
+    param_count = 2
+
+    if start:
+        where_clauses.append(f"t.transaction_date >= ${param_count}")
+        params.append(start)
+        param_count += 1
+
+    if end:
+        where_clauses.append(f"t.transaction_date <= ${param_count}")
+        params.append(end)
+        param_count += 1
+
+    where_clause = " AND ".join(where_clauses)
+
+    query = f"""
+        SELECT
+            t.transaction_id, t.transaction_date, t.description,
+            t.reference_type, t.reference_id, t.reference_number,
+            tl.line_id, tl.debit_amount, tl.credit_amount, tl.currency, tl.notes
+        FROM transaction_lines tl
+        JOIN transactions t ON tl.transaction_id = t.transaction_id
+        WHERE {where_clause}
+        ORDER BY t.transaction_date ASC, t.transaction_id ASC, tl.line_id ASC
+        LIMIT ${param_count}
+    """
+    params.append(limit)
+
+    rows = await db.fetch(query, *params)
+
+    running_balance = opening_balance
+    total_debit = 0.0
+    total_credit = 0.0
+    entries = []
+    for row in rows:
+        debit = float(row['debit_amount'])
+        credit = float(row['credit_amount'])
+        total_debit += debit
+        total_credit += credit
+        running_balance += (debit - credit) if increases_on_debit else (credit - debit)
+        entries.append({
+            'transaction_id': row['transaction_id'],
+            'transaction_date': str(row['transaction_date']),
+            'description': row['description'],
+            'reference_type': row['reference_type'],
+            'reference_id': row['reference_id'],
+            'reference_number': row['reference_number'],
+            'debit_amount': debit,
+            'credit_amount': credit,
+            'currency': row['currency'],
+            'notes': row['notes'],
+            'running_balance': running_balance
+        })
+
+    return {
+        'account': dict(account),
+        'opening_balance': opening_balance,
+        'entries': entries,
+        'closing_balance': running_balance,
+        'total_debit': total_debit,
+        'total_credit': total_credit
+    }
+
 # ==================== TRANSACTIONS ====================
 
 @app.get("/api/accounting/transactions")

@@ -15,6 +15,8 @@ const AccountingDashboard = () => {
   const [showTransactionJournal, setShowTransactionJournal] = React.useState(false);
   const [showExchangeRate, setShowExchangeRate] = React.useState(false);
   const [showAPManagement, setShowAPManagement] = React.useState(false);
+  const [showAccountStatement, setShowAccountStatement] = React.useState(false);
+  const [statementAccountId, setStatementAccountId] = React.useState(null);
   const [expandedVendor, setExpandedVendor] = React.useState(null);
   const [apData, setApData] = React.useState(null);
   const [apPaymentForm, setApPaymentForm] = React.useState({ vendor: '', payment_amount: '', payment_currency: 'USD', payment_date: new Date().toISOString().split('T')[0], payment_account_id: '', notes: '' });
@@ -172,6 +174,11 @@ const AccountingDashboard = () => {
     }
   };
 
+  const openAccountStatement = (accountId) => {
+    setStatementAccountId(accountId || null);
+    setShowAccountStatement(true);
+  };
+
   if (loading) {
     return (
       <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
@@ -258,12 +265,18 @@ const AccountingDashboard = () => {
               </div>
             ) : (
               usdAccounts.map((account) => (
-                <div key={account.account_id} style={{
-                  padding: '1rem',
-                  background: '#f9fafb',
-                  borderRadius: '0.5rem',
-                  borderLeft: '4px solid #10b981'
-                }}>
+                <div
+                  key={account.account_id}
+                  onClick={() => openAccountStatement(account.account_id)}
+                  title="View account statement"
+                  style={{
+                    padding: '1rem',
+                    background: '#f9fafb',
+                    borderRadius: '0.5rem',
+                    borderLeft: '4px solid #10b981',
+                    cursor: 'pointer'
+                  }}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: '700', color: '#111827', marginBottom: '0.25rem' }}>
@@ -300,12 +313,18 @@ const AccountingDashboard = () => {
               </div>
             ) : (
               mxnAccounts.map((account) => (
-                <div key={account.account_id} style={{
-                  padding: '1rem',
-                  background: '#f9fafb',
-                  borderRadius: '0.5rem',
-                  borderLeft: '4px solid #8b5cf6'
-                }}>
+                <div
+                  key={account.account_id}
+                  onClick={() => openAccountStatement(account.account_id)}
+                  title="View account statement"
+                  style={{
+                    padding: '1rem',
+                    background: '#f9fafb',
+                    borderRadius: '0.5rem',
+                    borderLeft: '4px solid #8b5cf6',
+                    cursor: 'pointer'
+                  }}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: '700', color: '#111827', marginBottom: '0.25rem' }}>
@@ -376,6 +395,9 @@ const AccountingDashboard = () => {
           <button onClick={() => { setShowAPManagement(true); loadAPData(); }} style={buttonStyle('pink', 'md')}>
             📋 Accounts Payable
           </button>
+          <button onClick={() => openAccountStatement(null)} style={buttonStyle('gray', 'md')}>
+            🧾 Account Statement
+          </button>
           <button onClick={() => setShowPeriodClosing(true)} style={buttonStyle('red', 'md')}>
             🔒 Close Period
           </button>
@@ -431,6 +453,12 @@ const AccountingDashboard = () => {
       <TransactionJournal
         isOpen={showTransactionJournal}
         onClose={() => setShowTransactionJournal(false)}
+      />
+
+      <AccountStatementReport
+        isOpen={showAccountStatement}
+        initialAccountId={statementAccountId}
+        onClose={() => { setShowAccountStatement(false); setStatementAccountId(null); }}
       />
 
       {/* Exchange Rate Modal */}
