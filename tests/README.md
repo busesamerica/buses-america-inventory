@@ -16,6 +16,15 @@ reachable once a unit is sold and paid in full) and the resulting guard on
 `cost_items` — once a unit is Delivered, adding, editing, or deleting a
 cost against it is rejected.
 
+`test_account_statement.py` exercises `GET /api/accounting/accounts/{id}/statement`
+— the per-account ledger/statement view (opening balance, dated entries,
+running balance, closing balance). Posts its own throwaway journal entries
+against the seeded AR and Sales accounts, then checks entries come back in
+date order, the running balance is internally consistent in both debit-
+increases (Asset) and credit-increases (Income) directions, `start_date`
+correctly folds earlier activity into `opening_balance`, and an unknown
+`account_id` 404s.
+
 ## Setup
 
 `bus_inventory_schema_FINAL.sql` + `migrations/` (applied by `migrate.py`)
@@ -41,6 +50,7 @@ uvicorn backend_api_FINAL:app --port 8099 &
 python tests/test_quotes.py
 python tests/test_vin_decode.py
 python tests/test_cost_guard.py
+python tests/test_account_statement.py
 ```
 
 The seed creates the session token `TEST-TOKEN-123`, which the test uses to
