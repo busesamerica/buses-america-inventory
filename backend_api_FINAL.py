@@ -3853,6 +3853,7 @@ async def get_account_statement(
     account_id: int,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    currency: Optional[str] = None,
     limit: int = 500,
     db=Depends(get_db),
     user=Depends(get_current_user)
@@ -3864,10 +3865,46 @@ async def get_account_statement(
 
     Always ordered by date (no alternate sort) — a running balance only
     stays meaningful when the rows are in date order.
+
+    A running balance is inherently single-currency. Most accounts only
+    ever have one, but accounts.currency has no enum/constraint and a few
+    (e.g. the equity/distribution accounts, which have no USD/MXN split the
+    way Sales does) legitimately accumulate transaction_lines in more than
+    one currency — account_balances' UNIQUE(account_id, currency) and
+    update_account_balances() already treat that as normal. Summing across
+    currencies into one number would be meaningless (and mislabeling it
+    with whatever accounts.currency happens to be, e.g. 'BOTH', makes it
+    actively misleading), so when more than one currency is present and the
+    caller didn't say which one, this returns a choice instead of a guess.
     """
     account = await db.fetchrow("SELECT * FROM accounts WHERE account_id = $1", account_id)
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
+
+    currency_rows = await db.fetch(
+        "SELECT DISTINCT currency FROM transaction_lines WHERE account_id = $1",
+        account_id
+    )
+    available_currencies = sorted(r['currency'] for r in currency_rows)
+
+    if currency:
+        resolved_currency = currency
+    elif len(available_currencies) <= 1:
+        resolved_currency = available_currencies[0] if available_currencies else account['currency']
+    else:
+        # Ambiguous and unspecified - hand it back to the caller rather than
+        # silently combining currencies into a false total.
+        return {
+            'account': dict(account),
+            'currency': None,
+            'currency_choice_required': True,
+            'available_currencies': available_currencies,
+            'opening_balance': None,
+            'entries': [],
+            'closing_balance': None,
+            'total_debit': None,
+            'total_credit': None
+        }
 
     # Assets & Expenses: Debit increases, Credit decreases
     # Liabilities, Equity, Income: Credit increases, Debit decreases
@@ -3887,18 +3924,18 @@ async def get_account_statement(
                    COALESCE(SUM(tl.credit_amount), 0) as total_credit
             FROM transaction_lines tl
             JOIN transactions t ON tl.transaction_id = t.transaction_id
-            WHERE tl.account_id = $1 AND t.transaction_date < $2
+            WHERE tl.account_id = $1 AND tl.currency = $2 AND t.transaction_date < $3
             """,
-            account_id, start
+            account_id, resolved_currency, start
         )
         if increases_on_debit:
             opening_balance = float(opening_totals['total_debit']) - float(opening_totals['total_credit'])
         else:
             opening_balance = float(opening_totals['total_credit']) - float(opening_totals['total_debit'])
 
-    where_clauses = ["tl.account_id = $1"]
-    params = [account_id]
-    param_count = 2
+    where_clauses = ["tl.account_id = $1", "tl.currency = $2"]
+    params = [account_id, resolved_currency]
+    param_count = 3
 
     if start:
         where_clauses.append(f"t.transaction_date >= ${param_count}")
@@ -3953,6 +3990,9 @@ async def get_account_statement(
 
     return {
         'account': dict(account),
+        'currency': resolved_currency,
+        'currency_choice_required': False,
+        'available_currencies': available_currencies,
         'opening_balance': opening_balance,
         'entries': entries,
         'closing_balance': running_balance,

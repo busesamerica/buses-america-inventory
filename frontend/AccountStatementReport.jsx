@@ -26,7 +26,7 @@ const AccountStatementReport = ({ isOpen, initialAccountId, onClose }) => {
     if (initialAccountId) {
       setSelectedAccountId(String(initialAccountId));
       setFilters({ start_date: '', end_date: '' });
-      loadStatement(initialAccountId, '', '');
+      loadStatement(initialAccountId, '', '', '');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, initialAccountId]);
@@ -46,7 +46,7 @@ const AccountStatementReport = ({ isOpen, initialAccountId, onClose }) => {
     }
   };
 
-  const loadStatement = async (accountId, startDate, endDate) => {
+  const loadStatement = async (accountId, startDate, endDate, currency) => {
     if (!accountId) return;
     setLoading(true);
     setError('');
@@ -55,6 +55,7 @@ const AccountStatementReport = ({ isOpen, initialAccountId, onClose }) => {
       const params = new URLSearchParams();
       if (startDate) params.append('start_date', startDate);
       if (endDate) params.append('end_date', endDate);
+      if (currency) params.append('currency', currency);
       const response = await fetch(`${API_URL}/accounting/accounts/${accountId}/statement?${params}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -78,16 +79,25 @@ const AccountStatementReport = ({ isOpen, initialAccountId, onClose }) => {
     setSelectedAccountId(accountId);
     setFilters({ start_date: '', end_date: '' });
     setStatement(null);
-    if (accountId) loadStatement(accountId, '', '');
+    if (accountId) loadStatement(accountId, '', '', '');
   };
 
   const handleRunReport = () => {
-    loadStatement(selectedAccountId, filters.start_date, filters.end_date);
+    loadStatement(selectedAccountId, filters.start_date, filters.end_date, '');
+  };
+
+  const handlePickCurrency = (chosenCurrency) => {
+    loadStatement(selectedAccountId, filters.start_date, filters.end_date, chosenCurrency);
   };
 
   if (!isOpen) return null;
 
-  const currency = statement?.account?.currency || 'USD';
+  // Once a statement has resolved, its own `currency` field is the one
+  // source of truth for what its numbers are denominated in - never fall
+  // back to the account row's `currency` (which can be a non-currency
+  // sentinel like 'BOTH' for accounts with mixed-currency activity, e.g.
+  // equity/distribution accounts with no USD/MXN split).
+  const currency = statement?.currency || 'USD';
 
   return (
     <div style={{
@@ -131,7 +141,7 @@ const AccountStatementReport = ({ isOpen, initialAccountId, onClose }) => {
                 <option value="">Select an account...</option>
                 {accounts.map(a => (
                   <option key={a.account_id} value={a.account_id}>
-                    {a.account_code} — {a.account_name} ({a.currency}){a.is_active ? '' : ' [inactive]'}
+                    {a.account_code} — {a.account_name} ({a.currency === 'USD' || a.currency === 'MXN' ? a.currency : 'multi-currency'}){a.is_active ? '' : ' [inactive]'}
                   </option>
                 ))}
               </select>
@@ -186,6 +196,27 @@ const AccountStatementReport = ({ isOpen, initialAccountId, onClose }) => {
             <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
               Click "Run Report" to generate the statement.
             </div>
+          ) : statement.currency_choice_required ? (
+            <div style={{ textAlign: 'center', padding: '2rem' }}>
+              <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1.25rem', fontWeight: '700', color: '#111827' }}>
+                {statement.account.account_name}
+              </h3>
+              <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '1.5rem' }}>
+                {statement.account.account_code}
+                {statement.account.account_subtype ? ` · ${statement.account.account_subtype}` : ''}
+              </div>
+              <div style={{ color: '#374151', marginBottom: '1rem' }}>
+                This account has activity in more than one currency. A statement can only show one
+                currency's transactions at a time — pick one:
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+                {statement.available_currencies.map(c => (
+                  <button key={c} onClick={() => handlePickCurrency(c)} style={buttonStyle('blue', 'md')}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
           ) : (
             <>
               {/* Report Header */}
@@ -195,7 +226,7 @@ const AccountStatementReport = ({ isOpen, initialAccountId, onClose }) => {
                 </h3>
                 <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
                   {statement.account.account_code} · {statement.account.account_type}
-                  {statement.account.account_subtype ? ` (${statement.account.account_subtype})` : ''} · {statement.account.currency}
+                  {statement.account.account_subtype ? ` (${statement.account.account_subtype})` : ''} · {statement.currency}
                 </div>
                 <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.25rem' }}>
                   {filters.start_date ? `From ${formatDate(filters.start_date)}` : 'Full history'}

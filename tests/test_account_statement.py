@@ -21,6 +21,10 @@ other test's data, so it's safe to re-run against the same dev DB. Verifies:
   - an unknown account_id 404s
   - both debit-increases (Asset) and credit-increases (Income) directions
     are exercised
+  - an account with activity in more than one currency (e.g. an equity/
+    distribution account with no USD/MXN split) returns a currency-choice
+    response instead of silently summing USD and MXN together, and each
+    currency's statement only reflects that currency's entries once chosen
 
 See tests/dev_fixtures.sql / tests/seed_dev_data.sql for the local database
 setup this assumes.
@@ -28,6 +32,7 @@ setup this assumes.
 
 import os
 import sys
+import time
 import json
 import datetime
 import urllib.request
@@ -64,16 +69,23 @@ def check(name, condition, detail=""):
         print(f"  FAIL  {name} {detail}")
 
 
-def post_entry(entry_date, ar_id, sales_id, amount, desc):
-    """Debit AR / Credit Sales — a simple, always-balanced two-line entry."""
+def post_entry(entry_date, ar_id, sales_id, amount, desc, currency="USD"):
+    """Debit AR / Credit Sales — a simple, always-balanced two-line entry.
+
+    create_transaction's debit=credit check is purely numeric (currency-
+    blind, see backend_api_FINAL.py), so a single `currency` applied to both
+    lines balances fine regardless of what currency either account itself
+    is nominally in — this is exactly how a same-account_id, mixed-currency
+    history (e.g. distribution accounts) can accumulate in the first place.
+    """
     status, txn = call("POST", "/api/accounting/transactions", {
         "transaction_date": entry_date.isoformat(),
         "description": desc,
         "reference_type": "deposit",
-        "currency": "USD",
+        "currency": currency,
         "lines": [
-            {"account_id": ar_id, "debit_amount": amount, "credit_amount": 0, "currency": "USD"},
-            {"account_id": sales_id, "debit_amount": 0, "credit_amount": amount, "currency": "USD"},
+            {"account_id": ar_id, "debit_amount": amount, "credit_amount": 0, "currency": currency},
+            {"account_id": sales_id, "debit_amount": 0, "credit_amount": amount, "currency": currency},
         ],
     })
     check(f"posted '{desc}'", status == 200, f"({status}) {txn}")
@@ -103,6 +115,12 @@ post_entry(newer_date, ar_id, sales_id, 500, "test_account_statement — entry 2
 # --- full-history statement on AR (Asset — debit increases) ----------------
 status, ar_statement = call("GET", f"/api/accounting/accounts/{ar_id}/statement")
 check("AR statement fetched", status == 200, f"({status}) {ar_statement}")
+
+check(
+    "AR statement resolves a single currency (backward-compat: single-currency account)",
+    ar_statement.get("currency_choice_required") is False and ar_statement.get("currency") == "USD",
+    (ar_statement.get("currency_choice_required"), ar_statement.get("currency")),
+)
 
 entries = ar_statement.get("entries", [])
 check("AR has at least our 2 entries", len(entries) >= 2, len(entries))
@@ -176,6 +194,11 @@ check(
 # --- Sales (Income — credit increases) direction ----------------------------
 status, sales_statement = call("GET", f"/api/accounting/accounts/{sales_id}/statement")
 check("Sales statement fetched", status == 200, f"({status}) {sales_statement}")
+check(
+    "Sales statement resolves a single currency (backward-compat: single-currency account)",
+    sales_statement.get("currency_choice_required") is False and sales_statement.get("currency") == "USD",
+    (sales_statement.get("currency_choice_required"), sales_statement.get("currency")),
+)
 
 sales_entries = sales_statement.get("entries", [])
 running = float(sales_statement["opening_balance"])
@@ -186,6 +209,82 @@ for e in sales_entries:
         mismatch = (e, running)
         break
 check("running balance is internally consistent (Sales, credit-increases)", mismatch is None, mismatch)
+
+# --- multi-currency account: 'BOTH'-style equity/distribution accounts -----
+# Reproduces the bug directly rather than depending on production-only data
+# (account codes 3100/3200/3201 only exist in production, not in this
+# repo's fixtures): create a fresh account and post one entry in USD and
+# one in MXN against the SAME account_id, exactly how record_profit_
+# distribution accumulates mixed-currency history on a single equity
+# account with no USD/MXN split.
+status, multi_account = call("POST", "/api/accounting/accounts", {
+    "account_code": f"TM{int(time.time())}",  # accounts.account_code is VARCHAR(20)
+    "account_name": "Test Multi-Currency Equity Account",
+    "account_type": "Equity",
+    "account_subtype": "Distribution",
+    "currency": "BOTH",
+})
+check("multi-currency test account created", status == 200, f"({status}) {multi_account}")
+multi_id = multi_account["account_id"]
+
+post_entry(older_date, ar_id, multi_id, 100, "test_account_statement — multi USD", currency="USD")
+post_entry(newer_date, ar_id, multi_id, 2000, "test_account_statement — multi MXN", currency="MXN")
+
+# No currency specified and more than one is present -> must ask, not guess.
+status, ambiguous = call("GET", f"/api/accounting/accounts/{multi_id}/statement")
+check("multi-currency statement fetched", status == 200, f"({status}) {ambiguous}")
+check(
+    "ambiguous multi-currency statement requires a currency choice",
+    ambiguous.get("currency_choice_required") is True,
+    ambiguous,
+)
+check(
+    "ambiguous statement lists both currencies available",
+    set(ambiguous.get("available_currencies") or []) == {"USD", "MXN"},
+    ambiguous.get("available_currencies"),
+)
+check(
+    "ambiguous statement returns no entries and no computed balance (never a mixed total)",
+    ambiguous.get("entries") == [] and ambiguous.get("opening_balance") is None,
+    ambiguous,
+)
+
+# Resolving to USD only reflects the USD entry.
+status, multi_usd = call("GET", f"/api/accounting/accounts/{multi_id}/statement?currency=USD")
+check("USD-scoped multi-currency statement fetched", status == 200, f"({status}) {multi_usd}")
+check(
+    "USD-scoped statement resolves to USD and is not ambiguous",
+    multi_usd.get("currency_choice_required") is False and multi_usd.get("currency") == "USD",
+    (multi_usd.get("currency_choice_required"), multi_usd.get("currency")),
+)
+check(
+    "USD-scoped statement only contains the USD entry",
+    len(multi_usd["entries"]) == 1 and multi_usd["entries"][0]["currency"] == "USD",
+    multi_usd["entries"],
+)
+
+# Resolving to MXN only reflects the MXN entry.
+status, multi_mxn = call("GET", f"/api/accounting/accounts/{multi_id}/statement?currency=MXN")
+check("MXN-scoped multi-currency statement fetched", status == 200, f"({status}) {multi_mxn}")
+check(
+    "MXN-scoped statement only contains the MXN entry",
+    len(multi_mxn["entries"]) == 1 and multi_mxn["entries"][0]["currency"] == "MXN",
+    multi_mxn["entries"],
+)
+
+# Each currency's running balance is internally consistent on its own -
+# this is the direct proof the fix stops summing USD and MXN together: a
+# 100 USD entry and a 2000 MXN entry must NOT combine into one number.
+check(
+    "USD closing balance reflects only the 100 USD entry, not the MXN one too",
+    abs(float(multi_usd["closing_balance"]) - 100) < 0.01,
+    multi_usd["closing_balance"],
+)
+check(
+    "MXN closing balance reflects only the 2000 MXN entry, not the USD one too",
+    abs(float(multi_mxn["closing_balance"]) - 2000) < 0.01,
+    multi_mxn["closing_balance"],
+)
 
 print("=" * 62)
 print(f"{passed} passed, {failed} failed")
