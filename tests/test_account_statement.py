@@ -227,8 +227,23 @@ status, multi_account = call("POST", "/api/accounting/accounts", {
 check("multi-currency test account created", status == 200, f"({status}) {multi_account}")
 multi_id = multi_account["account_id"]
 
-post_entry(older_date, ar_id, multi_id, 100, "test_account_statement — multi USD", currency="USD")
-post_entry(newer_date, ar_id, multi_id, 2000, "test_account_statement — multi MXN", currency="MXN")
+# Use a fresh, disposable counterparty for both legs rather than ar_id/
+# sales_id - those are asserted single-currency further down (both before
+# AND after this section runs), and posting a USD line and an MXN line
+# through them here would make them multi-currency too, contaminating
+# those checks.
+status, counter_account = call("POST", "/api/accounting/accounts", {
+    "account_code": f"TC{int(time.time())}",
+    "account_name": "Test Multi-Currency Counterparty Account",
+    "account_type": "Asset",
+    "account_subtype": "Other Asset",
+    "currency": "BOTH",
+})
+check("multi-currency counterparty account created", status == 200, f"({status}) {counter_account}")
+counter_id = counter_account["account_id"]
+
+post_entry(older_date, counter_id, multi_id, 100, "test_account_statement — multi USD", currency="USD")
+post_entry(newer_date, counter_id, multi_id, 2000, "test_account_statement — multi MXN", currency="MXN")
 
 # No currency specified and more than one is present -> must ask, not guess.
 status, ambiguous = call("GET", f"/api/accounting/accounts/{multi_id}/statement")
@@ -284,6 +299,30 @@ check(
     "MXN closing balance reflects only the 2000 MXN entry, not the USD one too",
     abs(float(multi_mxn["closing_balance"]) - 2000) < 0.01,
     multi_mxn["closing_balance"],
+)
+
+# --- GET /api/accounting/accounts exposes the same real currency mix ------
+# The account-picker dropdown reads this list, not the statement endpoint -
+# it must agree with available_currencies above, or the dropdown label lies
+# about an account being single-currency (the follow-up bug this guards
+# against: an account showing "(USD)" that then prompts a currency choice
+# when opened).
+status, all_accounts = call("GET", "/api/accounting/accounts")
+check("accounts list fetched", status == 200, f"({status})")
+
+multi_row = next((a for a in all_accounts if a["account_id"] == multi_id), None)
+check("multi-currency test account present in accounts list", multi_row is not None, multi_id)
+check(
+    "accounts list reports the multi-currency account's real currency mix",
+    multi_row is not None and set(multi_row.get("currencies_used") or []) == {"USD", "MXN"},
+    multi_row.get("currencies_used") if multi_row else None,
+)
+
+ar_row = next(a for a in all_accounts if a["account_id"] == ar_id)
+check(
+    "accounts list reports a single-currency account's currencies_used as just its own currency",
+    ar_row.get("currencies_used") == ["USD"],
+    ar_row.get("currencies_used"),
 )
 
 print("=" * 62)
