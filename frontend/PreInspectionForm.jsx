@@ -1,6 +1,7 @@
 const { useState } = React;
 
 const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
+  const isMobile = useIsMobile();
   const API_URL = `${window.API_BASE_URL || 'https://buses-america.onrender.com'}/api`;
   const [formData, setFormData] = useState(initialData || {
     // Section 1: Basic Information
@@ -238,7 +239,7 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
     switch(currentSection) {
       case 0: // Basic Information
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#1f2937' }}>
                 VIN *
@@ -624,7 +625,7 @@ const PreInspectionForm = ({ onClose, onSave, initialData = null }) => {
 
       case 1: // Location & Source
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Inspection Location</label>
               <input

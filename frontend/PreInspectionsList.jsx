@@ -1,6 +1,7 @@
 
 
 const PreInspectionsList = ({ onViewReport, onCreateInventory }) => {
+  const isMobile = useIsMobile();
   const [inspections, setInspections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all, approved, rejected, conditional, purchased
@@ -85,7 +86,7 @@ const PreInspectionsList = ({ onViewReport, onCreateInventory }) => {
       </div>
 
       {/* Stats Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
         <div style={statCardStyle('blue')}>
           <div style={STAT_CARD_LABEL_STYLE}>Total Inspections</div>
           <div style={statCardValueStyle(stats.total)}>{stats.total}</div>
@@ -206,9 +207,9 @@ const PreInspectionsList = ({ onViewReport, onCreateInventory }) => {
                   e.currentTarget.style.borderColor = '#e5e7eb';
                 }}
               >
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '2rem', alignItems: 'center' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr auto', gap: isMobile ? '1rem' : '2rem', alignItems: 'center' }}>
                   {/* Main Info */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: '2rem', alignItems: 'center' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'auto 1fr auto auto', gap: isMobile ? '1rem' : '2rem', alignItems: 'center' }}>
                     {/* Vehicle Info */}
                     <div>
                       <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1f2937', marginBottom: '0.25rem' }}>
@@ -225,7 +226,7 @@ const PreInspectionsList = ({ onViewReport, onCreateInventory }) => {
                     </div>
 
                     {/* Inspection Details */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: '1rem' }}>
                       <div>
                         <div style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
                           Inspected

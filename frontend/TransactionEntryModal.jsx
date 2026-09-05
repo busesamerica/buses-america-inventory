@@ -2,6 +2,7 @@
 // Handles: Deposits, Expenses, Transfers
 
 const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
+  const isMobile = useIsMobile();
   const [transactionType, setTransactionType] = React.useState('deposit');
   const [formData, setFormData] = React.useState({
     date: new Date().toISOString().split('T')[0],
@@ -255,7 +256,7 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
           {/* Type Selector */}
           <div style={{ marginBottom: '1.5rem' }}>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Transaction Type</label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '0.5rem' }}>
               {[{value: 'deposit', label: '💵 Deposit', color: '#10b981'}, {value: 'expense', label: '💸 Expense', color: '#ef4444'}, {value: 'transfer', label: '🔄 Transfer', color: '#3b82f6'}, {value: 'exchange', label: '💱 Exchange', color: '#8b5cf6'}].map(type => (
                 <button key={type.value} type="button" onClick={() => setTransactionType(type.value)} style={{ padding: '0.75rem', background: transactionType === type.value ? type.color : 'white', color: transactionType === type.value ? 'white' : '#374151', border: `2px solid ${type.color}`, borderRadius: '0.5rem', fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer' }}>{type.label}</button>
               ))}
@@ -332,7 +333,7 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Amount *</label>
                   <input type="number" step="0.01" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} required placeholder="0.00" style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }} />
@@ -370,7 +371,7 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
 
           {transactionType === 'transfer' && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>From *</label>
                   <select value={formData.fromAccount} onChange={(e) => handleBankAccountChange(e.target.value, 'fromAccount')} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
@@ -390,7 +391,7 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
                 Transfers move money within the same currency. To convert USD ↔ MXN, use Exchange instead.
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Amount *</label>
                   <input type="number" step="0.01" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} required placeholder="0.00" style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }} />
@@ -413,7 +414,7 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
 
           {transactionType === 'exchange' && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>From Account *</label>
                   <select value={formData.fromAccount} onChange={(e) => setFormData({...formData, fromAccount: e.target.value})} required style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}>
@@ -430,7 +431,7 @@ const TransactionEntryModal = ({ isOpen, onClose, onComplete }) => {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>Amount Sent *</label>
                   <input type="number" step="0.01" value={formData.fromAmount} onChange={(e) => {

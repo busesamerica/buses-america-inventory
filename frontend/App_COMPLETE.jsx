@@ -1,4 +1,4 @@
-// Buses America - Complete Inventory Management System
+// Buses America - Complete Business Management System
 // Production-ready with full authentication and Pre-Inspection features
 // Version: 2.0 Final - Fully Integrated
 
@@ -280,13 +280,15 @@ function LoginPage() {
     }
   };
 
+  const isMobile = useIsMobile();
+
   return (
-    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#1a1a1a 0%,#2d2d2d 100%)'}}>
-      <div style={{background:'white',padding:'3rem',borderRadius:'12px',boxShadow:'0 20px 60px rgba(0,0,0,0.3)',width:'100%',maxWidth:'400px'}}>
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#1a1a1a 0%,#2d2d2d 100%)',padding:'1rem'}}>
+      <div style={{background:'white',padding:isMobile?'2rem 1.5rem':'3rem',borderRadius:'12px',boxShadow:'0 20px 60px rgba(0,0,0,0.3)',width:'100%',maxWidth:'400px'}}>
         <div style={{textAlign:'center',marginBottom:'2rem'}}>
           <img src={window.LOGO_PATH||'./logo.png'} alt="Buses America" style={{width:'80px',height:'80px',marginBottom:'1rem'}}/>
           <h1 style={{fontSize:'1.75rem',fontWeight:'700',color:'#1a1a1a',margin:'0 0 0.5rem 0'}}>Buses America</h1>
-          <p style={{color:'#666',fontSize:'0.95rem',margin:0}}>Sistema de Inventario</p>
+          <p style={{color:'#666',fontSize:'0.95rem',margin:0}}>Business Management System</p>
         </div>
         <form onSubmit={handleSubmit}>
           {error && <div style={{background:'#fee',color:'#c33',padding:'0.75rem',borderRadius:'6px',marginBottom:'1.5rem',fontSize:'0.9rem',textAlign:'center'}}>{error}</div>}
@@ -346,6 +348,7 @@ function UserDropdown() {
 
 // ============= SUPPLIER FORM =============
 function SupplierForm({ onSave, onCancel }) {
+  const isMobile = useIsMobile();
   const [formData, setFormData] = useState({
     company_name: '',
     supplier_type: 'Dealer',
@@ -391,7 +394,7 @@ function SupplierForm({ onSave, onCancel }) {
               <input name="company_name" value={formData.company_name} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
             </div>
             
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+            <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:'1rem'}}>
               <div>
                 <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Type *</label>
                 <select name="supplier_type" value={formData.supplier_type} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}>
@@ -412,7 +415,7 @@ function SupplierForm({ onSave, onCancel }) {
               </div>
             </div>
             
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+            <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:'1rem'}}>
               <div>
                 <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Email</label>
                 <input name="email" type="email" value={formData.email} onChange={handleChange} style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
@@ -428,7 +431,7 @@ function SupplierForm({ onSave, onCancel }) {
               <input name="address" value={formData.address} onChange={handleChange} style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
             </div>
             
-            <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:'1rem'}}>
+            <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'2fr 1fr 1fr',gap:'1rem'}}>
               <div>
                 <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>City</label>
                 <input name="city" value={formData.city} onChange={handleChange} style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
@@ -461,6 +464,9 @@ function SupplierForm({ onSave, onCancel }) {
 // ============= MAIN INVENTORY APP =============
 function InventoryApp() {
   const { user } = useAuth();
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [view, setView] = useState('dashboard');
   const [stats, setStats] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
@@ -563,20 +569,41 @@ function InventoryApp() {
     );
   }
 
+  // On mobile the sidebar is an off-canvas drawer (fixed, slid off-screen
+  // until opened) instead of the permanent 250px column desktop/tablet get -
+  // there was previously no toggle at all, so on a phone it just
+  // permanently ate ~250px of a ~375-414px screen with no way to close it.
+  const sidebarMobileStyle = isMobile ? {
+    position:'fixed', top:0, left:0, bottom:0, zIndex:999,
+    transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+    transition:'transform 0.25s ease',
+    boxShadow: sidebarOpen ? '4px 0 16px rgba(0,0,0,0.35)' : 'none'
+  } : {};
+
+  const selectView = (id) => {
+    setView(id);
+    if (isMobile) setSidebarOpen(false);
+  };
+
   return (
     <div style={{minHeight:'100vh',display:'flex',background:'#f5f5f5'}}>
+      {/* Dark overlay behind the drawer on mobile - tapping it closes the
+          menu, same click-outside-to-close pattern UserDropdown uses. */}
+      {isMobile && sidebarOpen && (
+        <div onClick={() => setSidebarOpen(false)} style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:998}}/>
+      )}
       {/* Sidebar */}
-      <div style={{width:'250px',background:'#1a1a1a',minHeight:'100vh',display:'flex',flexDirection:'column'}}>
+      <div style={{width:'250px',background:'#1a1a1a',minHeight:'100vh',display:'flex',flexDirection:'column',...sidebarMobileStyle}}>
         <div style={{padding:'1.5rem',borderBottom:'1px solid rgba(255,255,255,0.1)'}}>
           <img src={window.LOGO_PATH||'./logo.png'} alt="Logo" style={{width:'50px',height:'50px',marginBottom:'0.75rem'}}/>
           <div style={{fontSize:'1.1rem',fontWeight:'700',color:'white'}}>Buses America</div>
-          <div style={{fontSize:'0.75rem',color:'#FFD700'}}>Inventory System</div>
+          <div style={{fontSize:'0.75rem',color:'#FFD700'}}>Business Management System</div>
         </div>
-        
+
         <nav style={{flex:1,padding:'1rem'}}>
           {[
             {id:'dashboard',label:'Dashboard',icon:'📊'},
-            {id:'inventory',label:'Inventory',icon:'🚌'},  
+            {id:'inventory',label:'Inventory',icon:'🚌'},
             {id:'suppliers',label:'Suppliers',icon:'🏢'},
             {id:'pre-inspections',label:'Pre-Inspections',icon:'🔍'},
             {id:'sales',label:'Sales Management',icon:'💰'},
@@ -586,7 +613,7 @@ function InventoryApp() {
           ].map(item => (
             <button
               key={item.id}
-              onClick={() => setView(item.id)}
+              onClick={() => selectView(item.id)}
               style={{
                 display:'block',
                 width:'100%',
@@ -606,7 +633,7 @@ function InventoryApp() {
             </button>
           ))}
         </nav>
-        
+
         <div style={{padding:'1rem',borderTop:'1px solid rgba(255,255,255,0.1)'}}>
           <div style={{padding:'0.75rem',background:'rgba(255,255,255,0.05)',borderRadius:'6px',fontSize:'0.85rem',color:'white'}}>
             <div style={{color:'#999',fontSize:'0.75rem'}}>Logged in as</div>
@@ -619,29 +646,38 @@ function InventoryApp() {
       </div>
 
       {/* Main Content */}
-      <div style={{flex:1,display:'flex',flexDirection:'column'}}>
-        <div style={{background:'white',padding:'1rem 2rem',borderBottom:'1px solid #ddd',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <h1 style={{margin:0,fontSize:'1.5rem'}}>
-            {view === 'dashboard' && 'Dashboard'}
-            {view === 'inventory' && 'Inventory Management'}
-            {view === 'sales' && 'Sales Management'}
-            {view === 'pre-inspections' && 'Pre-Inspections'}
-            {view === 'suppliers' && 'Suppliers'}
-            {view === 'clients' && 'Client Management'}
-            {view === 'quotes' && 'Quotes'}
-            {view === 'accounting' && 'Accounting Dashboard'}
-          </h1>
+      <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0}}>
+        <div style={{background:'white',padding:isMobile?'1rem':'1rem 2rem',borderBottom:'1px solid #ddd',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:'0.75rem'}}>
+          <div style={{display:'flex',alignItems:'center',gap:'0.75rem',minWidth:0}}>
+            {isMobile && (
+              <button onClick={() => setSidebarOpen(true)} aria-label="Open menu" style={{background:'none',border:'1px solid #ddd',borderRadius:'6px',fontSize:'1.25rem',lineHeight:1,padding:'0.4rem 0.65rem',cursor:'pointer',flexShrink:0}}>
+                ☰
+              </button>
+            )}
+            <h1 style={{margin:0,fontSize:'1.5rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+              {view === 'dashboard' && 'Dashboard'}
+              {view === 'inventory' && 'Inventory Management'}
+              {view === 'sales' && 'Sales Management'}
+              {view === 'pre-inspections' && 'Pre-Inspections'}
+              {view === 'suppliers' && 'Suppliers'}
+              {view === 'clients' && 'Client Management'}
+              {view === 'quotes' && 'Quotes'}
+              {view === 'accounting' && 'Accounting Dashboard'}
+            </h1>
+          </div>
           <UserDropdown />
         </div>
 
-        <div style={{flex:1,overflow:'auto',padding:'2rem'}}>
+        <div style={{flex:1,overflow:'auto',padding:isMobile?'1rem':'2rem'}}>
           {/* DASHBOARD VIEW */}
           {view === 'dashboard' && (
             <div style={{maxWidth:'1400px'}}>
-              {/* Fixed 4 columns, not auto-fit(minmax(250px,1fr)) - auto-fit
+              {/* Fixed column count, not auto-fit(minmax(250px,1fr)) - auto-fit
                   wrapped the 4th card to its own row below the other
-                  three once the content area dropped under ~1080px. */}
-              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'1.5rem',marginBottom:'3rem'}}>
+                  three once the content area dropped under ~1080px. Below
+                  1024px there isn't room for 4 fixed-width cards either, so
+                  step down to 2 columns, then 1 on phones. */}
+              <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':(isTablet?'repeat(2,1fr)':'repeat(4,1fr)'),gap:'1.5rem',marginBottom:'3rem'}}>
                 <div style={statCardStyle('blue')}>
                   <div style={STAT_CARD_LABEL_STYLE}>🇺🇸 US Inventory</div>
                   <div style={statCardValueStyle(stats?.us_inventory || 0)}>{stats?.us_inventory || 0}</div>

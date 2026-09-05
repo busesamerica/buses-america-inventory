@@ -1,4 +1,4 @@
-/* Buses America - Professional Inventory System Styles */
+/* Buses America - Professional Business Management System Styles */
 /* Industrial-Utilitarian Aesthetic with Latin American Cultural Touches */
 
 @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&family=Work+Sans:wght@400;500;600;700;800&display=swap');
@@ -1407,41 +1407,37 @@ body {
 }
 
 /* ============= RESPONSIVE ============= */
-@media (max-width: 1024px) {
-  .main-content {
-    margin-left: 0;
-  }
-
-  .sidebar {
-    transform: translateX(-100%);
-  }
-
-  .stats-grid,
-  .dashboard-cards {
-    grid-template-columns: 1fr;
-  }
-}
-
+/* The sidebar/off-canvas nav and every grid's column count are actual
+   component state now (see InventoryApp / useIsMobile in App_COMPLETE.jsx
+   and the individual modal/form components) rather than class names, since
+   almost everything in this app is styled with inline style={{...}} - a
+   plain class-based media query here would never fire against that markup.
+   What's left below are the handful of fixes that DO work as global CSS:
+   they apply regardless of any component's own inline styles, because an
+   `!important` rule in a loaded stylesheet still wins over a plain
+   (non-!important) inline style. */
 @media (max-width: 768px) {
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--spacing-sm);
+  /* iOS Safari zooms the whole page in when a focused form control renders
+     below 16px - several inputs across the app (e.g. AccountingDashboard's
+     filter fields) are styled smaller than that for desktop density. */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
   }
 
-  .app-header {
-    flex-direction: column;
-    gap: var(--spacing-sm);
+  /* Compact/icon-only buttons (e.g. the row "⋮" action-menu toggle at
+     padding: 0.25rem 0.5rem) fall well under the ~44px touch target phones
+     need; this brings every button up to that without touching desktop. */
+  button {
+    min-height: 44px !important;
   }
 
-  .detail-grid,
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .inventory-grid,
-  .inspections-grid,
-  .suppliers-grid {
-    grid-template-columns: 1fr;
+  /* Every wide data table is already wrapped in a div with inline
+     overflowX:'auto' - this makes that scrolling feel native (momentum,
+     no page-back-swipe hijack) instead of the default stuttery scroll. */
+  div {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
   }
 }

@@ -2,6 +2,7 @@
 // Uses cost_items table for unlimited cost entries
 
 const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
+  const isMobile = useIsMobile();
   // Once a unit is Delivered, backend rejects new/changed cost entries
   // (see check_unit_not_delivered in backend_api_FINAL.py) - mirror that
   // here so the form doesn't even let you try, with a clear reason
@@ -531,7 +532,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                 )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.75rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 2fr', gap: '0.75rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
                     Currency *

@@ -185,6 +185,7 @@ const SalesManagement = () => {
 
 // ============= RECORD SALE FORM =============
 const RecordSaleForm = ({ inventory, clients, onSaleRecorded, onClientsChanged }) => {
+  const isMobile = useIsMobile();
   const [formData, setFormData] = React.useState({
     inventory_id: '',
     sale_price: '',
@@ -294,7 +295,7 @@ const RecordSaleForm = ({ inventory, clients, onSaleRecorded, onClientsChanged }
       )}
 
       <form onSubmit={handleSubmit}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
               Select Bus <span style={{ color: '#dc2626' }}>*</span>
@@ -587,6 +588,7 @@ const ManageSales = ({ soldBuses, accounts, onPaymentRecorded, onViewDetails }) 
 
 // ============= PAYMENT FORM MODAL =============
 const PaymentFormModal = ({ bus, accounts, onClose, onPaymentRecorded }) => {
+  const isMobile = useIsMobile();
   const [formData, setFormData] = React.useState({
     payment_amount: '',
     payment_currency: bus.sale_currency || 'USD',
@@ -749,7 +751,7 @@ const PaymentFormModal = ({ bus, accounts, onClose, onPaymentRecorded }) => {
               </select>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
                   Payment Date <span style={{ color: '#dc2626' }}>*</span>
@@ -860,6 +862,7 @@ const PaymentFormModal = ({ bus, accounts, onClose, onPaymentRecorded }) => {
 
 // ============= SALE DETAILS MODAL =============
 const SaleDetailsModal = ({ bus, onClose, onPaymentAdded, accounts }) => {
+  const isMobile = useIsMobile();
   const [loading, setLoading] = React.useState(true);
   const [summary, setSummary] = React.useState(null);
   const [showPaymentForm, setShowPaymentForm] = React.useState(false);
@@ -1022,7 +1025,7 @@ const SaleDetailsModal = ({ bus, onClose, onPaymentAdded, accounts }) => {
             <h4 style={{ margin: '0 0 1rem 0', fontSize: '1rem', fontWeight: '700', color: '#111827' }}>
               Financial Summary
             </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', fontSize: '0.875rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', fontSize: '0.875rem' }}>
               <div>
                 <div style={{ color: '#6b7280', marginBottom: '0.25rem' }}>Sale Price</div>
                 <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#10b981' }}>
@@ -1073,7 +1076,7 @@ const SaleDetailsModal = ({ bus, onClose, onPaymentAdded, accounts }) => {
                 {summary.payment_status}
               </span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', fontSize: '0.875rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', fontSize: '0.875rem' }}>
               <div>
                 <div style={{ color: '#6b7280', marginBottom: '0.25rem' }}>Total Paid</div>
                 <div style={{ fontSize: '1.125rem', fontWeight: '700', color: '#111827' }}>
