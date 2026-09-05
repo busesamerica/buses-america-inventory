@@ -1,6 +1,7 @@
 // IncomeStatementReport.jsx - Income Statement (Profit & Loss) Report
 
 const IncomeStatementReport = ({ isOpen, onClose }) => {
+  const isMobile = useIsMobile();
   const [loading, setLoading] = React.useState(false);
   const [reportData, setReportData] = React.useState(null);
   const [filters, setFilters] = React.useState({
@@ -106,7 +107,11 @@ const IncomeStatementReport = ({ isOpen, onClose }) => {
           background: '#f9fafb',
           borderBottom: '1px solid #e5e7eb'
         }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '1rem', alignItems: 'end' }}>
+          {/* The filter toolbar is app UI, not part of the printed statement
+              below it - four controls side by side don't fit a phone (the
+              currency picker and Generate button used to fall off the modal
+              entirely), so stack them. */}
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr 1fr auto', gap: '1rem', alignItems: 'end' }}>
             <div>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
                 Start Date

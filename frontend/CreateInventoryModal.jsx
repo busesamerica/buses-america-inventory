@@ -197,7 +197,7 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
           {/* Info Cards */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+            gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'repeat(3, 1fr)',
             gap: '1rem',
             marginTop: '1.5rem',
             padding: '1rem',
@@ -247,7 +247,7 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
               </div>
             </div>
             
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: '0.75rem', fontSize: '0.875rem', color: '#047857' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'repeat(2, 1fr)', gap: '0.75rem', fontSize: '0.875rem', color: '#047857' }}>
               <div>✓ VIN, Year, Make, Model</div>
               <div>✓ Engine & Transmission</div>
               <div>✓ Passenger Capacity</div>
@@ -292,7 +292,7 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
               </div>
 
               {/* Purchase Info */}
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label style={{
                     display: 'block',
@@ -531,7 +531,7 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
               </div>
 
               {/* Asking Price (Sale Price) */}
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '2fr 1fr', gap: '1rem' }}>
                 <div>
                   <label style={{
                     display: 'block',

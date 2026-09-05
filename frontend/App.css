@@ -1424,6 +1424,14 @@ body {
   select,
   textarea {
     font-size: 16px !important;
+
+    /* A <select>'s intrinsic width comes from its longest <option> (e.g.
+       Record Sale's "BA-103 - 2014 Thomas C2 (US Stock)"), and a grid/flex
+       item won't shrink below its content's min-content width by default -
+       so one long option dragged the whole card past the edge of the
+       screen. min-width:0 lets these controls shrink to their container. */
+    min-width: 0 !important;
+    max-width: 100% !important;
   }
 
   /* Compact/icon-only buttons (e.g. the row "⋮" action-menu toggle at

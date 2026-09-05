@@ -2,6 +2,7 @@
 // Comprehensive reporting with charts and metrics
 
 const SalesReports = () => {
+  const isMobile = useIsMobile();
   const [loading, setLoading] = React.useState(true);
   const [analytics, setAnalytics] = React.useState(null);
   const [filters, setFilters] = React.useState({
@@ -309,7 +310,9 @@ const SalesReports = () => {
       )}
 
       {/* Two Column Layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+      {/* minmax(400px,...) can't shrink below 400px, so auto-fit alone spills
+          off the side of any phone - fall back to a single column. */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
         
         {/* Payment Status Breakdown */}
         <div style={{

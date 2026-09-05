@@ -11,6 +11,7 @@
 // meaningful in date order (the backend enforces the same ordering).
 
 const AccountStatementReport = ({ isOpen, initialAccountId, onClose }) => {
+  const isMobile = useIsMobile();
   const [accounts, setAccounts] = React.useState([]);
   const [selectedAccountId, setSelectedAccountId] = React.useState('');
   const [filters, setFilters] = React.useState({ start_date: '', end_date: '' });
@@ -128,7 +129,10 @@ const AccountStatementReport = ({ isOpen, initialAccountId, onClose }) => {
 
         {/* Filters */}
         <div style={{ padding: '1.5rem', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '1rem', alignItems: 'end' }}>
+          {/* Filter toolbar is app UI, not part of the printed statement -
+              on a phone the account picker was squeezed to a few pixels wide
+              and the date/Generate controls fell off the modal. */}
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '2fr 1fr 1fr auto', gap: '1rem', alignItems: 'end' }}>
             <div>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
                 Account

@@ -394,7 +394,7 @@ function SupplierForm({ onSave, onCancel }) {
               <input name="company_name" value={formData.company_name} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
             </div>
             
-            <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:'1rem'}}>
+            <div style={{display:'grid',gridTemplateColumns:isMobile?'minmax(0, 1fr)':'1fr 1fr',gap:'1rem'}}>
               <div>
                 <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Type *</label>
                 <select name="supplier_type" value={formData.supplier_type} onChange={handleChange} required style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}>
@@ -415,7 +415,7 @@ function SupplierForm({ onSave, onCancel }) {
               </div>
             </div>
             
-            <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:'1rem'}}>
+            <div style={{display:'grid',gridTemplateColumns:isMobile?'minmax(0, 1fr)':'1fr 1fr',gap:'1rem'}}>
               <div>
                 <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>Email</label>
                 <input name="email" type="email" value={formData.email} onChange={handleChange} style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
@@ -431,7 +431,7 @@ function SupplierForm({ onSave, onCancel }) {
               <input name="address" value={formData.address} onChange={handleChange} style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
             </div>
             
-            <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'2fr 1fr 1fr',gap:'1rem'}}>
+            <div style={{display:'grid',gridTemplateColumns:isMobile?'minmax(0, 1fr)':'2fr 1fr 1fr',gap:'1rem'}}>
               <div>
                 <label style={{display:'block',marginBottom:'0.5rem',fontWeight:'500'}}>City</label>
                 <input name="city" value={formData.city} onChange={handleChange} style={{width:'100%',padding:'0.625rem',border:'1px solid #ddd',borderRadius:'4px'}}/>
@@ -677,7 +677,7 @@ function InventoryApp() {
                   three once the content area dropped under ~1080px. Below
                   1024px there isn't room for 4 fixed-width cards either, so
                   step down to 2 columns, then 1 on phones. */}
-              <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':(isTablet?'repeat(2,1fr)':'repeat(4,1fr)'),gap:'1.5rem',marginBottom:'3rem'}}>
+              <div style={{display:'grid',gridTemplateColumns:isMobile?'minmax(0, 1fr)':(isTablet?'repeat(2,1fr)':'repeat(4,1fr)'),gap:'1.5rem',marginBottom:'3rem'}}>
                 <div style={statCardStyle('blue')}>
                   <div style={STAT_CARD_LABEL_STYLE}>🇺🇸 US Inventory</div>
                   <div style={statCardValueStyle(stats?.us_inventory || 0)}>{stats?.us_inventory || 0}</div>

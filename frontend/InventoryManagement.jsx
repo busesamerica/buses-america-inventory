@@ -784,7 +784,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
             {/* VIN before Stock Number - stock_number is auto-derived from the
                 VIN's last 6 characters (handleChange above), so the field it's
                 derived from belongs first. */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>VIN *</label>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -811,7 +811,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 2fr 2fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 2fr 2fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Year *</label>
                 <input name="year" type="number" value={formData.year} onChange={handleChange} required min="1990" max="2030" style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
@@ -826,7 +826,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Engine Make</label>
                 <input name="engine_make" value={formData.engine_make} onChange={handleChange} style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
@@ -839,7 +839,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
 
             {/* Vehicle specs - typically left blank and filled by Decode VIN above, but
                 editable like every other field so a wrong or missing decode can be corrected. */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Engine Type</label>
                 <input name="engine_type" value={formData.engine_type} onChange={handleChange} placeholder="Diesel, Gasoline, CNG..." style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
@@ -854,7 +854,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Body Style</label>
                 <input name="body_style" value={formData.body_style} onChange={handleChange} placeholder="School Bus, Transit Bus, Shuttle..." style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
@@ -869,7 +869,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Capacity</label>
                 <input name="passenger_capacity" type="number" value={formData.passenger_capacity} onChange={handleChange} min="1" max="99" style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
@@ -880,7 +880,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Purchase Price (USD) *</label>
                 <input name="purchase_price_usd" type="number" step="0.01" value={formData.purchase_price_usd} onChange={handleChange} required min="0" style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
@@ -978,7 +978,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               </select>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '2fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>
                   Asking Price (Sale Price) <span style={{ fontSize: '0.75rem', color: '#666', fontWeight: '400' }}>(optional)</span>
@@ -1008,7 +1008,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Location *</label>
                 <select name="current_location" value={formData.current_location} onChange={handleChange} required style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }}>
