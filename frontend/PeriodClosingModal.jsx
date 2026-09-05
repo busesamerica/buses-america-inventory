@@ -14,6 +14,7 @@ const PeriodClosingModal = ({ isOpen, onClose, onComplete }) => {
   }), form = _fs[0], setForm = _fs[1];
 
   var API_URL = window.API_BASE_URL ? window.API_BASE_URL + '/api' : 'https://buses-america.onrender.com/api';
+  var isMobile = useIsMobile();
 
   React.useEffect(function() {
     if (isOpen) { loadClosings(); loadLastDate(); }
@@ -138,7 +139,7 @@ const PeriodClosingModal = ({ isOpen, onClose, onComplete }) => {
         ),
 
         !result && h('div', null,
-          h('div', { style: { display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem',marginBottom:'0.75rem' } },
+          h('div', { style: { display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:'0.75rem',marginBottom:'0.75rem' } },
             h('div', null,
               h('label', { style: { display:'block',fontSize:'0.7rem',fontWeight:'600',color:'#6b7280',marginBottom:'0.25rem',textTransform:'uppercase' } }, 'Period Start'),
               h('input', { type:'date',value:form.period_start,

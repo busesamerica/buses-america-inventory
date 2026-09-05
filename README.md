@@ -1,6 +1,7 @@
-# Buses America - Inventory Management System
+# Buses America - Business Management System
 
-Complete inventory management system for Buses America's cross-border bus sales operations.
+Complete business management system for Buses America's cross-border bus sales
+operations - inventory, sales, clients, quotes, and accounting.
 
 ## Features
 - Multi-currency support (USD/MXN)

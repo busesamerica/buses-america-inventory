@@ -133,6 +133,43 @@ function statCardValueStyle(value, roomy) {
 const STAT_CARD_VALUE_STYLE = { fontSize: '2rem', fontWeight: '800', overflowWrap: 'break-word', wordBreak: 'break-word' };
 const STAT_CARD_SUBTEXT_STYLE = { fontSize: '0.75rem', opacity: 0.8, marginTop: '0.5rem' };
 
+// Responsive breakpoint hooks, shared the same way as the formatters/style
+// constants above.
+//
+// The app has no CSS build step and almost every screen is styled with
+// inline `style={{...}}` objects rather than classNames, so plain CSS media
+// queries can't reach most layout decisions (a `@media` rule in App.css
+// only wins over an inline style if the inline style itself is absent or
+// the rule uses `!important`, which doesn't help for something like
+// picking a 1-column vs. 4-column grid). These hooks are the standard
+// answer for that: a component reads `useIsMobile()` and picks its own
+// inline value with a plain ternary, e.g.
+// `gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr 1fr'`.
+//
+// 768px/1024px match the phone/tablet breakpoints App.css's own
+// (previously unused) responsive section already picked.
+function useMediaQuery(query) {
+  const getMatch = () => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(query).matches : false);
+  const [matches, setMatches] = React.useState(getMatch);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mql = window.matchMedia(query);
+    const handler = () => setMatches(mql.matches);
+    handler();
+    if (mql.addEventListener) mql.addEventListener('change', handler);
+    else mql.addListener(handler); // Safari <14
+    return () => {
+      if (mql.removeEventListener) mql.removeEventListener('change', handler);
+      else mql.removeListener(handler);
+    };
+  }, [query]);
+
+  return matches;
+}
+const useIsMobile = () => useMediaQuery('(max-width: 768px)');
+const useIsTablet = () => useMediaQuery('(max-width: 1024px)');
+
 // Button system, shared the same way as the card/heading/formatter
 // constants above. QuoteManagement's buttons were the reference picked:
 // flat solid colors (no gradients), one radius for regular buttons

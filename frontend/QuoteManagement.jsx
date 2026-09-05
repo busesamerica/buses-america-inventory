@@ -428,6 +428,7 @@ const QuoteManagement = () => {
 // Accept / convert-to-sale confirmation
 // ---------------------------------------------------------------------------
 const AcceptQuoteModal = ({ quote, onClose, onAccepted, onError }) => {
+  const isMobile = useIsMobile();
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
 
   const [saleDate, setSaleDate] = React.useState(new Date().toISOString().split('T')[0]);
@@ -520,7 +521,7 @@ const AcceptQuoteModal = ({ quote, onClose, onAccepted, onError }) => {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.3rem' }}>
                 SALE DATE

@@ -1,6 +1,7 @@
 // DistributionHistoryModal.jsx - View all profit distributions
 
 const DistributionHistoryModal = ({ isOpen, onClose }) => {
+  const isMobile = useIsMobile();
   const [distributions, setDistributions] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
 
@@ -136,7 +137,7 @@ const DistributionHistoryModal = ({ isOpen, onClose }) => {
                     )}
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                     <div style={{
                       padding: '1rem',
                       background: 'white',
@@ -210,7 +211,7 @@ const DistributionHistoryModal = ({ isOpen, onClose }) => {
               position: 'sticky',
               bottom: 0
             }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '1rem' }}>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
                     NUMBER OF DISTRIBUTIONS
