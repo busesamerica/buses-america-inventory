@@ -532,7 +532,7 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                 )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 2fr', gap: '0.75rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 2fr', gap: '0.75rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem' }}>
                     Currency *

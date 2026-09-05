@@ -204,7 +204,7 @@ const AccountingDashboard = () => {
       {/* Cash Position Summary Cards */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(250px, 1fr))',
+        gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'repeat(auto-fit, minmax(250px, 1fr))',
         gap: '1rem',
         marginBottom: '1.5rem'
       }}>
@@ -248,7 +248,7 @@ const AccountingDashboard = () => {
           fall back to a single column instead. */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(400px, 1fr))',
+        gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'repeat(auto-fit, minmax(400px, 1fr))',
         gap: '1.5rem',
         marginBottom: '1.5rem'
       }}>
@@ -510,7 +510,7 @@ const AccountingDashboard = () => {
               <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#374151', marginBottom: '1rem' }}>
                 Set New Rate
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
                     Rate (1 USD = ? MXN)
@@ -716,7 +716,7 @@ const AccountingDashboard = () => {
               <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#374151', marginBottom: '1rem' }}>
                 Record Payment
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Vendor *</label>
                   {apData && apData.payables && apData.payables.length > 0 ? (
@@ -762,7 +762,7 @@ const AccountingDashboard = () => {
                   </div>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Payment Date *</label>
                   <input type="date" value={apPaymentForm.payment_date}

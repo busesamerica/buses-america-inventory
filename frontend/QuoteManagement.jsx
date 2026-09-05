@@ -521,7 +521,7 @@ const AcceptQuoteModal = ({ quote, onClose, onAccepted, onError }) => {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.3rem' }}>
                 SALE DATE

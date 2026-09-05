@@ -295,7 +295,7 @@ const RecordSaleForm = ({ inventory, clients, onSaleRecorded, onClientsChanged }
       )}
 
       <form onSubmit={handleSubmit}>
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
               Select Bus <span style={{ color: '#dc2626' }}>*</span>
@@ -484,6 +484,7 @@ const RecordSaleForm = ({ inventory, clients, onSaleRecorded, onClientsChanged }
 
 // ============= MANAGE SALES (LIST WITH PAYMENTS) =============
 const ManageSales = ({ soldBuses, accounts, onPaymentRecorded, onViewDetails }) => {
+  const isMobile = useIsMobile();
   const [selectedBus, setSelectedBus] = React.useState(null);
   const [showPaymentForm, setShowPaymentForm] = React.useState(false);
 
@@ -531,22 +532,25 @@ const ManageSales = ({ soldBuses, accounts, onPaymentRecorded, onViewDetails }) 
                 background: '#f9fafb'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                <div style={{ flex: 1 }}>
+              {/* The unit details and the two action buttons don't fit side by
+                  side on a phone - the buttons used to push the card wider
+                  than the screen - so stack them there instead. */}
+              <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'start' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: '700', fontSize: '1.125rem', marginBottom: '0.5rem', color: '#111827' }}>
                     {bus.year} {bus.make} {bus.model}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.75rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.75rem' }}>
                     <div>📋 Stock: <strong>{bus.stock_number}</strong></div>
                     <div>📅 Sold: <strong>{formatDate(bus.sale_date)}</strong></div>
                     <div>💰 Price: <strong style={{ color: '#10b981' }}>{formatCurrency(bus.sale_price, bus.sale_currency)}</strong></div>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '1rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', marginLeft: isMobile ? 0 : '1rem' }}>
                   <button
                     onClick={() => onViewDetails(bus)}
-                    style={{ ...buttonStyle('blue', 'md'), padding: '0.5rem 1rem' }}
+                    style={{ ...buttonStyle('blue', 'md'), padding: '0.5rem 1rem', flex: isMobile ? 1 : 'none' }}
                   >
                     📊 Details
                   </button>
@@ -555,7 +559,7 @@ const ManageSales = ({ soldBuses, accounts, onPaymentRecorded, onViewDetails }) 
                       setSelectedBus(bus);
                       setShowPaymentForm(true);
                     }}
-                    style={{ ...buttonStyle('green', 'md'), padding: '0.5rem 1rem' }}
+                    style={{ ...buttonStyle('green', 'md'), padding: '0.5rem 1rem', flex: isMobile ? 1 : 'none' }}
                   >
                     💵 Add Payment
                   </button>
@@ -751,7 +755,7 @@ const PaymentFormModal = ({ bus, accounts, onClose, onPaymentRecorded }) => {
               </select>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
                   Payment Date <span style={{ color: '#dc2626' }}>*</span>
@@ -1025,7 +1029,7 @@ const SaleDetailsModal = ({ bus, onClose, onPaymentAdded, accounts }) => {
             <h4 style={{ margin: '0 0 1rem 0', fontSize: '1rem', fontWeight: '700', color: '#111827' }}>
               Financial Summary
             </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', fontSize: '0.875rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: '1rem', fontSize: '0.875rem' }}>
               <div>
                 <div style={{ color: '#6b7280', marginBottom: '0.25rem' }}>Sale Price</div>
                 <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#10b981' }}>
@@ -1076,7 +1080,7 @@ const SaleDetailsModal = ({ bus, onClose, onPaymentAdded, accounts }) => {
                 {summary.payment_status}
               </span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', fontSize: '0.875rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: '1rem', fontSize: '0.875rem' }}>
               <div>
                 <div style={{ color: '#6b7280', marginBottom: '0.25rem' }}>Total Paid</div>
                 <div style={{ fontSize: '1.125rem', fontWeight: '700', color: '#111827' }}>
