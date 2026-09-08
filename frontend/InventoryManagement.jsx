@@ -12,6 +12,10 @@ const InventoryManagement = () => {
   const [statusTab, setStatusTab] = useState('available'); // 'available' | 'sold'
   const [loading, setLoading] = useState(true);
   const [expandedRows, setExpandedRows] = useState(new Set());
+  // Per-inventory_id cache of GET /api/inventory/{id}/costs/summary, lazily
+  // fetched on first expand so we don't N+1 the whole list on every page load.
+  const [costSummaries, setCostSummaries] = useState({});
+  const [costSummaryStatus, setCostSummaryStatus] = useState({}); // { [inventory_id]: 'loading' | 'error' }
   const [showBusForm, setShowBusForm] = useState(false);
   const [editingBus, setEditingBus] = useState(null);
   const [showCostModal, setShowCostModal] = useState(false);
@@ -207,12 +211,37 @@ const InventoryManagement = () => {
     }
   };
 
+  const fetchCostSummary = async (inventoryId) => {
+    setCostSummaryStatus(prev => ({ ...prev, [inventoryId]: 'loading' }));
+    try {
+      const response = await fetch(`${API_URL}/inventory/${inventoryId}/costs/summary?currency=USD`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` }
+      });
+      if (!response.ok) throw new Error('Failed to load cost summary');
+      const data = await response.json();
+      setCostSummaries(prev => ({ ...prev, [inventoryId]: data }));
+      setCostSummaryStatus(prev => {
+        const next = { ...prev };
+        delete next[inventoryId];
+        return next;
+      });
+    } catch (err) {
+      console.error('Failed to load cost summary for', inventoryId, err);
+      setCostSummaryStatus(prev => ({ ...prev, [inventoryId]: 'error' }));
+    }
+  };
+
   const toggleRow = (inventoryId) => {
     const newExpanded = new Set(expandedRows);
     if (newExpanded.has(inventoryId)) {
       newExpanded.delete(inventoryId);
     } else {
       newExpanded.add(inventoryId);
+      // Lazy-load the total cost the first time this row is expanded; skip if
+      // already cached or already in flight.
+      if (inventoryId && !costSummaries[inventoryId] && costSummaryStatus[inventoryId] !== 'loading') {
+        fetchCostSummary(inventoryId);
+      }
     }
     setExpandedRows(newExpanded);
   };
@@ -500,8 +529,14 @@ const InventoryManagement = () => {
                                 <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{formatDate(bus.purchase_date)}</div>
                               </div>
                               <div>
-                                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Purchase Price</div>
-                                <div style={{ fontWeight: '600', fontSize: '0.9rem', color: '#ef4444' }}>{formatCurrency(bus.purchase_price_usd)} USD</div>
+                                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Total Cost</div>
+                                <div style={{ fontWeight: '600', fontSize: '0.9rem', color: '#28a745' }}>
+                                  {costSummaryStatus[bus.inventory_id] === 'loading'
+                                    ? 'Calculating...'
+                                    : costSummaries[bus.inventory_id]
+                                      ? `${formatCurrency(costSummaries[bus.inventory_id].total_cost)} USD`
+                                      : `${formatCurrency(bus.purchase_price_usd)} USD${costSummaryStatus[bus.inventory_id] === 'error' ? ' (purchase price only)' : ''}`}
+                                </div>
                               </div>
                               {bus.asking_price && (
                                 <div>
@@ -552,7 +587,21 @@ const InventoryManagement = () => {
       {showCostModal && selectedBusForCosts && (
         <CostManagementModal
           bus={selectedBusForCosts}
-          onClose={() => { setShowCostModal(false); setSelectedBusForCosts(null); }}
+          onClose={() => {
+            const closedId = selectedBusForCosts.inventory_id;
+            setShowCostModal(false);
+            setSelectedBusForCosts(null);
+            // Costs may have been added/edited/deleted while this modal was
+            // open, so the row's cached Total Cost (if any) is now stale.
+            setCostSummaries(prev => {
+              const next = { ...prev };
+              delete next[closedId];
+              return next;
+            });
+            if (closedId && expandedRows.has(closedId)) {
+              fetchCostSummary(closedId);
+            }
+          }}
         />
       )}
 
