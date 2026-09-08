@@ -197,7 +197,7 @@ const AccountStatementReport = ({ isOpen, initialAccountId, onClose }) => {
         </div>
 
         {/* Report Content */}
-        <div style={{ padding: '2rem' }}>
+        <div style={{ padding: isMobile ? '1rem' : '2rem' }}>
           {!selectedAccountId ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
               Select an account to see its transaction history.
@@ -257,7 +257,12 @@ const AccountStatementReport = ({ isOpen, initialAccountId, onClose }) => {
                   No transactions in this period.
                 </div>
               ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                /* Five columns of dated money don't fit a phone: without a
+                   scroller the Credit and Balance columns were simply cut off
+                   at the edge of the modal with no way to reach them. Keep the
+                   table at a readable width and let it scroll sideways. */
+                <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', minWidth: isMobile ? '580px' : 'auto' }}>
                   <thead>
                     <tr style={{ borderBottom: '2px solid #111827' }}>
                       <th style={{ padding: '0.5rem 0.5rem 0.5rem 0', textAlign: 'left', fontSize: '0.7rem', fontWeight: '700', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</th>
@@ -311,10 +316,11 @@ const AccountStatementReport = ({ isOpen, initialAccountId, onClose }) => {
                     </tr>
                   </tbody>
                 </table>
+                </div>
               )}
 
               {statement.entries.length > 0 && (
-                <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '1.5rem', fontSize: '0.8rem', color: '#6b7280' }}>
+                <div style={{ marginTop: '1rem', display: 'flex', flexWrap: 'wrap', justifyContent: isMobile ? 'space-between' : 'flex-end', gap: isMobile ? '0.5rem' : '1.5rem', fontSize: '0.8rem', color: '#6b7280' }}>
                   <span>Total Debits: <strong style={{ color: '#111827' }}>{formatCurrency(statement.total_debit, currency)}</strong></span>
                   <span>Total Credits: <strong style={{ color: '#111827' }}>{formatCurrency(statement.total_credit, currency)}</strong></span>
                 </div>
