@@ -2,6 +2,7 @@
 // Loads accounts separately for reliable type lookups
 
 const TransactionJournal = ({ isOpen, onClose }) => {
+  var isMobile = useIsMobile();
   var _s = React.useState, _e = React.useEffect;
   var _ts = _s([]), transactions = _ts[0], setTransactions = _ts[1];
   var _as = _s({}), accountMap = _as[0], setAccountMap = _as[1];
@@ -126,11 +127,15 @@ const TransactionJournal = ({ isOpen, onClose }) => {
 
   var h = React.createElement;
 
+  // 2rem of horizontal padding on each side costs a third of a phone screen,
+  // and the journal's five columns need every pixel they can get.
+  var padX = isMobile ? '1rem' : '2rem';
+
   return h('div', { style: { position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:'1rem' } },
     h('div', { style: { background:'white',borderRadius:'0.75rem',maxWidth:'960px',width:'100%',maxHeight:'95vh',display:'flex',flexDirection:'column',boxShadow:'0 25px 50px rgba(0,0,0,0.15)' } },
 
       // Header
-      h('div', { style: { padding:'1.25rem 2rem',borderBottom:'2px solid #111827',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0 } },
+      h('div', { style: { padding:'1.25rem ' + padX,borderBottom:'2px solid #111827',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0 } },
         h('div', null,
           h('h2', { style: { margin:0,fontSize:'1.1rem',fontWeight:'700',color:'#111827',letterSpacing:'-0.01em' } }, 'GENERAL JOURNAL'),
           h('div', { style: { fontSize:'0.75rem',color:'#6b7280',marginTop:'0.25rem' } }, 'Buses America \u2014 All Transactions')
@@ -139,7 +144,7 @@ const TransactionJournal = ({ isOpen, onClose }) => {
       ),
 
       // Legend
-      h('div', { style: { padding:'0.5rem 2rem',borderBottom:'1px solid #e5e7eb',background:'#f9fafb',display:'flex',gap:'1.5rem',alignItems:'center',flexShrink:0,fontSize:'0.7rem',color:'#6b7280' } },
+      h('div', { style: { padding:'0.5rem ' + padX,borderBottom:'1px solid #e5e7eb',background:'#f9fafb',display:'flex',flexWrap:'wrap',gap:isMobile?'0.5rem 1rem':'1.5rem',alignItems:'center',flexShrink:0,fontSize:'0.7rem',color:'#6b7280' } },
         h('span', { style: { fontWeight:'600' } }, 'Effect:'),
         h('span', { style: { display:'flex',alignItems:'center',gap:'0.25rem' } },
           h('span', { style: { color:'#059669',fontSize:'0.6rem' } }, '\u25B2'), 'Increases account'),
@@ -149,7 +154,7 @@ const TransactionJournal = ({ isOpen, onClose }) => {
       ),
 
       // Filters
-      h('div', { style: { padding:'0.75rem 2rem',borderBottom:'1px solid #e5e7eb',display:'flex',gap:'1rem',flexWrap:'wrap',alignItems:'flex-end',flexShrink:0 } },
+      h('div', { style: { padding:'0.75rem ' + padX,borderBottom:'1px solid #e5e7eb',display:'flex',gap:'1rem',flexWrap:'wrap',alignItems:'flex-end',flexShrink:0 } },
         h('div', null,
           h('label', { style: { display:'block',fontSize:'0.65rem',fontWeight:'700',color:'#9ca3af',marginBottom:'0.2rem',textTransform:'uppercase',letterSpacing:'0.05em' } }, 'From'),
           h('input', { type:'date',value:filters.start_date,onChange:function(e){setFilters(Object.assign({},filters,{start_date:e.target.value}))},style:{padding:'0.35rem 0.5rem',border:'1px solid #d1d5db',borderRadius:'0.25rem',fontSize:'0.8rem'} })
@@ -177,14 +182,20 @@ const TransactionJournal = ({ isOpen, onClose }) => {
       ),
 
       // Content
-      h('div', { style: { flex:1,overflow:'auto',padding:'0 2rem 2rem 2rem' } },
+      h('div', { style: { flex:1,overflow:'auto',padding:'0 ' + padX + ' 2rem ' + padX } },
         loading
           ? h('div', { style:{padding:'3rem',textAlign:'center',color:'#6b7280'} }, 'Loading...')
           : error
             ? h('div', { style:{padding:'2rem',textAlign:'center',color:'#991b1b'} }, error)
             : transactions.length === 0
               ? h('div', { style:{padding:'3rem',textAlign:'center',color:'#6b7280'} }, 'No entries found.')
-              : h('table', { style:{width:'100%',borderCollapse:'collapse',marginTop:'1rem'} },
+              // DATE/arrow/DEBIT/CREDIT are fixed-width columns totalling
+              // ~380px, so on a phone they squeezed ACCOUNT down to a couple
+              // of characters (account names wrapped into vertical towers)
+              // and still pushed CREDIT off the edge. A minimum width keeps
+              // the columns readable and lets the row scroll sideways
+              // instead - the content div above already scrolls.
+              : h('table', { style:{width:'100%',borderCollapse:'collapse',marginTop:'1rem',minWidth:isMobile?'620px':'auto'} },
                   h('thead', null,
                     h('tr', { style:{borderBottom:'2px solid #111827'} },
                       h('th', { style:{padding:'0.5rem 0',textAlign:'left',fontSize:'0.65rem',fontWeight:'700',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.05em',width:'90px'} }, 'DATE'),
@@ -268,8 +279,10 @@ const TransactionJournal = ({ isOpen, onClose }) => {
 
         return h('div', { style:{borderTop:'2px solid #111827',background:'#fafafa',flexShrink:0} },
           // Totals table
-          h('div', { style:{padding:'0.75rem 2rem'} },
-            h('table', { style:{width:'100%',borderCollapse:'collapse',fontSize:'0.75rem',fontFamily:'monospace'} },
+          // Four columns of monospace totals ran into each other on a phone
+          // ("TOTAL CREDITS" overlapping "DIFFERENCE"); scroll instead.
+          h('div', { style:{padding:'0.75rem ' + padX,overflowX:'auto'} },
+            h('table', { style:{width:'100%',borderCollapse:'collapse',fontSize:'0.75rem',fontFamily:'monospace',minWidth:isMobile?'420px':'auto'} },
               h('thead', null,
                 h('tr', { style:{borderBottom:'1px solid #d1d5db'} },
                   h('th', { style:{textAlign:'left',padding:'0.25rem 0',color:'#6b7280',fontWeight:'600',fontSize:'0.65rem',textTransform:'uppercase',letterSpacing:'0.05em'} }, 'Currency'),
@@ -299,7 +312,7 @@ const TransactionJournal = ({ isOpen, onClose }) => {
             )
           ),
           // Status bar
-          h('div', { style:{padding:'0.5rem 2rem',borderTop:'1px solid #e5e7eb',display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:'0.7rem'} },
+          h('div', { style:{padding:'0.5rem ' + padX,borderTop:'1px solid #e5e7eb',display:'flex',flexWrap:'wrap',gap:'0.25rem 0.75rem',justifyContent:'space-between',alignItems:'center',fontSize:'0.7rem'} },
             h('div', { style:{color:'#6b7280'} }, transactions.length + ' journal entries'),
             bothBal
               ? h('div', { style:{color:'#059669',fontWeight:'600'} }, '\u2713 All currencies balanced')
