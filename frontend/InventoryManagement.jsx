@@ -601,6 +601,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
     transmission: '',
     fuel_type: '',
     body_style: '',
+    exterior_color: '',
     gvwr: '',
     length_feet: '',
     purchase_date: new Date().toISOString().split('T')[0],
@@ -641,6 +642,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
         transmission: bus.transmission || '',
         fuel_type: bus.fuel_type || '',
         body_style: bus.body_style || '',
+        exterior_color: bus.exterior_color || '',
         gvwr: bus.gvwr || '',
         length_feet: bus.length_feet || '',
         asking_price: bus.asking_price || '',
@@ -706,6 +708,7 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
         transmission: formData.transmission || null,
         fuel_type: formData.fuel_type || null,
         body_style: formData.body_style || null,
+        exterior_color: formData.exterior_color || null,
         gvwr: formData.gvwr ? parseInt(formData.gvwr) : null,
         length_feet: formData.length_feet ? parseFloat(formData.length_feet) : null,
         payment_account_id: formData.payment_account_id ? parseInt(formData.payment_account_id) : null
@@ -854,10 +857,14 @@ function BusForm({ bus, suppliers, paymentAccounts, onSave, onCancel }) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr 1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Body Style</label>
                 <input name="body_style" value={formData.body_style} onChange={handleChange} placeholder="School Bus, Transit Bus, Shuttle..." style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>Exterior Color</label>
+                <input name="exterior_color" value={formData.exterior_color} onChange={handleChange} placeholder="White, Blue, Yellow..." style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.9rem' }}>GVWR (lbs)</label>

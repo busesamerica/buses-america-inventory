@@ -99,6 +99,19 @@ const QuoteDocument = ({ quote, onClose, currentUser }) => {
     return () => document.head.removeChild(style);
   }, []);
 
+  // The browser's Print > Save as PDF dialog suggests document.title as the
+  // filename - there's no separate PDF metadata to set it from, since export
+  // is just window.print() (see the button below). Swap the app's static
+  // title for the quote's own name while it's open, so "Guardar PDF" saves
+  // as "Cotización - Buses America - {client}" instead of the generic app
+  // title, then restore it on close so the tab/task-switcher title behaves
+  // normally again.
+  React.useEffect(() => {
+    const previousTitle = document.title;
+    document.title = `Cotización - Buses America - ${quote.client_name || quote.quote_number}`;
+    return () => { document.title = previousTitle; };
+  }, [quote.client_name, quote.quote_number]);
+
   // ---------------------------------------------------------------- helpers
   const money = (amount) => {
     const value = Number(amount || 0);

@@ -5173,7 +5173,14 @@ async def create_inventory_from_inspection(
     """
     
     # Execute the inventory creation
-    # Use .get() for fields that might not exist in inspection table
+    # These fields aren't columns on pre_purchase_inspections at all - it only
+    # records condition ratings (engine_condition, transmission_condition,
+    # etc), not the specs themselves - so inspection.get(...) on any of them
+    # always silently returned None and the created unit's specs were
+    # permanently blank (visible later as empty Motor/Transmisión/Color/Tipo
+    # de unidad/Pasajeros fields on any quote built from it). They're
+    # collected instead as part of additional_data, from the "Create
+    # Inventory from Inspection" form.
     inventory_row = await db.fetchrow(
         inventory_query,
         inspection['vin'],
@@ -5182,27 +5189,27 @@ async def create_inventory_from_inspection(
         inspection['make'],
         inspection['model'],
         inspection.get('odometer'),
-        inspection.get('passenger_capacity'),  # NULL if not in inspection
-        inspection.get('wheelchair_capacity'),  # NULL if not in inspection
-        inspection.get('engine_make'),  # NULL if not in inspection
-        inspection.get('engine_model'),  # NULL if not in inspection
-        inspection.get('engine_type'),  # NULL if not in inspection
-        inspection.get('transmission'),  # NULL if not in inspection
-        inspection.get('fuel_type'),  # NULL if not in inspection
-        inspection.get('gvwr'),  # NULL if not in inspection
-        inspection.get('length_feet'),  # NULL if not in inspection
-        inspection.get('exterior_color'),  # NULL if not in inspection
-        inspection.get('interior_color'),  # NULL if not in inspection
-        inspection.get('title_status'),  # NULL if not in inspection
-        inspection.get('body_style'),  # Body style
-        inspection.get('brake_system'),  # Brake system type
-        inspection.get('air_conditioning'),  # Has AC
-        inspection.get('heater'),  # Has heater
-        inspection.get('emergency_exits'),  # Number of emergency exits
-        inspection.get('fire_extinguisher'),  # Has fire extinguisher
-        inspection.get('first_aid_kit'),  # NEW: Has first aid kit
-        inspection.get('ada_compliant'),  # NEW: ADA compliant
-        inspection.get('wheelchair_lift_ramp'),  # NEW: Wheelchair lift/ramp type
+        additional_data.get('passenger_capacity'),
+        additional_data.get('wheelchair_capacity'),
+        additional_data.get('engine_make'),
+        additional_data.get('engine_model'),
+        additional_data.get('engine_type'),
+        additional_data.get('transmission'),
+        additional_data.get('fuel_type'),
+        additional_data.get('gvwr'),
+        additional_data.get('length_feet'),
+        additional_data.get('exterior_color'),
+        additional_data.get('interior_color'),
+        additional_data.get('title_status'),
+        additional_data.get('body_style'),
+        additional_data.get('brake_system'),
+        additional_data.get('air_conditioning'),
+        additional_data.get('heater'),
+        additional_data.get('emergency_exits'),
+        additional_data.get('fire_extinguisher'),
+        additional_data.get('first_aid_kit'),
+        additional_data.get('ada_compliant'),
+        additional_data.get('wheelchair_lift_ramp'),
         condition,
         inspection.get('inspection_location'),
         inspection_id,

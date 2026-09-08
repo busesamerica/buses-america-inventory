@@ -10,7 +10,21 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
     current_location: 'US Stock',
     payment_account_id: '',  // ADDED: Required payment account
     asking_price: '',  // Our sale price - NOT pre-filled
-    asking_currency: 'USD'
+    asking_currency: 'USD',
+    // The pre-purchase inspection doesn't capture any of these - it only
+    // records condition ratings (engine_condition, transmission_condition,
+    // etc), not the actual specs. They used to be silently left NULL on the
+    // created inventory record (see backend_api_FINAL.py), which is why
+    // quotes built from these units showed blank Motor/Transmisión/Color/
+    // Tipo de unidad/Pasajeros fields. Collect them here instead.
+    passenger_capacity: '',
+    engine_make: '',
+    engine_model: '',
+    engine_type: '',
+    transmission: '',
+    fuel_type: '',
+    body_style: '',
+    exterior_color: ''
   });
 
   const API_URL = `${window.API_BASE_URL || 'https://buses-america.onrender.com'}/api`;
@@ -120,7 +134,8 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
     await onSave({
       ...formData,
       supplier_id: parseInt(supplierIdToUse),
-      purchase_price_usd: parseFloat(formData.purchase_price_usd)
+      purchase_price_usd: parseFloat(formData.purchase_price_usd),
+      passenger_capacity: formData.passenger_capacity ? parseInt(formData.passenger_capacity) : null
     });
   } catch (err) {
     setError(err.message || 'Failed to create inventory');
@@ -249,13 +264,62 @@ const CreateInventoryModal = ({ inspection, suppliers, onClose, onSave }) => {
             
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'repeat(2, 1fr)', gap: '0.75rem', fontSize: '0.875rem', color: '#047857' }}>
               <div>✓ VIN, Year, Make, Model</div>
-              <div>✓ Engine & Transmission</div>
-              <div>✓ Passenger Capacity</div>
-              <div>✓ Exterior & Interior Colors</div>
               <div>✓ Odometer Reading</div>
-              <div>✓ Title Status</div>
               <div>✓ Condition Assessment</div>
               <div>✓ Inspection Summary</div>
+            </div>
+          </div>
+
+          {/* The inspection only records condition ratings, not the specs
+              themselves - so unlike the fields above, these have to be
+              entered here or they'll be blank on this unit's inventory
+              record (and on every quote built from it). */}
+          <div style={{
+            background: '#fffbeb',
+            border: '2px solid #f59e0b',
+            borderRadius: '0.75rem',
+            padding: '1.5rem',
+            marginBottom: '2rem'
+          }}>
+            <div style={{ fontSize: '1.125rem', fontWeight: '700', color: '#92400e', marginBottom: '0.25rem' }}>
+              Vehicle Specs
+            </div>
+            <div style={{ fontSize: '0.875rem', color: '#b45309', marginBottom: '1rem' }}>
+              Not captured by the inspection - enter what's known now (all optional, editable later from Inventory).
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr 1fr', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#1f2937', fontSize: '0.875rem' }}>Engine Make</label>
+                <input name="engine_make" value={formData.engine_make} onChange={handleChange} style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#1f2937', fontSize: '0.875rem' }}>Engine Model</label>
+                <input name="engine_model" value={formData.engine_model} onChange={handleChange} style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#1f2937', fontSize: '0.875rem' }}>Engine Type</label>
+                <input name="engine_type" value={formData.engine_type} onChange={handleChange} placeholder="Diesel, Gasoline, CNG..." style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#1f2937', fontSize: '0.875rem' }}>Transmission</label>
+                <input name="transmission" value={formData.transmission} onChange={handleChange} style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#1f2937', fontSize: '0.875rem' }}>Fuel Type</label>
+                <input name="fuel_type" value={formData.fuel_type} onChange={handleChange} style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#1f2937', fontSize: '0.875rem' }}>Body Style</label>
+                <input name="body_style" value={formData.body_style} onChange={handleChange} placeholder="School Bus, Transit Bus, Shuttle..." style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#1f2937', fontSize: '0.875rem' }}>Exterior Color</label>
+                <input name="exterior_color" value={formData.exterior_color} onChange={handleChange} placeholder="White, Blue, Yellow..." style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#1f2937', fontSize: '0.875rem' }}>Passenger Capacity</label>
+                <input name="passenger_capacity" type="number" value={formData.passenger_capacity} onChange={handleChange} min="1" max="99" style={{ width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '4px' }} />
+              </div>
             </div>
           </div>
 
