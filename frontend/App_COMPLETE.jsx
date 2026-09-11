@@ -210,6 +210,27 @@ const api = (() => {
       if (!res.ok) throw new Error('Failed to fetch exchange rate');
       return res.json();
     },
+    // Dashboard-only reads of stats owned by other modules (Quotes,
+    // Accounting) - fail soft to null so one slow/broken widget doesn't
+    // block the rest of the Dashboard from rendering.
+    getQuoteStats: async () => {
+      try {
+        const res = await fetch(`${API_URL}/quotes/stats/summary`, { headers: headers() });
+        return res.ok ? await res.json() : null;
+      } catch (e) {
+        console.error('Error fetching quote stats:', e);
+        return null;
+      }
+    },
+    getCashPosition: async () => {
+      try {
+        const res = await fetch(`${API_URL}/accounting/cash-position`, { headers: headers() });
+        return res.ok ? await res.json() : null;
+      } catch (e) {
+        console.error('Error fetching cash position:', e);
+        return null;
+      }
+    },
     // CLIENT API METHODS
     getClients: async (filters = {}) => {
       try {
@@ -461,6 +482,62 @@ function SupplierForm({ onSave, onCancel }) {
   );
 }
 
+// Fixed pipeline order so the Dashboard's "Units by Status" chart reads
+// left-to-right the way a bus actually moves through the business, not
+// alphabetically or by count. Anything not in this list (e.g. a legacy
+// 'Under Repair' row predating migration 004's status cleanup) is appended
+// at the end instead of being dropped.
+const INVENTORY_STATUS_ORDER = [
+  'Purchased - In Transit to Stock', 'In Stock (US)', 'In Stock (Mexico)',
+  'Sold', 'Sold - Pending Import', 'In Preventive Maintenance',
+  'Ready for Delivery', 'In Transit to Client', 'Delivered'
+];
+
+// Renders /api/reports/dashboard's status_breakdown as a bar chart via
+// Chart.js (loaded from a CDN <script> in index.html - the app has no
+// bundler, so this is the one chart in the app drawn on a <canvas> rather
+// than styled-div bars like SalesReports.jsx uses). Chart.js owns the
+// canvas imperatively, so the instance is created in an effect and torn
+// down on unmount/data change instead of being expressed as JSX.
+function DashboardStatusChart({ breakdown }) {
+  const canvasRef = React.useRef(null);
+  const chartRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!canvasRef.current || !window.Chart || !breakdown || breakdown.length === 0) return;
+
+    const ordered = [...breakdown].sort((a, b) => {
+      const ia = INVENTORY_STATUS_ORDER.indexOf(a.status);
+      const ib = INVENTORY_STATUS_ORDER.indexOf(b.status);
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+    });
+
+    chartRef.current = new window.Chart(canvasRef.current, {
+      type: 'bar',
+      data: {
+        labels: ordered.map(s => s.status),
+        datasets: [{ label: 'Units', data: ordered.map(s => s.count), backgroundColor: '#FFD700', borderRadius: 4 }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
+    });
+
+    return () => chartRef.current && chartRef.current.destroy();
+  }, [breakdown]);
+
+  if (!breakdown || breakdown.length === 0) return null;
+
+  return (
+    <div style={{height:'280px'}}>
+      <canvas ref={canvasRef}></canvas>
+    </div>
+  );
+}
+
 // ============= MAIN INVENTORY APP =============
 function InventoryApp() {
   const { user } = useAuth();
@@ -469,6 +546,8 @@ function InventoryApp() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [view, setView] = useState('dashboard');
   const [stats, setStats] = useState(null);
+  const [quoteStats, setQuoteStats] = useState(null);
+  const [cashPosition, setCashPosition] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
   const [inspections, setInspections] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -509,14 +588,18 @@ function InventoryApp() {
 
   const loadData = async () => {
     try {
-      const [dashboardData, suppliersData, inspectionsData] = await Promise.all([
+      const [dashboardData, suppliersData, inspectionsData, quoteStatsData, cashPositionData] = await Promise.all([
         api.getDashboard(),
         api.getSuppliers(),
-        api.getPreInspections()
+        api.getPreInspections(),
+        api.getQuoteStats(),
+        api.getCashPosition()
       ]);
       setStats(dashboardData);
       setSuppliers(suppliersData);
       setInspections(inspectionsData);
+      setQuoteStats(quoteStatsData);
+      setCashPosition(cashPositionData);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -677,18 +760,18 @@ function InventoryApp() {
                   three once the content area dropped under ~1080px. Below
                   1024px there isn't room for 4 fixed-width cards either, so
                   step down to 2 columns, then 1 on phones. */}
-              <div style={{display:'grid',gridTemplateColumns:isMobile?'minmax(0, 1fr)':(isTablet?'repeat(2,1fr)':'repeat(4,1fr)'),gap:'1.5rem',marginBottom:'3rem'}}>
-                <div style={statCardStyle('blue')}>
+              <div style={{display:'grid',gridTemplateColumns:isMobile?'minmax(0, 1fr)':(isTablet?'repeat(2,1fr)':'repeat(4,1fr)'),gap:'1.5rem',marginBottom:'1.5rem'}}>
+                <div style={{...statCardStyle('blue'),cursor:'pointer'}} onClick={() => setView('inventory')} title="View inventory">
                   <div style={STAT_CARD_LABEL_STYLE}>🇺🇸 US Inventory</div>
                   <div style={statCardValueStyle(stats?.us_inventory || 0)}>{stats?.us_inventory || 0}</div>
                   <div style={STAT_CARD_SUBTEXT_STYLE}>units in stock</div>
                 </div>
-                <div style={statCardStyle('red')}>
+                <div style={{...statCardStyle('red'),cursor:'pointer'}} onClick={() => setView('inventory')} title="View inventory">
                   <div style={STAT_CARD_LABEL_STYLE}>🇲🇽 Mexico Inventory</div>
                   <div style={statCardValueStyle(stats?.mexico_inventory || 0)}>{stats?.mexico_inventory || 0}</div>
                   <div style={STAT_CARD_SUBTEXT_STYLE}>units in stock</div>
                 </div>
-                <div style={statCardStyle('green')}>
+                <div style={{...statCardStyle('green'),cursor:'pointer'}} onClick={() => setView('inventory')} title="View inventory">
                   <div style={STAT_CARD_LABEL_STYLE}>✅ Available</div>
                   <div style={statCardValueStyle(stats?.available_for_sale || 0)}>{stats?.available_for_sale || 0}</div>
                   <div style={STAT_CARD_SUBTEXT_STYLE}>ready to sell</div>
@@ -699,7 +782,60 @@ function InventoryApp() {
                   <div style={STAT_CARD_SUBTEXT_STYLE}>inventory value</div>
                 </div>
               </div>
-              
+
+              {/* Pipeline/health + a pulse of Quotes and Accounting - these
+                  numbers were already computed by their own modules
+                  (QuoteManagement's stats panel, AccountingDashboard's cash
+                  cards) and are only newly surfaced here so the Dashboard
+                  reflects the whole business, not just what's sitting in
+                  stock. api.getQuoteStats()/getCashPosition() fail soft to
+                  null, so a hiccup in either module never blocks the rest
+                  of the Dashboard from rendering. */}
+              <div style={{display:'grid',gridTemplateColumns:isMobile?'minmax(0, 1fr)':(isTablet?'repeat(2,1fr)':'repeat(3,1fr)'),gap:'1.5rem',marginBottom:'3rem'}}>
+                <div style={{...statCardStyle('gray'),cursor:'pointer'}} onClick={() => setView('inventory')} title="View inventory">
+                  <div style={STAT_CARD_LABEL_STYLE}>🚚 Sold - Pending Delivery</div>
+                  <div style={statCardValueStyle(stats?.sold_pending_delivery || 0)}>{stats?.sold_pending_delivery || 0}</div>
+                  <div style={STAT_CARD_SUBTEXT_STYLE}>awaiting delivery</div>
+                </div>
+                <div style={{...statCardStyle('cyan'),cursor:'pointer'}} onClick={() => setView('inventory')} title="View inventory">
+                  <div style={STAT_CARD_LABEL_STYLE}>📦 Delivered</div>
+                  <div style={statCardValueStyle(stats?.delivered || 0)}>{stats?.delivered || 0}</div>
+                  <div style={STAT_CARD_SUBTEXT_STYLE}>completed sales</div>
+                </div>
+                <div style={{...statCardStyle('purple'),cursor:'pointer'}} onClick={() => setView('inventory')} title="View inventory">
+                  <div style={STAT_CARD_LABEL_STYLE}>🛡️ Under Warranty</div>
+                  <div style={statCardValueStyle(stats?.under_warranty || 0)}>{stats?.under_warranty || 0}</div>
+                  <div style={STAT_CARD_SUBTEXT_STYLE}>active warranty</div>
+                </div>
+                <div style={statCardStyle('orange')}>
+                  <div style={STAT_CARD_LABEL_STYLE}>⏱️ Avg Days in Inventory</div>
+                  <div style={statCardValueStyle(stats?.avg_days_in_inventory != null ? Math.round(stats.avg_days_in_inventory) : '—')}>
+                    {stats?.avg_days_in_inventory != null ? Math.round(stats.avg_days_in_inventory) : '—'}
+                  </div>
+                  <div style={STAT_CARD_SUBTEXT_STYLE}>days, units not yet delivered</div>
+                </div>
+                <div style={{...statCardStyle('blue'),cursor:'pointer'}} onClick={() => setView('quotes')} title="View quotes">
+                  <div style={STAT_CARD_LABEL_STYLE}>📄 Quote Pipeline</div>
+                  <div style={statCardValueStyle(quoteStats?.open_count ?? 0)}>{quoteStats?.open_count ?? 0}</div>
+                  <div style={STAT_CARD_SUBTEXT_STYLE}>
+                    open · {formatCurrency(quoteStats?.open_value_usd || 0)} + {formatCurrency(quoteStats?.open_value_mxn || 0, 'MXN')}
+                    {quoteStats?.win_rate != null ? ` · ${quoteStats.win_rate}% win rate` : ''}
+                  </div>
+                </div>
+                <div style={{...statCardStyle('green'),cursor:'pointer'}} onClick={() => setView('accounting')} title="View accounting">
+                  <div style={STAT_CARD_LABEL_STYLE}>🏦 Cash Position</div>
+                  <div style={statCardValueStyle(formatCurrency(cashPosition?.totals?.usd_equivalent || 0))}>{formatCurrency(cashPosition?.totals?.usd_equivalent || 0)}</div>
+                  <div style={STAT_CARD_SUBTEXT_STYLE}>USD equivalent, all accounts</div>
+                </div>
+              </div>
+
+              {stats?.status_breakdown && stats.status_breakdown.length > 0 && (
+                <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',marginBottom:'2rem'}}>
+                  <h3 style={{margin:'0 0 1.5rem 0'}}>Units by Status</h3>
+                  <DashboardStatusChart breakdown={stats.status_breakdown} />
+                </div>
+              )}
+
               <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
                   <h3 style={{margin:0}}>Recent Inventory</h3>

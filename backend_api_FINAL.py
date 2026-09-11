@@ -4876,24 +4876,64 @@ async def get_dashboard(db=Depends(get_db), user=Depends(get_current_user)):
     # other_acquisition_costs_usd, but nothing in the UI ever sets those
     # three - the real cost-entry flow ("Costs" button -> CostManagement
     # Modal) writes to cost_items instead, so cost_in_us_stock_usd was
-    # silently always == purchase_price_usd. calculate_total_costs() is
-    # the same single-source-of-truth already used for COGS/profit
-    # elsewhere, so this also handles MXN cost items correctly.
-    available_units = await db.fetch(
-        "SELECT inventory_id, current_location FROM inventory "
-        "WHERE is_deleted = FALSE AND is_sold = FALSE"
-    )
+    # silently always == purchase_price_usd.
+    #
+    # This used to call calculate_total_costs() per unit (one query for the
+    # inventory row, one for cost_items, plus an exchange-rate lookup - all
+    # repeated for every available unit). For an unsold unit that function
+    # always takes its "no as_of_date, not sold" branch, which resolves to
+    # a single current MXN->USD rate shared by every unit, so the same
+    # total can be computed with one exchange-rate lookup and one grouped
+    # aggregate query instead of N+1 round trips.
+    # Graceful fallback (same pattern as /api/accounting/cash-position):
+    # the old per-unit loop only ever hit this lookup when there was at
+    # least one unsold unit to price, so a brand-new deployment with no
+    # exchange rate configured yet and no inventory could still load an
+    # all-zero Dashboard. Calling it unconditionally here must not turn
+    # that into a hard 400 that blocks the whole page.
+    try:
+        mxn_to_usd_rate = await get_exchange_rate(db, 'MXN', 'USD')
+    except HTTPException:
+        mxn_to_usd_rate = 1 / 17.50
+    value_rows = await db.fetch("""
+        SELECT
+            i.current_location,
+            COALESCE(SUM(i.purchase_price_usd), 0) AS purchase_total_usd,
+            COALESCE(SUM(ci.amount) FILTER (WHERE ci.currency = 'USD'), 0) AS extra_costs_usd,
+            COALESCE(SUM(ci.amount) FILTER (WHERE ci.currency = 'MXN'), 0) AS extra_costs_mxn
+        FROM inventory i
+        LEFT JOIN cost_items ci ON ci.inventory_id = i.inventory_id
+        WHERE i.is_deleted = FALSE AND i.is_sold = FALSE
+        GROUP BY i.current_location
+    """)
+
     us_value = 0.0
     total_value = 0.0
-    for unit in available_units:
-        cost_data = await calculate_total_costs(db, unit['inventory_id'], 'USD')
-        unit_cost = float(cost_data['total_cost']) if cost_data else 0.0
-        total_value += unit_cost
-        if unit['current_location'] == 'US Stock':
-            us_value += unit_cost
+    for value_row in value_rows:
+        location_value = (
+            float(value_row['purchase_total_usd'])
+            + float(value_row['extra_costs_usd'])
+            + float(value_row['extra_costs_mxn']) * mxn_to_usd_rate
+        )
+        total_value += location_value
+        if value_row['current_location'] == 'US Stock':
+            us_value += location_value
 
     result['us_inventory_value'] = us_value
     result['total_inventory_value'] = total_value
+
+    # Status breakdown: powers the Dashboard's unit-status chart. Cheap
+    # single grouped query, not tied to the per-unit cost loop above.
+    status_rows = await db.fetch("""
+        SELECT status, COUNT(*) as count
+        FROM inventory
+        WHERE is_deleted = FALSE
+        GROUP BY status
+        ORDER BY count DESC
+    """)
+    result['status_breakdown'] = [
+        {'status': r['status'], 'count': r['count']} for r in status_rows
+    ]
 
     # Recent Inventory widget: same total-cost fix as above, computed here
     # (rather than the frontend fetching /api/inventory itself) so it isn't
