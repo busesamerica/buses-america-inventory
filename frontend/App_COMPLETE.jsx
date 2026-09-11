@@ -761,6 +761,11 @@ function InventoryApp() {
                   1024px there isn't room for 4 fixed-width cards either, so
                   step down to 2 columns, then 1 on phones. */}
               <div style={{display:'grid',gridTemplateColumns:isMobile?'minmax(0, 1fr)':(isTablet?'repeat(2,1fr)':'repeat(4,1fr)'),gap:'1.5rem',marginBottom:'1.5rem'}}>
+                <div style={{...statCardStyle('green'),cursor:'pointer'}} onClick={() => setView('inventory')} title="View inventory">
+                  <div style={STAT_CARD_LABEL_STYLE}>✅ Available</div>
+                  <div style={statCardValueStyle(stats?.available_for_sale || 0)}>{stats?.available_for_sale || 0}</div>
+                  <div style={STAT_CARD_SUBTEXT_STYLE}>ready to sell</div>
+                </div>
                 <div style={{...statCardStyle('blue'),cursor:'pointer'}} onClick={() => setView('inventory')} title="View inventory">
                   <div style={STAT_CARD_LABEL_STYLE}>🇺🇸 US Inventory</div>
                   <div style={statCardValueStyle(stats?.us_inventory || 0)}>{stats?.us_inventory || 0}</div>
@@ -770,11 +775,6 @@ function InventoryApp() {
                   <div style={STAT_CARD_LABEL_STYLE}>🇲🇽 Mexico Inventory</div>
                   <div style={statCardValueStyle(stats?.mexico_inventory || 0)}>{stats?.mexico_inventory || 0}</div>
                   <div style={STAT_CARD_SUBTEXT_STYLE}>units in stock</div>
-                </div>
-                <div style={{...statCardStyle('green'),cursor:'pointer'}} onClick={() => setView('inventory')} title="View inventory">
-                  <div style={STAT_CARD_LABEL_STYLE}>✅ Available</div>
-                  <div style={statCardValueStyle(stats?.available_for_sale || 0)}>{stats?.available_for_sale || 0}</div>
-                  <div style={STAT_CARD_SUBTEXT_STYLE}>ready to sell</div>
                 </div>
                 <div style={statCardStyle('orange')}>
                   <div style={STAT_CARD_LABEL_STYLE}>💰 Total Value</div>
