@@ -4895,14 +4895,28 @@ async def get_dashboard(db=Depends(get_db), user=Depends(get_current_user)):
         mxn_to_usd_rate = await get_exchange_rate(db, 'MXN', 'USD')
     except HTTPException:
         mxn_to_usd_rate = 1 / 17.50
+    # cost_items is one-to-many per unit (a unit typically has several rows -
+    # transport, reconditioning, etc.), so it must be pre-aggregated to one
+    # row per inventory_id *before* joining to inventory. Joining the raw
+    # table directly (as an earlier version of this query did) fans out:
+    # i.purchase_price_usd gets summed once per matching cost_items row
+    # instead of once per unit, inflating the total for any unit with more
+    # than one cost entry.
     value_rows = await db.fetch("""
         SELECT
             i.current_location,
             COALESCE(SUM(i.purchase_price_usd), 0) AS purchase_total_usd,
-            COALESCE(SUM(ci.amount) FILTER (WHERE ci.currency = 'USD'), 0) AS extra_costs_usd,
-            COALESCE(SUM(ci.amount) FILTER (WHERE ci.currency = 'MXN'), 0) AS extra_costs_mxn
+            COALESCE(SUM(ci.extra_usd), 0) AS extra_costs_usd,
+            COALESCE(SUM(ci.extra_mxn), 0) AS extra_costs_mxn
         FROM inventory i
-        LEFT JOIN cost_items ci ON ci.inventory_id = i.inventory_id
+        LEFT JOIN (
+            SELECT
+                inventory_id,
+                SUM(amount) FILTER (WHERE currency = 'USD') AS extra_usd,
+                SUM(amount) FILTER (WHERE currency = 'MXN') AS extra_mxn
+            FROM cost_items
+            GROUP BY inventory_id
+        ) ci ON ci.inventory_id = i.inventory_id
         WHERE i.is_deleted = FALSE AND i.is_sold = FALSE
         GROUP BY i.current_location
     """)
