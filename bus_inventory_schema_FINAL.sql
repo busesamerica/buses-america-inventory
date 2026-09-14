@@ -160,7 +160,15 @@ CREATE TABLE inventory (
     purchase_price_usd DECIMAL(12,2) NOT NULL,
     purchase_location VARCHAR(255), -- Where purchased
     purchase_invoice_number VARCHAR(100),
-    
+
+    -- Set once by migrations/007_mark_pre_ledger_reset_units.sql for units
+    -- that predate a prior accounting-ledger reset (no 'purchase'
+    -- transaction survives for them) - exempts them from the record_sale
+    -- guardrail that otherwise requires a real 'purchase' transaction
+    -- matching purchase_price_usd before a unit can be sold. Always FALSE
+    -- on a fresh install; there's nothing to grandfather.
+    pre_ledger_reset BOOLEAN NOT NULL DEFAULT FALSE,
+
     -- Transportation to US Stock (USD)
     transport_to_stock_cost_usd DECIMAL(12,2) DEFAULT 0,
     transport_to_stock_notes TEXT,

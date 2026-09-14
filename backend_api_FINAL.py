@@ -3377,6 +3377,43 @@ async def record_sale(
     # Check period lock
     await check_period_lock(db, sale_data.sale_date)
 
+    # Guardrail: block the sale unless this unit's purchase price is
+    # actually posted to the ledger (or it predates the prior
+    # accounting-ledger reset - see
+    # migrations/007_mark_pre_ledger_reset_units.sql for what that reset
+    # was and why pre_ledger_reset units are exempt here).
+    #
+    # This closes the hole that produced BA-921172's understated COGS in
+    # the first place: purchase_price_usd can be set, or edited later, via
+    # PATCH /api/inventory/{id} without ever calling
+    # /record-purchase-payment, so nothing else guarantees the ledger
+    # reflects what this unit is about to sell for cost purposes. Deliberately
+    # purchase-price-only, no equivalent cost_items check - see
+    # get_true_cost_by_currency's docstring for why: add_inventory_cost and
+    # update_inventory_cost always journal a cost item atomically with the
+    # cost_items row itself, so a cost item without a matching transaction
+    # is always a pre-reset artifact, never a new gap - checking it here
+    # would wrongly block a unit that legitimately mixes pre-reset cost
+    # items with ones added (and properly journaled) since.
+    if not bus['pre_ledger_reset'] and float(bus['purchase_price_usd'] or 0) > 0:
+        inventory_account = await get_inventory_asset_account(db)
+        purchase_posted = await db.fetchval("""
+            SELECT COALESCE(SUM(tl.debit_amount), 0) - COALESCE(SUM(tl.credit_amount), 0)
+            FROM transaction_lines tl
+            JOIN transactions t ON tl.transaction_id = t.transaction_id
+            WHERE t.reference_type = 'purchase' AND t.reference_id = $1
+              AND tl.account_id = $2 AND tl.currency = 'USD'
+        """, sale_data.inventory_id, inventory_account)
+        if abs(float(purchase_posted or 0) - float(bus['purchase_price_usd'])) > 0.01:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{bus['stock_number']}'s purchase price "
+                       f"(${bus['purchase_price_usd']}) isn't recorded in the "
+                       "accounting ledger yet, or doesn't match what's posted. "
+                       "Record (or update) the purchase payment before marking "
+                       "this unit sold."
+            )
+
     # 2. Get exchange rate as of sale date and store it
     exchange_rate = await get_exchange_rate(db, 'MXN', 'USD', sale_data.sale_date)
     sale_exchange_rate = await get_exchange_rate(db, 'USD', 'MXN', sale_data.sale_date)
