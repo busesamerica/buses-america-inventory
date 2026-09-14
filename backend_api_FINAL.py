@@ -890,26 +890,28 @@ async def get_inventory_asset_account(db):
 
 async def get_true_cost_by_currency(db, inventory_id: int) -> dict:
     """
-    SINGLE SOURCE OF TRUTH for what a unit's Bus Inventory GL balance
-    should contain: purchase_price_usd (always USD) plus every cost_items
-    row, grouped by each row's own original currency - no conversion, no
-    dependency on the ledger.
+    LEGACY-UNIT EXCEPTION, not the general mechanism: what a unit's Bus
+    Inventory GL balance should contain, read straight from
+    purchase_price_usd (always USD) + every cost_items row, grouped by
+    each row's own original currency - no conversion, no dependency on
+    the ledger.
 
-    This mirrors calculate_total_costs()'s inputs (same two reads:
-    inventory.purchase_price_usd + cost_items) instead of that function's
-    single-currency conversion, so callers get a per-currency amount ready
-    to post as a journal entry line.
+    Use this ONLY for a unit flagged inventory.pre_ledger_reset - see
+    migrations/007_mark_pre_ledger_reset_units.sql. Those units predate an
+    accounting-ledger reset that wiped transactions/transaction_lines and
+    re-seeded them with a single aggregate 'opening_balance' entry, so no
+    per-unit 'purchase'/'cost' transactions survive for them to read - this
+    function's job is purely to attribute the right slice of that
+    already-correctly-funded control account to this specific unit.
 
-    Deliberately does NOT read transactions/transaction_lines. Posting a
-    purchase (via /record-purchase-payment) and posting a cost (via the
-    Costs modal) are separate manual steps from setting purchase_price_usd
-    on the unit or adding a cost_items row - either can be skipped or the
-    unit can be edited afterward via PATCH /api/inventory/{id}, which
-    updates purchase_price_usd without touching the ledger at all. A COGS
-    calculation built on the ledger (what actually got journaled) can
-    therefore silently miss the purchase price and/or costs that were
-    never (re-)posted. This one instead reflects exactly what the unit's
-    Costs tab shows, so COGS always matches the unit's registered costs.
+    Every other unit should use get_ledger_cost_by_currency() instead:
+    once record_sale's guardrail requires a real 'purchase' transaction
+    matching purchase_price_usd before a sale, and since
+    add_inventory_cost/update_inventory_cost already journal every cost
+    atomically, the ledger is the correct, standard, GL-derived source for
+    those units - reading purchase_price_usd/cost_items directly for them
+    would quietly make this the permanent definition of COGS instead of a
+    transitional one, which is explicitly not the intent.
     """
     bus = await db.fetchrow(
         "SELECT purchase_price_usd FROM inventory WHERE inventory_id = $1",
@@ -931,6 +933,37 @@ async def get_true_cost_by_currency(db, inventory_id: int) -> dict:
     # Drop non-positive/negligible totals, matching the old GL query's
     # "HAVING ... > 0" filter, so we never post a zero-amount journal line.
     return {cur: amt for cur, amt in totals.items() if amt > 0}
+
+async def get_ledger_cost_by_currency(db, inventory_id: int, inventory_account) -> dict:
+    """
+    STANDARD path: a unit's cost as actually posted to the ledger - sum of
+    transaction_lines on inventory_account for this unit's 'purchase'
+    transaction and every 'cost' transaction tied to its cost_items rows,
+    grouped by currency. This is GL-derived COGS, the normal/industry
+    practice, and what every non-pre_ledger_reset unit should use: the
+    record_sale guardrail already guarantees a real 'purchase' transaction
+    matching purchase_price_usd exists before such a unit can be sold, and
+    cost_items are always journaled atomically when added, so this and
+    get_true_cost_by_currency() necessarily agree for those units - this
+    one is just the correct, ledger-backed source to actually read from.
+    """
+    rows = await db.fetch("""
+        SELECT tl.currency,
+               COALESCE(SUM(tl.debit_amount), 0) - COALESCE(SUM(tl.credit_amount), 0) as total
+        FROM transaction_lines tl
+        JOIN transactions t ON tl.transaction_id = t.transaction_id
+        WHERE tl.account_id = $1
+          AND (
+            (t.reference_type = 'purchase' AND t.reference_id = $2)
+            OR
+            (t.reference_type = 'cost' AND t.reference_id IN (
+                SELECT cost_id FROM cost_items WHERE inventory_id = $2
+            ))
+          )
+        GROUP BY tl.currency
+        HAVING COALESCE(SUM(tl.debit_amount), 0) - COALESCE(SUM(tl.credit_amount), 0) > 0
+    """, inventory_account, inventory_id)
+    return {row['currency']: float(row['total']) for row in rows}
 
 # ==================== ROOT ENDPOINT ====================
 
@@ -3533,20 +3566,26 @@ async def record_sale(
 
         # COGS entry: move everything capitalized to Bus Inventory for this bus
         if cogs_account and inventory_account:
-            # Calculate COGS per currency from the unit's registered purchase
-            # price + cost_items (the same source calculate_total_costs() uses
-            # for the gross-profit figure above and the Costs tab shows) -
-            # NOT from whatever happens to already be posted to the Bus
-            # Inventory GL account. Recording the purchase price
-            # (/record-purchase-payment) and each cost item's journal entry
-            # are separate manual steps from setting purchase_price_usd or
-            # adding a cost_items row, and either can be skipped, or
-            # purchase_price_usd can be edited afterward without touching the
-            # ledger - so the GL balance can silently under-represent the
-            # unit's true cost. Sourcing COGS from cost_items/purchase_price_usd
-            # directly means it always matches what's registered on the unit,
-            # regardless of whether those journal entries were ever posted.
-            inventory_by_currency = await get_true_cost_by_currency(db, sale_data.inventory_id)
+            # Standard path: read COGS from what's actually posted to the
+            # ledger. The guardrail above already requires a real
+            # 'purchase' transaction matching purchase_price_usd before a
+            # non-pre_ledger_reset unit can be sold, and cost_items are
+            # always journaled atomically when added - so this is GL-derived
+            # COGS, the normal/industry-standard practice, not a special
+            # calculation.
+            #
+            # pre_ledger_reset units are the one documented exception: they
+            # predate the accounting-ledger reset (see
+            # migrations/007_mark_pre_ledger_reset_units.sql) and have no
+            # per-unit 'purchase'/'cost' transactions to read at all, only
+            # an aggregate opening-balance entry - so for them, and only
+            # them, fall back to the unit's registered purchase price +
+            # cost_items directly (get_true_cost_by_currency's docstring
+            # has the full reasoning).
+            if bus['pre_ledger_reset']:
+                inventory_by_currency = await get_true_cost_by_currency(db, sale_data.inventory_id)
+            else:
+                inventory_by_currency = await get_ledger_cost_by_currency(db, sale_data.inventory_id, inventory_account)
 
             if inventory_by_currency:
                 cogs_trans = await db.fetchrow("""
@@ -3614,18 +3653,21 @@ async def recalculate_cogs(
     db=Depends(get_db)
 ):
     """
-    Re-post the COGS journal entry for an already-sold unit from its
-    current purchase_price_usd + cost_items (see get_true_cost_by_currency),
-    replacing whatever COGS entry exists today.
+    Re-post the COGS journal entry for an already-sold unit, replacing
+    whatever COGS entry exists today. Uses the same source record_sale
+    would use for this unit today: the ledger
+    (get_ledger_cost_by_currency) for a normal unit, or
+    get_true_cost_by_currency for one flagged pre_ledger_reset.
 
-    Exists to correct sales recorded before the COGS fix above landed:
-    those posted COGS from the Bus Inventory GL account balance, which
-    under-states cost whenever /record-purchase-payment or a cost item's
-    accounting entry was never posted (or purchase_price_usd was edited
-    afterward via PATCH /api/inventory/{id}, which doesn't touch the
-    ledger). Safe to call on a unit whose COGS is already correct - it's
-    idempotent, since it always fully replaces the prior COGS entry with
-    a fresh one computed the same way.
+    Exists to correct sales recorded before record_sale's guardrail and
+    COGS-source fix landed: those could post COGS from an incomplete Bus
+    Inventory GL balance, under-stating cost whenever
+    /record-purchase-payment or a cost item's accounting entry was never
+    posted (or purchase_price_usd was edited afterward via PATCH
+    /api/inventory/{id}, which doesn't touch the ledger). Safe to call on
+    a unit whose COGS is already correct - it's idempotent, since it
+    always fully replaces the prior COGS entry with a fresh one computed
+    the same way.
     """
     bus = await db.fetchrow(
         "SELECT * FROM inventory WHERE inventory_id = $1 AND is_deleted = FALSE",
@@ -3657,8 +3699,11 @@ async def recalculate_cogs(
         await check_period_lock(db, old_trans['transaction_date'])
     await check_period_lock(db, sale_date)
 
-    true_cost_by_currency = await get_true_cost_by_currency(db, inventory_id)
-    if not true_cost_by_currency:
+    if bus['pre_ledger_reset']:
+        cost_by_currency = await get_true_cost_by_currency(db, inventory_id)
+    else:
+        cost_by_currency = await get_ledger_cost_by_currency(db, inventory_id, inventory_account)
+    if not cost_by_currency:
         raise HTTPException(
             status_code=400,
             detail="No purchase price or cost items registered on this unit — nothing to post"
@@ -3679,7 +3724,7 @@ async def recalculate_cogs(
 
         cogs_trans_id = cogs_trans['transaction_id']
 
-        for cur, cogs_amount in true_cost_by_currency.items():
+        for cur, cogs_amount in cost_by_currency.items():
             await db.execute("""
                 INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
                 VALUES ($1, $2, $3, 0, $4, $5)
@@ -3698,15 +3743,15 @@ async def recalculate_cogs(
         db, current_user['user_id'], current_user['username'],
         'update', 'transactions', cogs_trans_id,
         old_values={'replaced_transaction_ids': [t['transaction_id'] for t in old_trans_rows]},
-        new_values={'transaction_id': cogs_trans_id, 'cost_by_currency': true_cost_by_currency},
-        description=f"Recalculated COGS for {bus['stock_number']}: {true_cost_by_currency}"
+        new_values={'transaction_id': cogs_trans_id, 'cost_by_currency': cost_by_currency},
+        description=f"Recalculated COGS for {bus['stock_number']}: {cost_by_currency}"
     )
 
     return {
         'stock_number': bus['stock_number'],
         'inventory_id': inventory_id,
         'transaction_id': cogs_trans_id,
-        'cost_by_currency': true_cost_by_currency,
+        'cost_by_currency': cost_by_currency,
         'replaced_transaction_ids': [t['transaction_id'] for t in old_trans_rows]
     }
 
