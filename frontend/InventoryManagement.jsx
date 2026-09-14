@@ -211,6 +211,34 @@ const InventoryManagement = () => {
     }
   };
 
+  const handleRecalculateCogs = async (bus) => {
+    // Re-posts this unit's COGS entry from its current purchase price +
+    // cost items, replacing whatever COGS entry exists today. Needed for
+    // units sold before the COGS-source fix, whose COGS entry may have
+    // been built from an incomplete accounting ledger (e.g. the purchase
+    // payment or a cost item was never journaled) instead of the unit's
+    // actual registered costs - see recalculate_cogs in backend_api_FINAL.py.
+    if (!confirm(`Recalculate COGS for ${bus.stock_number} from its current purchase price + cost items?\n\nThis replaces the existing COGS journal entry.`)) return;
+    try {
+      const response = await fetch(`${API_URL}/inventory/${bus.inventory_id}/recalculate-cogs`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token')}` }
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to recalculate COGS');
+      }
+      const result = await response.json();
+      const breakdown = Object.entries(result.cost_by_currency || {})
+        .map(([cur, amt]) => `${amt.toLocaleString('en-US', { minimumFractionDigits: 2 })} ${cur}`)
+        .join(' + ');
+      alert(`✅ COGS recalculated for ${bus.stock_number}: ${breakdown}`);
+      loadData();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  };
+
   const fetchCostSummary = async (inventoryId) => {
     setCostSummaryStatus(prev => ({ ...prev, [inventoryId]: 'loading' }));
     try {
@@ -484,6 +512,19 @@ const InventoryManagement = () => {
                                   style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.875rem' }}
                                 >
                                   🔍 View Inspection
+                                </button>
+                              )}
+                              {user.role === 'admin' && bus.is_sold && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRecalculateCogs(bus);
+                                    setOpenActionMenuId(null);
+                                  }}
+                                  title="Re-post COGS from this unit's current purchase price + cost items"
+                                  style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.875rem' }}
+                                >
+                                  🧮 Recalculate COGS
                                 </button>
                               )}
                               {user.role === 'admin' && (
