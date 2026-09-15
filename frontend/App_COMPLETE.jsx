@@ -807,7 +807,7 @@ function InventoryApp() {
                   <div style={statCardValueStyle(stats?.under_warranty || 0)}>{stats?.under_warranty || 0}</div>
                   <div style={STAT_CARD_SUBTEXT_STYLE}>active warranty</div>
                 </div>
-                <div style={statCardStyle('orange')}>
+                <div style={{...statCardStyle('orange'),cursor:'pointer'}} onClick={() => setView('inventory')} title="View inventory">
                   <div style={STAT_CARD_LABEL_STYLE}>⏱️ Avg Days in Inventory</div>
                   <div style={statCardValueStyle(stats?.avg_days_in_inventory != null ? Math.round(stats.avg_days_in_inventory) : '—')}>
                     {stats?.avg_days_in_inventory != null ? Math.round(stats.avg_days_in_inventory) : '—'}
