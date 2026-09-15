@@ -231,11 +231,11 @@ const api = (() => {
         return null;
       }
     },
-    // AI Dashboard briefing: GET returns/lazily generates today's cached
-    // briefing (never throws - the backend itself falls back to a
-    // status:'unavailable' payload rather than erroring). POST is the
-    // manual "Refresh" action and does throw on failure, so the button's
-    // own error state can show why.
+    // Dashboard daily snapshot: GET returns/lazily generates today's cached
+    // one (composed server-side from data the app already has, so it has
+    // nothing to fail on). POST is the manual "Refresh" action and does
+    // throw on failure (a network/server error), so the button's own
+    // error state can show why.
     getDashboardBriefing: async () => {
       try {
         const res = await fetch(`${API_URL}/reports/dashboard-briefing`, { headers: headers() });
@@ -565,12 +565,12 @@ function DashboardStatusChart({ breakdown }) {
 
 // Self-contained like InventoryManagement/AccountingDashboard/etc - fetches
 // its own data on mount instead of piggybacking on InventoryApp's loadData(),
-// so a slow first-of-the-day briefing generation never delays the rest of
-// the Dashboard's stat cards from rendering. GET /api/reports/dashboard-
-// briefing lazily generates+caches today's briefing server-side and never
-// throws (falls back to a status:'unavailable'/'stale' payload instead), so
-// the only error state this component itself handles is the manual Refresh
-// button's own POST call.
+// so a slow first-of-the-day generation never delays the rest of the
+// Dashboard's stat cards from rendering. The snapshot text is composed
+// server-side from data the app already computes (dashboard_briefing.py) -
+// no external API, so there's no "not configured"/failure state to show;
+// the only error this component handles is the Refresh button's own
+// network call failing outright.
 function DashboardBriefingCard() {
   const [briefing, setBriefing] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -608,37 +608,30 @@ function DashboardBriefingCard() {
     return isoDate === todayUtc ? 'today' : formatDate(iso);
   };
 
-  const notConfigured = briefing?.error && /not configured/i.test(briefing.error);
-
   return (
     <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',marginBottom:'1.5rem'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem',gap:'1rem',flexWrap:'wrap'}}>
-        <h3 style={{margin:0}}>🤖 Today's Briefing</h3>
+        <h3 style={{margin:0}}>📋 Daily Snapshot</h3>
         <button
           onClick={refresh}
           disabled={loading || refreshing}
           style={{...buttonStyle('blue','md',loading || refreshing),padding:'0.5rem 1rem'}}
         >
-          {refreshing ? 'Generating…' : '🔄 Refresh'}
+          {refreshing ? 'Refreshing…' : '🔄 Refresh'}
         </button>
       </div>
 
       {loading ? (
-        <div style={{color:'#666'}}>Loading briefing…</div>
+        <div style={{color:'#666'}}>Loading…</div>
       ) : error ? (
         <div style={{color:'#c33'}}>{error}</div>
-      ) : !briefing || briefing.status === 'unavailable' ? (
-        <div style={{color:'#666'}}>
-          {notConfigured
-            ? "AI briefing isn't set up yet - an admin needs to add an ANTHROPIC_API_KEY."
-            : "Briefing isn't available right now - try Refresh in a bit."}
-        </div>
+      ) : !briefing || !briefing.content ? (
+        <div style={{color:'#666'}}>Not available right now - try Refresh in a bit.</div>
       ) : (
         <div>
           <div style={{fontSize:'1rem',lineHeight:'1.6',color:'#333'}}>{briefing.content}</div>
           <div style={{fontSize:'0.75rem',color:'#999',marginTop:'0.75rem'}}>
             Generated {generatedLabel(briefing.generated_at)}
-            {briefing.status === 'stale' ? " - couldn't refresh today's, showing the last one generated" : ''}
           </div>
         </div>
       )}
