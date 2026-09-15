@@ -231,6 +231,31 @@ const api = (() => {
         return null;
       }
     },
+    // AI Dashboard briefing: GET returns/lazily generates today's cached
+    // briefing (never throws - the backend itself falls back to a
+    // status:'unavailable' payload rather than erroring). POST is the
+    // manual "Refresh" action and does throw on failure, so the button's
+    // own error state can show why.
+    getDashboardBriefing: async () => {
+      try {
+        const res = await fetch(`${API_URL}/reports/dashboard-briefing`, { headers: headers() });
+        return res.ok ? await res.json() : null;
+      } catch (e) {
+        console.error('Error fetching dashboard briefing:', e);
+        return null;
+      }
+    },
+    generateDashboardBriefing: async () => {
+      const res = await fetch(`${API_URL}/reports/dashboard-briefing/generate`, {
+        method: 'POST',
+        headers: headers()
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to generate briefing');
+      }
+      return res.json();
+    },
     // CLIENT API METHODS
     getClients: async (filters = {}) => {
       try {
@@ -538,6 +563,89 @@ function DashboardStatusChart({ breakdown }) {
   );
 }
 
+// Self-contained like InventoryManagement/AccountingDashboard/etc - fetches
+// its own data on mount instead of piggybacking on InventoryApp's loadData(),
+// so a slow first-of-the-day briefing generation never delays the rest of
+// the Dashboard's stat cards from rendering. GET /api/reports/dashboard-
+// briefing lazily generates+caches today's briefing server-side and never
+// throws (falls back to a status:'unavailable'/'stale' payload instead), so
+// the only error state this component itself handles is the manual Refresh
+// button's own POST call.
+function DashboardBriefingCard() {
+  const [briefing, setBriefing] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [refreshing, setRefreshing] = React.useState(false);
+  const [error, setError] = React.useState(null);
+
+  React.useEffect(() => {
+    (async () => {
+      const data = await api.getDashboardBriefing();
+      setBriefing(data);
+      setLoading(false);
+    })();
+  }, []);
+
+  const refresh = async () => {
+    setRefreshing(true);
+    setError(null);
+    try {
+      setBriefing(await api.generateDashboardBriefing());
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Both sides compared as UTC calendar dates (not local time-of-day math)
+  // so this can't show a confusing negative/off-by-hours offset depending
+  // on the viewer's timezone - the app has no other "time ago" display to
+  // match, so this stays deliberately coarse (today vs. a specific date).
+  const generatedLabel = (iso) => {
+    if (!iso) return '';
+    const isoDate = String(iso).split('T')[0];
+    const todayUtc = new Date().toISOString().split('T')[0];
+    return isoDate === todayUtc ? 'today' : formatDate(iso);
+  };
+
+  const notConfigured = briefing?.error && /not configured/i.test(briefing.error);
+
+  return (
+    <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',marginBottom:'1.5rem'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem',gap:'1rem',flexWrap:'wrap'}}>
+        <h3 style={{margin:0}}>🤖 Today's Briefing</h3>
+        <button
+          onClick={refresh}
+          disabled={loading || refreshing}
+          style={{...buttonStyle('blue','md',loading || refreshing),padding:'0.5rem 1rem'}}
+        >
+          {refreshing ? 'Generating…' : '🔄 Refresh'}
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{color:'#666'}}>Loading briefing…</div>
+      ) : error ? (
+        <div style={{color:'#c33'}}>{error}</div>
+      ) : !briefing || briefing.status === 'unavailable' ? (
+        <div style={{color:'#666'}}>
+          {notConfigured
+            ? "AI briefing isn't set up yet - an admin needs to add an ANTHROPIC_API_KEY."
+            : "Briefing isn't available right now - try Refresh in a bit."}
+        </div>
+      ) : (
+        <div>
+          <div style={{fontSize:'1rem',lineHeight:'1.6',color:'#333'}}>{briefing.content}</div>
+          <div style={{fontSize:'0.75rem',color:'#999',marginTop:'0.75rem'}}>
+            Generated {generatedLabel(briefing.generated_at)}
+            {briefing.status === 'stale' ? " - couldn't refresh today's, showing the last one generated" : ''}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ============= MAIN INVENTORY APP =============
 function InventoryApp() {
   const { user } = useAuth();
@@ -755,6 +863,7 @@ function InventoryApp() {
           {/* DASHBOARD VIEW */}
           {view === 'dashboard' && (
             <div style={{maxWidth:'1400px'}}>
+              <DashboardBriefingCard />
               {/* Fixed column count, not auto-fit(minmax(250px,1fr)) - auto-fit
                   wrapped the 4th card to its own row below the other
                   three once the content area dropped under ~1080px. Below

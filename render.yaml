@@ -23,6 +23,14 @@
         value: /tmp/uploads
       - key: ALLOWED_ORIGINS
         value: https://buses-america-ui.onrender.com
+      # AI-generated Dashboard briefing (ai_briefing.py) needs a real
+      # Anthropic API key - set the value in the Render dashboard after
+      # deploying (sync: false leaves it blank here rather than
+      # auto-generating one, since this one has to be a real key from
+      # https://console.anthropic.com/). Left unset, the app runs fine and
+      # the briefing card just shows "not set up yet" instead of erroring.
+      - key: ANTHROPIC_API_KEY
+        sync: false
     autoDeploy: true
 
 databases:
