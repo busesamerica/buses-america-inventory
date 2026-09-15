@@ -110,7 +110,12 @@ def _build_prompt(context: dict) -> str:
 
 async def generate_briefing(context: dict) -> str:
     """Call the Anthropic Messages API and return the briefing text."""
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    # .strip() matters here: a copy-paste into Render's env var UI can pick
+    # up a trailing space or newline, which os.getenv() would otherwise
+    # pass straight into the x-api-key header and Anthropic would reject
+    # as an invalid key - indistinguishable from a genuinely wrong key
+    # without this.
+    api_key = (os.getenv("ANTHROPIC_API_KEY") or "").strip()
     if not api_key:
         raise BriefingUnavailable("ANTHROPIC_API_KEY is not configured")
 
@@ -133,6 +138,15 @@ async def generate_briefing(context: dict) -> str:
             )
             response.raise_for_status()
             payload = response.json()
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            raise BriefingUnavailable(
+                "Anthropic rejected ANTHROPIC_API_KEY (401 Unauthorized) - it's set, "
+                "but not valid. Check for a stray space/newline from copy-pasting it "
+                "into Render, or that the key hasn't been revoked/regenerated in the "
+                "Anthropic Console."
+            ) from e
+        raise BriefingUnavailable(f"Anthropic API call failed: {e}") from e
     except (httpx.TimeoutException, httpx.HTTPError) as e:
         raise BriefingUnavailable(f"Anthropic API call failed: {e}") from e
 
