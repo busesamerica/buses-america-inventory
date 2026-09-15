@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from inspection_summary_helper import generate_inspection_summary, calculate_pre_fill_data
 from vin_decoder import decode_vin
+from ai_briefing import generate_briefing, BriefingUnavailable
 import asyncpg
 import httpx
 import os
@@ -5226,6 +5227,142 @@ async def get_dashboard(db=Depends(get_db), user=Depends(get_current_user)):
     result['recent_inventory'] = recent_inventory
 
     return result
+
+# ==================== AI DASHBOARD BRIEFING ====================
+
+async def _assemble_briefing_context(db, user) -> dict:
+    """
+    Gather the data behind the Dashboard's AI briefing. Reuses the same
+    functions the Dashboard's own stat cards already call - get_dashboard(),
+    get_quote_stats(), get_cash_position() - rather than duplicating their
+    SQL; calling an async def with Depends(...) defaults directly and
+    passing real db/user works fine outside FastAPI's own injector. Adds
+    three small "needs attention soon" queries that don't have a Dashboard
+    card of their own: quotes and warranties expiring within a week, and
+    the units that have sat in inventory longest.
+    """
+    dashboard_stats = await get_dashboard(db=db, user=user)
+    quote_stats = await get_quote_stats(db=db, user=user)
+    cash_position = await get_cash_position(db=db, user=user)
+
+    expiring_quotes = await db.fetch("""
+        SELECT quote_number, client_name, valid_until, total_amount, currency
+        FROM quotes
+        WHERE is_deleted = FALSE
+          AND status IN ('Draft', 'Sent')
+          AND valid_until BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'
+        ORDER BY valid_until
+        LIMIT 10
+    """)
+
+    expiring_warranties = await db.fetch("""
+        SELECT stock_number, year, make, model, warranty_end_date
+        FROM inventory
+        WHERE is_deleted = FALSE
+          AND warranty_status = 'Active'
+          AND warranty_end_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'
+        ORDER BY warranty_end_date
+        LIMIT 10
+    """)
+
+    stalest_units = await db.fetch("""
+        SELECT stock_number, year, make, model, status,
+               (CURRENT_DATE - purchase_date) AS days_in_inventory
+        FROM inventory
+        WHERE is_deleted = FALSE AND status != 'Delivered'
+        ORDER BY purchase_date ASC
+        LIMIT 3
+    """)
+
+    return {
+        'date': date.today().isoformat(),
+        'inventory': {
+            'us_inventory': dashboard_stats['us_inventory'],
+            'mexico_inventory': dashboard_stats['mexico_inventory'],
+            'available_for_sale': dashboard_stats['available_for_sale'],
+            'sold_pending_delivery': dashboard_stats['sold_pending_delivery'],
+            'delivered': dashboard_stats['delivered'],
+            'under_warranty': dashboard_stats['under_warranty'],
+            'avg_days_in_inventory': dashboard_stats['avg_days_in_inventory'],
+            'total_inventory_value_usd': dashboard_stats['total_inventory_value'],
+        },
+        'quotes': {
+            'open_count': quote_stats['open_count'],
+            'open_value_usd': quote_stats['open_value_usd'],
+            'open_value_mxn': quote_stats['open_value_mxn'],
+            'win_rate': quote_stats['win_rate'],
+            'expiring_soon': [dict(r) for r in expiring_quotes],
+        },
+        'cash': {
+            'usd': cash_position['totals']['usd'],
+            'mxn': cash_position['totals']['mxn'],
+            'usd_equivalent': cash_position['totals']['usd_equivalent'],
+        },
+        'warranty_expiring_soon': [dict(r) for r in expiring_warranties],
+        'stalest_units': [dict(r) for r in stalest_units],
+    }
+
+
+def _serialize_briefing(row) -> dict:
+    return {
+        'briefing_id': row['briefing_id'],
+        'content': row['content'],
+        'generated_at': row['generated_at'],
+        'generated_by': row['generated_by'],
+    }
+
+
+async def _latest_briefing(db):
+    return await db.fetchrow(
+        "SELECT * FROM dashboard_briefings ORDER BY generated_at DESC LIMIT 1"
+    )
+
+
+async def _generate_and_store_briefing(db, user):
+    context = await _assemble_briefing_context(db, user)
+    content = await generate_briefing(context)
+    return await db.fetchrow(
+        "INSERT INTO dashboard_briefings (content, generated_by) VALUES ($1, $2) RETURNING *",
+        content, user.get('username')
+    )
+
+
+@app.get("/api/reports/dashboard-briefing")
+async def get_dashboard_briefing(db=Depends(get_db), user=Depends(get_current_user)):
+    """
+    Latest AI-generated Dashboard briefing. If today's hasn't been
+    generated yet (or none exists at all), generates and caches one now -
+    so the first Dashboard visit each day produces that day's briefing,
+    and every later visit the same day is a cheap cache read instead of a
+    new Anthropic API call. Never raises: a missing API key or a failed
+    Anthropic call falls back to the last cached briefing if there is one,
+    or a plain 'unavailable' status - either way the Dashboard itself never
+    breaks over this.
+    """
+    latest = await _latest_briefing(db)
+    if latest and latest['generated_at'].date() == date.today():
+        return {'status': 'ok', **_serialize_briefing(latest)}
+
+    try:
+        row = await _generate_and_store_briefing(db, user)
+        return {'status': 'ok', **_serialize_briefing(row)}
+    except BriefingUnavailable as e:
+        if latest:
+            return {'status': 'stale', 'error': str(e), **_serialize_briefing(latest)}
+        return {
+            'status': 'unavailable', 'error': str(e),
+            'briefing_id': None, 'content': None, 'generated_at': None, 'generated_by': None,
+        }
+
+
+@app.post("/api/reports/dashboard-briefing/generate")
+async def regenerate_dashboard_briefing(db=Depends(get_db), user=Depends(require_manager_or_admin)):
+    """Manual 'Refresh' action - always regenerates regardless of date."""
+    try:
+        row = await _generate_and_store_briefing(db, user)
+        return {'status': 'ok', **_serialize_briefing(row)}
+    except BriefingUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 @app.get("/api/reports/us-inventory")
 async def get_us_inventory_report(db=Depends(get_db), user=Depends(get_current_user)):
