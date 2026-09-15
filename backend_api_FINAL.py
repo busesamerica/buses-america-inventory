@@ -5109,7 +5109,11 @@ async def get_dashboard(db=Depends(get_db), user=Depends(get_current_user)):
             COUNT(*) FILTER (WHERE is_sold = TRUE AND status != 'Delivered') as sold_pending_delivery,
             COUNT(*) FILTER (WHERE status = 'Delivered') as delivered,
             COUNT(*) FILTER (WHERE warranty_status = 'Active') as under_warranty,
-            AVG(days_in_inventory) FILTER (WHERE status != 'Delivered') as avg_days_in_inventory
+            -- days_in_inventory is a plain nullable column nothing in the app
+            -- ever writes (it's always NULL), so AVG() over it was always
+            -- NULL too. purchase_date is NOT NULL and always populated, so
+            -- compute the day count directly from it instead.
+            AVG(CURRENT_DATE - purchase_date) FILTER (WHERE status != 'Delivered') as avg_days_in_inventory
         FROM inventory
         WHERE is_deleted = FALSE
     """
