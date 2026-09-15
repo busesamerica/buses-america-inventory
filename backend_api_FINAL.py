@@ -7375,6 +7375,8 @@ async def get_quotable_inventory(
         SELECT i.inventory_id, i.stock_number, i.vin, i.year, i.make, i.model,
                i.body_style, i.passenger_capacity, i.odometer, i.status,
                i.asking_price, i.asking_currency, i.minimum_price, i.minimum_currency,
+               i.exterior_color, i.engine_make, i.engine_model, i.engine_type,
+               i.transmission, i.condition,
                COUNT(DISTINCT q.quote_id) AS open_quote_count
         FROM inventory i
         LEFT JOIN quote_line_items li

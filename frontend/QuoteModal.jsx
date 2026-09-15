@@ -3,6 +3,16 @@
 // Totals mirror the server-side calculation so the user sees them live,
 // but the server is always the source of truth on save.
 
+// A unit usually isn't imported into Mexico yet at quote time - that
+// normally only happens after the sale closes - so this can't be pulled
+// from the inventory record like Color/Motor/etc. It's a term the seller
+// declares on this specific sale, so it lives in the line's own `notes`
+// (already a real column - see handleSave below) rather than anything
+// tracked on the unit itself. QuoteDocument.jsx already prints a bus
+// line's `notes` under its row in the price breakdown, so setting it here
+// is the entire fix - nothing to change there.
+const IMPORTED_LINE_NOTE = 'Incluye importación con documentación en regla (Pedimento, Factura y Repuve).';
+
 const QuoteModal = ({ quote, clients, currentUser, onClose, onSaved }) => {
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
   const isEdit = !!(quote && quote.quote_id);
@@ -37,9 +47,9 @@ const QuoteModal = ({ quote, clients, currentUser, onClose, onSaved }) => {
     discount_amount: quote?.discount_amount != null ? String(quote.discount_amount) : '0',
     tax_rate: quote?.tax_rate != null ? String(quote.tax_rate) : '0',
     deposit_percent: quote?.deposit_percent != null ? String(quote.deposit_percent) : '30',
-    payment_terms: quote?.payment_terms || 'Deposit on acceptance, balance due before delivery.',
+    payment_terms: quote?.payment_terms || '30% de anticipo para apartar la unidad; saldo al momento de la entrega.',
     delivery_terms: quote?.delivery_terms || '',
-    warranty_terms: quote?.warranty_terms || '60-day warranty on engine and transmission from delivery date.',
+    warranty_terms: quote?.warranty_terms || '60 días en motor y transmisión contra fallas no ocasionadas por negligencia.',
     notes: quote?.notes || '',
     internal_notes: quote?.internal_notes || '',
     prepared_by_name: quote?.prepared_by_name || currentUser?.full_name || '',
@@ -441,6 +451,21 @@ const QuoteModal = ({ quote, clients, currentUser, onClose, onSaved }) => {
                               on {u.open_quote_count} open quote{u.open_quote_count > 1 ? 's' : ''}
                             </span>
                           )}
+                          {/* exterior_color, engine make/model/type, transmission and
+                              condition are what the quote's "Datos del autobús" panel
+                              prints - flag here, before the unit is on a quote, if any of
+                              them is still blank on this inventory record so it can be
+                              filled in via Inventory Edit first instead of surfacing as a
+                              blank field on the PDF. */}
+                          {(!u.exterior_color || !u.engine_make || !u.engine_model || !u.engine_type
+                            || !u.transmission || !u.condition) && (
+                            <span style={{
+                              marginLeft: '0.5rem', fontSize: '0.7rem', background: '#fee2e2',
+                              color: '#991b1b', padding: '0.15rem 0.5rem', borderRadius: '999px', fontWeight: '700'
+                            }}>
+                              ⚠ specs incompletas
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.2rem' }}>
                           Stock {u.stock_number} · VIN {u.vin} · {u.status}
@@ -493,6 +518,19 @@ const QuoteModal = ({ quote, clients, currentUser, onClose, onSaved }) => {
                             placeholder={l.line_type === 'charge' ? 'e.g. Transport to Monterrey' : ''}
                             onChange={(e) => updateLine(l.key, 'description', e.target.value)}
                           />
+                          {l.line_type === 'bus' && (
+                            <label style={{
+                              display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.35rem',
+                              fontSize: '0.72rem', color: '#6b7280', cursor: 'pointer'
+                            }}>
+                              <input
+                                type="checkbox"
+                                checked={l.notes === IMPORTED_LINE_NOTE}
+                                onChange={(e) => updateLine(l.key, 'notes', e.target.checked ? IMPORTED_LINE_NOTE : '')}
+                              />
+                              Incluye importación (Pedimento, Factura y Repuve)
+                            </label>
+                          )}
                         </td>
                         <td style={{ padding: '0.5rem' }}>
                           <input
