@@ -5120,6 +5120,15 @@ async def get_dashboard(db=Depends(get_db), user=Depends(get_current_user)):
     """
     row = await db.fetchrow(query)
     result = dict(row)
+    # AVG() of an integer column comes back through asyncpg as a Decimal,
+    # not a float - every other number in this response is a plain float/
+    # int, and Decimal silently doesn't mix with float arithmetic (raises
+    # TypeError) the way it does with int, which bit dashboard_briefing.py
+    # calling this function directly instead of going through FastAPI's
+    # JSON response (which converts Decimal for free). Normalize here so
+    # every caller of get_dashboard() gets a plain float like they'd expect.
+    if result['avg_days_in_inventory'] is not None:
+        result['avg_days_in_inventory'] = float(result['avg_days_in_inventory'])
 
     # us_inventory_value / total_inventory_value: purchase price plus every
     # cost_items entry (transport, reconditioning, import, etc.), not just
