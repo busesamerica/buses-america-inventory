@@ -608,33 +608,53 @@ function DashboardBriefingCard() {
     return isoDate === todayUtc ? 'today' : formatDate(iso);
   };
 
+  // Compact single-row banner, not another full padded card - the dark/gold
+  // gradient echoes the sidebar's own branding (same #1a1a1a/#FFD700 pairing
+  // as the logo block) so this reads as a distinct "headline" strip above
+  // the white stat-card grid rather than one more panel in the same style.
   return (
-    <div style={{background:'white',padding:'2rem',borderRadius:'8px',boxShadow:'0 2px 4px rgba(0,0,0,0.1)',marginBottom:'1.5rem'}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem',gap:'1rem',flexWrap:'wrap'}}>
-        <h3 style={{margin:0}}>📋 Daily Snapshot</h3>
-        <button
-          onClick={refresh}
-          disabled={loading || refreshing}
-          style={{...buttonStyle('blue','md',loading || refreshing),padding:'0.5rem 1rem'}}
-        >
-          {refreshing ? 'Refreshing…' : '🔄 Refresh'}
-        </button>
-      </div>
-
-      {loading ? (
-        <div style={{color:'#666'}}>Loading…</div>
-      ) : error ? (
-        <div style={{color:'#c33'}}>{error}</div>
-      ) : !briefing || !briefing.content ? (
-        <div style={{color:'#666'}}>Not available right now - try Refresh in a bit.</div>
-      ) : (
-        <div>
-          <div style={{fontSize:'1rem',lineHeight:'1.6',color:'#333'}}>{briefing.content}</div>
-          <div style={{fontSize:'0.75rem',color:'#999',marginTop:'0.75rem'}}>
-            Generated {generatedLabel(briefing.generated_at)}
-          </div>
+    <div style={{
+      background:'linear-gradient(135deg, #1a1a1a 0%, #333333 100%)',
+      borderRadius:'0.75rem',
+      padding:'0.85rem 1.25rem',
+      marginBottom:'1.5rem',
+      display:'flex',
+      alignItems:'center',
+      gap:'0.85rem',
+      boxShadow:'0 4px 6px rgba(0,0,0,0.2)',
+      flexWrap:'wrap'
+    }}>
+      <div style={{fontSize:'1.4rem',flexShrink:0}}>💡</div>
+      <div style={{flex:1,minWidth:'200px'}}>
+        <div style={{fontSize:'0.65rem',fontWeight:'700',letterSpacing:'0.08em',textTransform:'uppercase',color:'#FFD700',marginBottom:'0.15rem'}}>
+          Daily Snapshot
         </div>
-      )}
+        {loading ? (
+          <div style={{color:'#bbb',fontSize:'0.9rem'}}>Loading…</div>
+        ) : error ? (
+          <div style={{color:'#ff9b9b',fontSize:'0.9rem'}}>{error}</div>
+        ) : !briefing || !briefing.content ? (
+          <div style={{color:'#bbb',fontSize:'0.9rem'}}>Not available right now - try Refresh.</div>
+        ) : (
+          <div style={{color:'white',fontSize:'0.9rem',lineHeight:'1.4'}}>
+            {briefing.content}
+            <span style={{color:'#999',fontSize:'0.75rem'}}> · {generatedLabel(briefing.generated_at)}</span>
+          </div>
+        )}
+      </div>
+      <button
+        onClick={refresh}
+        disabled={loading || refreshing}
+        title="Refresh"
+        style={{
+          flexShrink:0,width:'2rem',height:'2rem',borderRadius:'50%',
+          border:'1px solid rgba(255,255,255,0.25)',background:'rgba(255,255,255,0.08)',
+          color:'white',fontSize:'1rem',display:'flex',alignItems:'center',justifyContent:'center',
+          cursor:(loading||refreshing)?'default':'pointer',opacity:(loading||refreshing)?0.5:1
+        }}
+      >
+        🔄
+      </button>
     </div>
   );
 }
