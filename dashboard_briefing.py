@@ -43,7 +43,13 @@ def build_briefing(context: dict) -> str:
 
     # Slow mover - only worth a sentence if the single stalest unit is
     # meaningfully above average, not just nominally above it.
+    # float(): Postgres's AVG() of an integer column comes back through
+    # asyncpg as a Decimal, and Decimal * a float literal (1.5 below)
+    # raises TypeError - Decimal only mixes with int, not float. Every
+    # other number in this module is already a plain float (get_dashboard()
+    # etc. cast explicitly); this is the one value that wasn't.
     avg_days = inv.get("avg_days_in_inventory")
+    avg_days = float(avg_days) if avg_days is not None else None
     if stalest and avg_days:
         top = stalest[0]
         days = top["days_in_inventory"]
