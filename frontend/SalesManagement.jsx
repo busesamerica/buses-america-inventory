@@ -1404,13 +1404,9 @@ const SaleDetailsModal = ({ bus, onClose, onPaymentAdded, accounts }) => {
                             Method: {payment.payment_method}
                           </div>
                         )}
-                        {payment.reference_number ? (
+                        {payment.reference_number && (
                           <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
                             Ref: {payment.reference_number}
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: '0.75rem', color: '#d97706', marginTop: '0.25rem', fontWeight: '600' }}>
-                            ⚠️ No reference number on file
                           </div>
                         )}
                       </div>
