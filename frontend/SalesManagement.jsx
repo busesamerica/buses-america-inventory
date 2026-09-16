@@ -600,14 +600,25 @@ const PaymentFormModal = ({ bus, accounts, onClose, onPaymentRecorded }) => {
     payment_method: 'Wire Transfer',
     payment_type: 'Payment',
     payment_account_id: '',
+    reference_number: '',
     payment_notes: ''
   });
   const [saving, setSaving] = React.useState(false);
+  // Two-step flow: fill the form, then review a summary before it actually
+  // posts. Once submitted this creates a journal entry, so this is the last
+  // chance to catch a field that got left blank or wrong.
+  const [step, setStep] = React.useState('form');
 
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
 
-  const handleSubmit = async (e) => {
+  const selectedAccount = accounts.find(a => a.account_id === parseInt(formData.payment_account_id));
+
+  const handleReview = (e) => {
     e.preventDefault();
+    setStep('review');
+  };
+
+  const handleConfirm = async () => {
     setSaving(true);
 
     try {
@@ -621,7 +632,8 @@ const PaymentFormModal = ({ bus, accounts, onClose, onPaymentRecorded }) => {
         body: JSON.stringify({
           ...formData,
           payment_amount: parseFloat(formData.payment_amount),
-          payment_account_id: formData.payment_account_id ? parseInt(formData.payment_account_id) : null
+          payment_account_id: formData.payment_account_id ? parseInt(formData.payment_account_id) : null,
+          reference_number: formData.reference_number.trim() || null
         })
       });
 
@@ -632,9 +644,11 @@ const PaymentFormModal = ({ bus, accounts, onClose, onPaymentRecorded }) => {
       } else {
         const error = await response.json();
         alert(`Error: ${error.detail || 'Failed to record payment'}`);
+        setStep('form');
       }
     } catch (error) {
       alert(`Error: ${error.message}`);
+      setStep('form');
     } finally {
       setSaving(false);
     }
@@ -703,7 +717,8 @@ const PaymentFormModal = ({ bus, accounts, onClose, onPaymentRecorded }) => {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} style={{ padding: '1.5rem' }}>
+        {step === 'form' && (
+        <form onSubmit={handleReview} style={{ padding: '1.5rem' }}>
           <div style={{ display: 'grid', gap: '1rem' }}>
             <div>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
@@ -823,6 +838,25 @@ const PaymentFormModal = ({ bus, accounts, onClose, onPaymentRecorded }) => {
 
             <div>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
+                Reference Number (Optional)
+              </label>
+              <input
+                type="text"
+                value={formData.reference_number}
+                onChange={(e) => setFormData({ ...formData, reference_number: e.target.value })}
+                placeholder="Wire confirmation #, check #, transaction ID..."
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.5rem',
+                  fontSize: '1rem'
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
                 Notes (Optional)
               </label>
               <textarea
@@ -852,10 +886,210 @@ const PaymentFormModal = ({ bus, accounts, onClose, onPaymentRecorded }) => {
             </button>
             <button
               type="submit"
-              disabled={saving}
-              style={{ ...buttonStyle('green', 'md', saving), flex: 1 }}
+              style={{ ...buttonStyle('green', 'md'), flex: 1 }}
             >
-              {saving ? 'Recording...' : '💰 Record Payment'}
+              Review Payment →
+            </button>
+          </div>
+        </form>
+        )}
+
+        {/* Review / verification step - last chance to catch missing or
+            wrong details before this posts a journal entry. */}
+        {step === 'review' && (
+          <div style={{ padding: '1.5rem' }}>
+            <div style={{
+              padding: '0.875rem 1rem',
+              background: '#fffbeb',
+              border: '1px solid #f59e0b',
+              borderRadius: '0.5rem',
+              color: '#92400e',
+              fontSize: '0.875rem',
+              marginBottom: '1.25rem',
+              display: 'flex',
+              gap: '0.5rem',
+              alignItems: 'start'
+            }}>
+              <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>⚠️</span>
+              <span>Please verify these details. Once confirmed, this creates an accounting entry and updates the balance due.</span>
+            </div>
+
+            <div style={{ display: 'grid', gap: '0.6rem', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+              {[
+                ['Amount', `${formData.payment_currency} ${parseFloat(formData.payment_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`],
+                ['Deposited To', selectedAccount ? selectedAccount.account_name : '—'],
+                ['Payment Date', formData.payment_date],
+                ['Payment Type', formData.payment_type],
+                ['Payment Method', formData.payment_method],
+                ['Reference Number', formData.reference_number.trim() || '— none —'],
+                ['Notes', formData.payment_notes.trim() || '— none —']
+              ].map(([label, value]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', padding: '0.6rem 0.75rem', background: '#f9fafb', borderRadius: '0.375rem' }}>
+                  <span style={{ color: '#6b7280', fontWeight: '600' }}>{label}</span>
+                  <span style={{ color: (label === 'Reference Number' || label === 'Notes') && (value.startsWith('— ')) ? '#d97706' : '#111827', fontWeight: '600', textAlign: 'right' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button
+                type="button"
+                onClick={() => setStep('form')}
+                disabled={saving}
+                style={{ ...buttonStyle('outline', 'md', saving), flex: 1 }}
+              >
+                ← Back to Edit
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirm}
+                disabled={saving}
+                style={{ ...buttonStyle('green', 'md', saving), flex: 1 }}
+              >
+                {saving ? 'Recording...' : '✅ Confirm & Record Payment'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ============= EDIT PAYMENT MODAL =============
+// Fills in or corrects a payment already on file - e.g. a reference number
+// left blank when it was first recorded. Amount/currency/account/date stay
+// fixed here since they're already reflected in a posted accounting entry.
+const EditPaymentModal = ({ bus, payment, onClose, onUpdated }) => {
+  const [formData, setFormData] = React.useState({
+    payment_method: payment.payment_method || '',
+    payment_type: payment.payment_type || 'Payment',
+    reference_number: payment.reference_number || '',
+    payment_notes: payment.payment_notes || ''
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+
+    try {
+      const token = localStorage.getItem('session_token');
+      const response = await fetch(`${API_URL}/inventory/${bus.inventory_id}/payments/${payment.payment_id}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ...formData,
+          reference_number: formData.reference_number.trim() || null
+        })
+      });
+
+      if (response.ok) {
+        onUpdated();
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        setError(errData.detail || 'Failed to update payment');
+        setSaving(false);
+      }
+    } catch (err) {
+      setError(err.message);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}>
+      <div style={{ background: 'white', borderRadius: '0.75rem', maxWidth: '450px', width: '90%', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+        <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: '700', color: '#111827' }}>✏️ Complete Payment Details</h3>
+          <button onClick={onClose} style={{ padding: '0.5rem', background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#6b7280' }}>✕</button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ padding: '1.5rem' }}>
+          {error && (
+            <div style={{ padding: '0.75rem', background: '#fee2e2', border: '1px solid #ef4444', borderRadius: '0.375rem', color: '#991b1b', marginBottom: '1rem', fontSize: '0.875rem' }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ padding: '0.75rem 1rem', background: '#f9fafb', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem', color: '#374151' }}>
+            {formatDate(payment.payment_date)} — {formatCurrency(payment.payment_amount, payment.payment_currency)}
+          </div>
+
+          <div style={{ display: 'grid', gap: '1rem' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
+                Reference Number
+              </label>
+              <input
+                type="text"
+                value={formData.reference_number}
+                onChange={(e) => setFormData({ ...formData, reference_number: e.target.value })}
+                placeholder="Wire confirmation #, check #, transaction ID..."
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
+                Payment Type
+              </label>
+              <select
+                value={formData.payment_type}
+                onChange={(e) => setFormData({ ...formData, payment_type: e.target.value })}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}
+              >
+                <option value="Deposit">Deposit</option>
+                <option value="Payment">Payment</option>
+                <option value="Partial Payment">Partial Payment</option>
+                <option value="Final Payment">Final Payment</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
+                Payment Method
+              </label>
+              <select
+                value={formData.payment_method}
+                onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem' }}
+              >
+                <option value="Wire Transfer">Wire Transfer</option>
+                <option value="Cash">Cash</option>
+                <option value="Check">Check</option>
+                <option value="Credit Card">Credit Card</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.875rem', color: '#374151' }}>
+                Notes
+              </label>
+              <textarea
+                value={formData.payment_notes}
+                onChange={(e) => setFormData({ ...formData, payment_notes: e.target.value })}
+                rows="2"
+                placeholder="Payment reference or notes..."
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '1rem', resize: 'vertical' }}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+            <button type="button" onClick={onClose} disabled={saving} style={{ ...buttonStyle('outline', 'md', saving), flex: 1 }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} style={{ ...buttonStyle('green', 'md', saving), flex: 1 }}>
+              {saving ? 'Saving...' : '💾 Save Changes'}
             </button>
           </div>
         </form>
@@ -872,6 +1106,7 @@ const SaleDetailsModal = ({ bus, onClose, onPaymentAdded, accounts }) => {
   const [showPaymentForm, setShowPaymentForm] = React.useState(false);
   const [showImportButton, setShowImportButton] = React.useState(false);
   const [importing, setImporting] = React.useState(false);
+  const [editingPayment, setEditingPayment] = React.useState(null);
 
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
 
@@ -1169,14 +1404,26 @@ const SaleDetailsModal = ({ bus, onClose, onPaymentAdded, accounts }) => {
                             Method: {payment.payment_method}
                           </div>
                         )}
-                        {payment.reference_number && (
+                        {payment.reference_number ? (
                           <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
                             Ref: {payment.reference_number}
                           </div>
+                        ) : (
+                          <div style={{ fontSize: '0.75rem', color: '#d97706', marginTop: '0.25rem', fontWeight: '600' }}>
+                            ⚠️ No reference number on file
+                          </div>
                         )}
                       </div>
-                      <div style={{ fontSize: '1.125rem', fontWeight: '700', color: '#10b981' }}>
-                        {formatCurrency(payment.payment_amount, payment.payment_currency)}
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '1.125rem', fontWeight: '700', color: '#10b981' }}>
+                          {formatCurrency(payment.payment_amount, payment.payment_currency)}
+                        </div>
+                        <button
+                          onClick={() => setEditingPayment(payment)}
+                          style={{ marginTop: '0.5rem', padding: '0.25rem 0.6rem', background: 'transparent', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.75rem', color: '#374151', cursor: 'pointer' }}
+                        >
+                          ✏️ Edit
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1215,6 +1462,20 @@ const SaleDetailsModal = ({ bus, onClose, onPaymentAdded, accounts }) => {
           onClose={() => setShowPaymentForm(false)}
           onPaymentRecorded={() => {
             setShowPaymentForm(false);
+            loadSummary();
+            onPaymentAdded();
+          }}
+        />
+      )}
+
+      {/* Edit Payment Modal (nested) - fills in details left incomplete when a payment was first recorded */}
+      {editingPayment && (
+        <EditPaymentModal
+          bus={bus}
+          payment={editingPayment}
+          onClose={() => setEditingPayment(null)}
+          onUpdated={() => {
+            setEditingPayment(null);
             loadSummary();
             onPaymentAdded();
           }}
