@@ -77,6 +77,15 @@ class PaymentCreate(BaseModel):
     payment_notes: Optional[str] = None
     payment_account_id: int  # Required — which bank/cash account receives the payment
 
+class PaymentUpdate(BaseModel):
+    # Amount/currency/account/date aren't editable here — they're already
+    # reflected in a posted accounting entry, so changing them would need to
+    # reverse and repost that journal entry rather than just an UPDATE.
+    payment_method: Optional[str] = None
+    payment_type: Optional[str] = None
+    reference_number: Optional[str] = None
+    payment_notes: Optional[str] = None
+
 class PrePurchaseInspectionCreate(BaseModel):
     vin: str
     stock_number_temp: Optional[str] = None
@@ -2508,6 +2517,49 @@ async def delete_payment(
     )
 
     return {"message": "Payment deleted successfully"}
+
+@app.patch("/api/inventory/{inventory_id}/payments/{payment_id}")
+async def update_payment(
+    inventory_id: int,
+    payment_id: int,
+    payment: PaymentUpdate,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """Fill in or correct a payment's method/type/reference/notes after the fact —
+    e.g. adding a reference number that was left blank when it was first recorded."""
+
+    existing = await db.fetchrow(
+        "SELECT * FROM payments WHERE payment_id = $1 AND inventory_id = $2",
+        payment_id, inventory_id
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    updates = payment.dict(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    set_clauses = [f"{key} = ${i}" for i, key in enumerate(updates.keys(), start=1)]
+    values = list(updates.values())
+    values.append(payment_id)
+    values.append(inventory_id)
+
+    query = f"""
+        UPDATE payments SET {', '.join(set_clauses)}
+        WHERE payment_id = ${len(values) - 1} AND inventory_id = ${len(values)}
+        RETURNING *
+    """
+    row = await db.fetchrow(query, *values)
+
+    await log_audit(
+        db, user['user_id'], user['username'],
+        'update', 'payments', payment_id,
+        old_values=dict(existing), new_values=dict(row),
+        description=f"Updated payment #{payment_id} on inventory #{inventory_id}: {', '.join(updates.keys())}"
+    )
+
+    return dict(row)
 
 # ==================== SALES ROUTE ALIASES ====================
 # The SalesManagement frontend calls /api/sales/{id}/payment
