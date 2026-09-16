@@ -13,6 +13,7 @@ const TransactionJournal = ({ isOpen, onClose }) => {
     end_date: new Date().toISOString().split('T')[0],
     reference_type: ''
   }), filters = _fs[0], setFilters = _fs[1];
+  var _ses = _s(''), search = _ses[0], setSearch = _ses[1];
 
   var API_URL = window.API_BASE_URL ? window.API_BASE_URL + '/api' : 'https://buses-america.onrender.com/api';
 
@@ -112,8 +113,25 @@ const TransactionJournal = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
+  var matchesSearch = function(t) {
+    if (!search) return true;
+    var q = search.trim().toLowerCase();
+    if (!q) return true;
+    var typeLabel = (typeLabels[t.reference_type] || t.reference_type || '').toLowerCase();
+    if ((t.description || '').toLowerCase().indexOf(q) !== -1) return true;
+    if (String(t.transaction_id || '').indexOf(q) !== -1) return true;
+    if (typeLabel.indexOf(q) !== -1) return true;
+    return (t.lines || []).some(function(l) {
+      return (l.account_name || '').toLowerCase().indexOf(q) !== -1 ||
+        (l.notes || '').toLowerCase().indexOf(q) !== -1 ||
+        String(sf(l.debit_amount) || '').indexOf(q) !== -1 ||
+        String(sf(l.credit_amount) || '').indexOf(q) !== -1;
+    });
+  };
+  var filteredTransactions = transactions.filter(matchesSearch);
+
   var totD = { USD: 0, MXN: 0 }, totC = { USD: 0, MXN: 0 };
-  transactions.forEach(function(t) {
+  filteredTransactions.forEach(function(t) {
     (t.lines || []).forEach(function(l) {
       var c = (l && l.currency) || 'USD';
       totD[c] = (totD[c] || 0) + Math.round(sf(l.debit_amount) * 100) / 100;
@@ -177,8 +195,12 @@ const TransactionJournal = ({ isOpen, onClose }) => {
             h('option',{value:'revaluation'},'FX Revaluations')
           )
         ),
+        h('div', { style:{flex:isMobile?'1 1 100%':'1 1 220px',minWidth:'160px'} },
+          h('label', { style: { display:'block',fontSize:'0.65rem',fontWeight:'700',color:'#9ca3af',marginBottom:'0.2rem',textTransform:'uppercase',letterSpacing:'0.05em' } }, 'Search'),
+          h('input', { type:'text',placeholder:'🔍 Account, description, amount…',value:search,onChange:function(e){setSearch(e.target.value)},style:{padding:'0.35rem 0.5rem',border:'1px solid #d1d5db',borderRadius:'0.25rem',fontSize:'0.8rem',width:'100%',boxSizing:'border-box'} })
+        ),
         h('button', { onClick:function(){loadAccounts();loadTransactions();}, style: Object.assign({}, buttonStyle('blue', 'sm'), { padding:'0.35rem 1rem' }) }, 'Run Report'),
-        h('div', { style:{marginLeft:'auto',fontSize:'0.8rem',color:'#6b7280',fontWeight:'600'} }, transactions.length + ' entries')
+        h('div', { style:{marginLeft:'auto',fontSize:'0.8rem',color:'#6b7280',fontWeight:'600'} }, filteredTransactions.length + ' entries')
       ),
 
       // Content
@@ -187,8 +209,8 @@ const TransactionJournal = ({ isOpen, onClose }) => {
           ? h('div', { style:{padding:'3rem',textAlign:'center',color:'#6b7280'} }, 'Loading...')
           : error
             ? h('div', { style:{padding:'2rem',textAlign:'center',color:'#991b1b'} }, error)
-            : transactions.length === 0
-              ? h('div', { style:{padding:'3rem',textAlign:'center',color:'#6b7280'} }, 'No entries found.')
+            : filteredTransactions.length === 0
+              ? h('div', { style:{padding:'3rem',textAlign:'center',color:'#6b7280'} }, transactions.length === 0 ? 'No entries found.' : 'No entries match your search.')
               // DATE/arrow/DEBIT/CREDIT are fixed-width columns totalling
               // ~380px, so on a phone they squeezed ACCOUNT down to a couple
               // of characters (account names wrapped into vertical towers)
@@ -206,7 +228,7 @@ const TransactionJournal = ({ isOpen, onClose }) => {
                     )
                   ),
                   h('tbody', null,
-                    transactions.map(function(t) {
+                    filteredTransactions.map(function(t) {
                       var lines = t.lines || [];
                       var rows = [];
                       var typeLabel = typeLabels[t.reference_type] || t.reference_type || 'Entry';
@@ -313,7 +335,7 @@ const TransactionJournal = ({ isOpen, onClose }) => {
           ),
           // Status bar
           h('div', { style:{padding:'0.5rem ' + padX,borderTop:'1px solid #e5e7eb',display:'flex',flexWrap:'wrap',gap:'0.25rem 0.75rem',justifyContent:'space-between',alignItems:'center',fontSize:'0.7rem'} },
-            h('div', { style:{color:'#6b7280'} }, transactions.length + ' journal entries'),
+            h('div', { style:{color:'#6b7280'} }, filteredTransactions.length + ' journal entries'),
             bothBal
               ? h('div', { style:{color:'#059669',fontWeight:'600'} }, '\u2713 All currencies balanced')
               : h('div', { style:{color:'#6b7280',fontStyle:'italic'} }, 'Per-currency differences are expected when cross-currency transactions (exchanges) are present.')
