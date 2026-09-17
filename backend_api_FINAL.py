@@ -5620,14 +5620,19 @@ async def create_inventory_from_inspection(
     # Generate inspection summary
     summary = generate_inspection_summary(dict(inspection))
     
-    # Determine condition
+    # Determine condition. No fallback here on purpose - overall_rating
+    # missing/blank/unmapped used to default to the literal string 'Used',
+    # which isn't a real condition tier and isn't even translated like the
+    # rest of the document; leaving it unset lets the quote's Condición
+    # field show its normal "not yet captured" placeholder instead of a
+    # fabricated-looking value, the same as any other still-blank spec.
     condition_map = {
         'Excellent': 'Excellent',
         'Good': 'Good',
         'Fair': 'Fair',
         'Poor': 'Needs Major Work'
     }
-    condition = condition_map.get(inspection['overall_rating'], 'Used')
+    condition = condition_map.get(inspection['overall_rating'])
 
     # current_location/status must match the vocabulary the dashboard and
     # reporting queries filter on ('US Stock' / 'Mexico Stock', and the
