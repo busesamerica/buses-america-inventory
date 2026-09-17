@@ -151,8 +151,11 @@ def calculate_pre_fill_data(inspection):
         'interior_color': inspection.get('interior_color'),
         'title_status': inspection.get('title_status'),
         
-        # Calculated/derived
-        'condition': condition_map.get(inspection.get('overall_rating'), 'Used'),
+        # Calculated/derived. No fallback here on purpose - see the
+        # matching condition_map in create_inventory_from_inspection
+        # (backend_api_FINAL.py) for why a missing/unmapped rating should
+        # leave this unset rather than default to the literal word 'Used'.
+        'condition': condition_map.get(inspection.get('overall_rating')),
         'reconditioning_cost_usd': inspection.get('estimated_repair_cost_usd', 0),
         
         # Acquisition info

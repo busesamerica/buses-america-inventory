@@ -11,7 +11,7 @@
 // tracked on the unit itself. QuoteDocument.jsx already prints a bus
 // line's `notes` under its row in the price breakdown, so setting it here
 // is the entire fix - nothing to change there.
-const IMPORTED_LINE_NOTE = 'Incluye importación con documentación en regla (Pedimento, Factura y Repuve).';
+const IMPORTED_LINE_NOTE = 'Unidad importada con documentación en regla (Pedimento, Factura y REPUVE).';
 
 const QuoteModal = ({ quote, clients, currentUser, onClose, onSaved }) => {
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
@@ -513,7 +513,7 @@ const QuoteModal = ({ quote, clients, currentUser, onClose, onSaved }) => {
                                 checked={l.notes === IMPORTED_LINE_NOTE}
                                 onChange={(e) => updateLine(l.key, 'notes', e.target.checked ? IMPORTED_LINE_NOTE : '')}
                               />
-                              Incluye importación (Pedimento, Factura y Repuve)
+                              Unidad importada (Pedimento, Factura y REPUVE)
                             </label>
                           )}
                         </td>
