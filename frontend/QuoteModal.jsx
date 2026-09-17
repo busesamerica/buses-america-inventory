@@ -451,21 +451,6 @@ const QuoteModal = ({ quote, clients, currentUser, onClose, onSaved }) => {
                               on {u.open_quote_count} open quote{u.open_quote_count > 1 ? 's' : ''}
                             </span>
                           )}
-                          {/* exterior_color, engine make/model/type, transmission and
-                              condition are what the quote's "Datos del autobús" panel
-                              prints - flag here, before the unit is on a quote, if any of
-                              them is still blank on this inventory record so it can be
-                              filled in via Inventory Edit first instead of surfacing as a
-                              blank field on the PDF. */}
-                          {(!u.exterior_color || !u.engine_make || !u.engine_model || !u.engine_type
-                            || !u.transmission || !u.condition) && (
-                            <span style={{
-                              marginLeft: '0.5rem', fontSize: '0.7rem', background: '#fee2e2',
-                              color: '#991b1b', padding: '0.15rem 0.5rem', borderRadius: '999px', fontWeight: '700'
-                            }}>
-                              ⚠ specs incompletas
-                            </span>
-                          )}
                         </div>
                         <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.2rem' }}>
                           Stock {u.stock_number} · VIN {u.vin} · {u.status}
