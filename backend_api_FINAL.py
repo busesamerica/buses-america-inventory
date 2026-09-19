@@ -2552,6 +2552,39 @@ async def update_payment(
     """
     row = await db.fetchrow(query, *values)
 
+    # The payment's journal entry (transactions.description and the two
+    # transaction_lines.notes) was written from payment_method/payment_type
+    # at creation time and never re-derived - left alone, the ledger would
+    # keep showing the old method/type after this edit even though `payments`
+    # now has the new one.
+    if 'payment_method' in updates or 'payment_type' in updates:
+        trans_row = await db.fetchrow(
+            "SELECT transaction_id FROM transactions WHERE reference_type = 'payment' AND reference_id = $1",
+            payment_id
+        )
+        if trans_row:
+            trans_id = trans_row['transaction_id']
+            bus_info = await db.fetchrow(
+                "SELECT stock_number, year, make, model FROM inventory WHERE inventory_id = $1",
+                inventory_id
+            )
+            bus_desc = f"{bus_info['stock_number']} — {bus_info['year']} {bus_info['make']} {bus_info['model']}" if bus_info else f"inventory #{inventory_id}"
+            new_method = row['payment_method']
+            new_type = row['payment_type']
+
+            await db.execute(
+                "UPDATE transactions SET description = $1 WHERE transaction_id = $2",
+                f"Payment received for {bus_desc} — {new_method} ({new_type})", trans_id
+            )
+            await db.execute(
+                "UPDATE transaction_lines SET notes = $1 WHERE transaction_id = $2 AND debit_amount > 0",
+                f"Payment received — {new_method}", trans_id
+            )
+            await db.execute(
+                "UPDATE transaction_lines SET notes = $1 WHERE transaction_id = $2 AND credit_amount > 0",
+                f"AR reduction — {new_type} for {bus_desc}", trans_id
+            )
+
     await log_audit(
         db, user['user_id'], user['username'],
         'update', 'payments', payment_id,
