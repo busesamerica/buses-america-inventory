@@ -16,6 +16,9 @@ const IMPORTED_LINE_NOTE = 'Unidad importada con documentación en regla (Pedime
 const QuoteModal = ({ quote, clients, currentUser, onClose, onSaved }) => {
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
   const isEdit = !!(quote && quote.quote_id);
+  // Omar's own account defaults to the sales team's name/email rather than
+  // his personal login info; everyone else still defaults to their own.
+  const isOmar = currentUser?.username === 'admin';
 
   const today = new Date().toISOString().split('T')[0];
   const inDays = (days) => {
@@ -52,9 +55,9 @@ const QuoteModal = ({ quote, clients, currentUser, onClose, onSaved }) => {
     warranty_terms: quote?.warranty_terms || '60 días en motor y transmisión contra fallas no ocasionadas por negligencia.',
     notes: quote?.notes || '',
     internal_notes: quote?.internal_notes || '',
-    prepared_by_name: quote?.prepared_by_name || 'Omar Lopez',
+    prepared_by_name: quote?.prepared_by_name || (isOmar ? 'Omar Lopez' : currentUser?.full_name) || '',
     prepared_by_phone: quote?.prepared_by_phone || remembered('quote_seller_phone'),
-    prepared_by_email: quote?.prepared_by_email || 'ventas@busesamerica.com'
+    prepared_by_email: quote?.prepared_by_email || (isOmar ? 'ventas@busesamerica.com' : currentUser?.email) || remembered('quote_seller_email')
   });
 
   const [lines, setLines] = React.useState(
@@ -207,6 +210,7 @@ const QuoteModal = ({ quote, clients, currentUser, onClose, onSaved }) => {
 
     try {
       if (form.prepared_by_phone) localStorage.setItem('quote_seller_phone', form.prepared_by_phone);
+      if (form.prepared_by_email) localStorage.setItem('quote_seller_email', form.prepared_by_email);
     } catch (e) { /* private browsing — the values still save on the quote */ }
 
     setSaving(true);
