@@ -240,6 +240,8 @@ class InventoryUpdate(BaseModel):
 
     # Vehicle specs and safety
     body_style: Optional[str] = None
+    exterior_color: Optional[str] = None
+    interior_color: Optional[str] = None
     brake_system: Optional[str] = None
     air_conditioning: Optional[bool] = None
     heater: Optional[bool] = None
