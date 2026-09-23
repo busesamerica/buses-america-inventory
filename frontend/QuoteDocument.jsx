@@ -326,7 +326,7 @@ const QuoteDocument = ({ quote, onClose, currentUser }) => {
                       <Field label="Modelo" value={singleUnit.model} hint="Modelo" />
                       <Field label="Año" value={singleUnit.unit_year} hint="Año" />
                       <Field label="Color" value={singleUnit.exterior_color} hint="Color" />
-                      <Field label="Kilómetros" value={number(singleUnit.odometer)} hint="N/D" />
+                      <Field label="Kilómetros/Millas" value={number(singleUnit.odometer)} hint="N/D" />
                       <Field label="Pasajeros" value={singleUnit.passenger_capacity} hint="N/D" />
                       <Field label="Motor" value={engineOf(singleUnit)} hint="Motor" />
                       <Field label="Transmisión" value={singleUnit.transmission} hint="Transmisión" />
