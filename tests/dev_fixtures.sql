@@ -37,6 +37,8 @@ SELECT * FROM (VALUES
     ('1300','Bus Inventory','Asset','Inventory','USD'),
     ('4000','Bus Sales (USD)','Income','Sales','USD'),
     ('4005','Bus Sales (MXN)','Income','Sales','MXN'),
-    ('5000','Bus Purchases (COGS)','Expense','Cost of Goods','USD')
+    ('5000','Bus Purchases (COGS)','Expense','Cost of Goods','USD'),
+    ('1010','Operating Bank (USD)','Asset','Bank','USD'),
+    ('1015','Operating Bank (MXN)','Asset','Bank','MXN')
 ) AS v(account_code, account_name, account_type, account_subtype, currency)
 WHERE NOT EXISTS (SELECT 1 FROM accounts);
