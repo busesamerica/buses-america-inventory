@@ -30,6 +30,12 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
     payment_status: 'paid'
   });
 
+  // Refund form: which cost is being refunded (null = closed)
+  const [refundTarget, setRefundTarget] = React.useState(null);
+  const [refundForm, setRefundForm] = React.useState({
+    amount: '', refund_date: '', deposit_account_id: '', reference: ''
+  });
+
   const API_URL = window.API_BASE_URL ? `${window.API_BASE_URL}/api` : 'https://buses-america.onrender.com/api';
 
   // Load existing costs
@@ -187,6 +193,63 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
     }
   };
 
+  const refundableBalance = (cost) => {
+    const refunded = costs
+      .filter(c => c.refund_of_cost_id === cost.cost_id)
+      .reduce((sum, c) => sum - parseFloat(c.amount), 0);
+    return Math.round((parseFloat(cost.amount) - refunded) * 100) / 100;
+  };
+
+  const openRefund = (cost) => {
+    setRefundTarget(cost);
+    setRefundForm({
+      amount: String(refundableBalance(cost)),
+      refund_date: new Date().toISOString().split('T')[0],
+      deposit_account_id: '',
+      reference: ''
+    });
+    setError('');
+  };
+
+  const handleRefundSubmit = async (e) => {
+    e.preventDefault();
+    const amountValue = parseFloat(refundForm.amount);
+    if (isNaN(amountValue) || amountValue <= 0) {
+      setError('Please enter a valid refund amount');
+      return;
+    }
+    if (!refundForm.deposit_account_id) {
+      setError('Select the account the refund was deposited to');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const token = localStorage.getItem('session_token');
+      const response = await fetch(`${API_URL}/inventory/${bus.inventory_id}/costs/${refundTarget.cost_id}/refund`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          amount: Math.round(amountValue * 100) / 100,
+          refund_date: refundForm.refund_date,
+          deposit_account_id: refundForm.deposit_account_id,
+          reference: refundForm.reference
+        })
+      });
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null);
+        throw new Error(errorBody?.detail || 'Failed to record refund');
+      }
+      setRefundTarget(null);
+      await loadCosts();
+      alert('✅ Refund recorded');
+    } catch (err) {
+      setError(err.message || 'Failed to record refund');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleDeleteCost = async (costId) => {
     if (!window.confirm('Delete this cost entry? This will also reverse its accounting entry.')) return;
     
@@ -200,7 +263,8 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete cost');
+        const errorBody = await response.json().catch(() => null);
+        throw new Error(errorBody?.detail || 'Failed to delete cost');
       }
 
       await loadCosts();
@@ -690,6 +754,44 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                 </div>
               ) : (
                 <div style={{ display: 'grid', gap: '1.5rem' }}>
+                  {refundTarget && (
+                    <form onSubmit={handleRefundSubmit} style={{
+                      border: '2px solid #10b981', borderRadius: '0.5rem', padding: '1rem',
+                      display: 'grid', gap: '0.75rem', background: '#f0fdf4'
+                    }}>
+                      <div style={{ fontWeight: '700' }}>
+                        Record refund — {refundTarget.description} ({formatCurrency(refundTarget.amount, refundTarget.currency)})
+                      </div>
+                      {error && <div style={{ color: '#b91c1c', fontSize: '0.875rem' }}>{error}</div>}
+                      <input type="number" step="0.01" min="0.01" placeholder="Refund amount"
+                        value={refundForm.amount}
+                        onChange={(e) => setRefundForm({ ...refundForm, amount: e.target.value })}
+                        style={{ padding: '0.5rem' }} />
+                      <input type="date" value={refundForm.refund_date}
+                        onChange={(e) => setRefundForm({ ...refundForm, refund_date: e.target.value })}
+                        style={{ padding: '0.5rem' }} />
+                      <select value={refundForm.deposit_account_id}
+                        onChange={(e) => setRefundForm({ ...refundForm, deposit_account_id: e.target.value })}
+                        style={{ padding: '0.5rem' }}>
+                        <option value="">Deposited to account…</option>
+                        {bankAccounts.filter(a => a.currency === refundTarget.currency).map(a => (
+                          <option key={a.account_id} value={a.account_id}>{a.account_name} ({a.currency})</option>
+                        ))}
+                      </select>
+                      <input type="text" placeholder="Reference / credit memo # (optional)"
+                        value={refundForm.reference}
+                        onChange={(e) => setRefundForm({ ...refundForm, reference: e.target.value })}
+                        style={{ padding: '0.5rem' }} />
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button type="submit" disabled={saving} style={buttonStyle('green', 'md', saving)}>
+                          {saving ? 'Saving...' : '✅ Record Refund'}
+                        </button>
+                        <button type="button" onClick={() => setRefundTarget(null)} style={buttonStyle('redSoft', 'md')}>
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
                   {Object.entries(costsByCategory).map(([category, categoryCosts]) => (
                     <div key={category} style={{
                       border: '1px solid #e5e7eb',
@@ -715,6 +817,11 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                           <div style={{ flex: 1 }}>
                             <div style={{ fontWeight: '600', marginBottom: '0.25rem' }}>
                               {cost.description}
+                              {cost.refund_of_cost_id && (
+                                <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: '#047857', background: '#d1fae5', padding: '0.125rem 0.5rem', borderRadius: '9999px' }}>
+                                  Refund
+                                </span>
+                              )}
                             </div>
                             <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
                               {cost.vendor && <span>Vendor: {cost.vendor} • </span>}
@@ -726,11 +833,19 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                             <div style={{
                               fontWeight: '700',
                               fontSize: '1.125rem',
-                              color: '#10b981',
+                              color: cost.refund_of_cost_id ? '#059669' : '#10b981',
                               textAlign: 'right'
                             }}>
                               {formatCurrency(cost.amount, cost.currency)}
                             </div>
+                            {!cost.refund_of_cost_id && !isDelivered && refundableBalance(cost) > 0 && (
+                              <button
+                                onClick={() => openRefund(cost)}
+                                style={{ ...buttonStyle('green', 'md'), padding: '0.5rem' }}
+                              >
+                                ↩️ Refund
+                              </button>
+                            )}
                             <button
                               onClick={() => handleDeleteCost(cost.cost_id)}
                               style={{ ...buttonStyle('redSoft', 'md'), padding: '0.5rem' }}

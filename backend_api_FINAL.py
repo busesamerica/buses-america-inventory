@@ -1806,7 +1806,8 @@ async def get_inventory_costs(
     """Get all cost items for an inventory unit"""
     query = """
         SELECT cost_id, inventory_id, cost_category, description, amount, currency,
-               vendor, invoice_number, date_incurred, created_at, created_by
+               vendor, invoice_number, date_incurred, created_at, created_by,
+               refund_of_cost_id
         FROM cost_items
         WHERE inventory_id = $1
         ORDER BY date_incurred DESC, created_at DESC
@@ -2044,6 +2045,15 @@ async def delete_inventory_cost(
         raise HTTPException(status_code=404, detail="Cost item not found")
     await check_unit_not_delivered(db, inventory_id)
 
+    has_refunds = await db.fetchval(
+        "SELECT COUNT(*) FROM cost_items WHERE refund_of_cost_id = $1", cost_id
+    )
+    if has_refunds:
+        raise HTTPException(
+            status_code=400,
+            detail="This cost has refunds recorded against it — delete the refund(s) first."
+        )
+
     # Reverse accounting entry
     trans = await db.fetchrow(
         "SELECT transaction_id FROM transactions WHERE reference_type = 'cost' AND reference_id = $1",
@@ -2080,6 +2090,147 @@ async def delete_inventory_cost(
     
     return {"message": "Cost deleted and accounting entry reversed"}
 
+@app.post("/api/inventory/{inventory_id}/costs/{cost_id}/refund")
+async def refund_inventory_cost(
+    inventory_id: int,
+    cost_id: int,
+    refund_data: dict,
+    db=Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Record a vendor refund against a cost item. Stored as a negative
+    cost_items row linked to the original (history is kept), journaled as
+    Dr Bank / Cr Bus Inventory (1200) under reference_type 'cost' so both COGS
+    paths (ledger and pre_ledger_reset) net it against the bus's cost.
+    """
+    from datetime import datetime
+    from decimal import Decimal
+
+    cost = await db.fetchrow(
+        "SELECT * FROM cost_items WHERE cost_id = $1 AND inventory_id = $2",
+        cost_id, inventory_id
+    )
+    if not cost:
+        raise HTTPException(status_code=404, detail="Cost item not found")
+    if cost['refund_of_cost_id']:
+        raise HTTPException(status_code=400, detail="A refund can't be refunded.")
+    await check_unit_not_delivered(db, inventory_id)
+
+    try:
+        amount = Decimal(str(refund_data.get('amount')))
+    except Exception:
+        raise HTTPException(status_code=400, detail="A valid refund amount is required.")
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Refund amount must be greater than zero.")
+
+    refund_date = refund_data.get('refund_date')
+    if isinstance(refund_date, str) and refund_date:
+        refund_date = datetime.strptime(refund_date, '%Y-%m-%d').date()
+    elif not refund_date:
+        refund_date = date.today()
+    await check_period_lock(db, refund_date)
+
+    already_refunded = await db.fetchval(
+        "SELECT COALESCE(-SUM(amount), 0) FROM cost_items WHERE refund_of_cost_id = $1",
+        cost_id
+    )
+    remaining = cost['amount'] - already_refunded
+    if amount > remaining:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Refund exceeds the refundable balance of {remaining} "
+                   f"({cost['amount']} cost, {already_refunded} already refunded)."
+        )
+
+    currency = cost['currency'] or 'USD'
+    deposit_account_id = refund_data.get('deposit_account_id')
+    if not deposit_account_id or not str(deposit_account_id).strip():
+        raise HTTPException(status_code=400, detail="Deposit account is required.")
+    deposit_account = await db.fetchrow(
+        "SELECT account_name, currency FROM accounts WHERE account_id = $1 AND is_active = TRUE",
+        int(deposit_account_id)
+    )
+    if not deposit_account:
+        raise HTTPException(status_code=404, detail="Deposit account not found")
+    if (deposit_account['currency'] or 'USD') != currency:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{deposit_account['account_name']} is a {deposit_account['currency']} account, "
+                   f"but this cost is in {currency}. Select a {currency} account."
+        )
+
+    inventory_account_id = await db.fetchval(
+        "SELECT account_id FROM accounts WHERE account_code = '1200'"
+    )
+    if not inventory_account_id:
+        raise HTTPException(status_code=400, detail="Bus Inventory account (1200) not found.")
+
+    bus_info = await db.fetchrow(
+        "SELECT stock_number, year, make, model FROM inventory WHERE inventory_id = $1",
+        inventory_id
+    )
+    bus_label = f"{bus_info['stock_number']} — {bus_info['year']} {bus_info['make']} {bus_info['model']}"
+    description = (refund_data.get('description') or '').strip() or f"Refund: {cost['description']}"
+    if not description.startswith('Refund'):
+        description = f"Refund: {description}"
+    reference = (refund_data.get('reference') or '').strip() or cost['invoice_number']
+
+    async with db.transaction():
+        refund_row = await db.fetchrow(
+            """
+            INSERT INTO cost_items (
+                inventory_id, cost_category, description, amount, currency,
+                vendor, invoice_number, date_incurred, created_by, refund_of_cost_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING *
+            """,
+            inventory_id, cost['cost_category'], description, -amount, currency,
+            cost['vendor'], reference, refund_date, user['username'], cost_id
+        )
+
+        reference_number = await generate_transaction_reference(db, 'deposit', refund_date)
+        trans_id = await db.fetchval(
+            """
+            INSERT INTO transactions (
+                transaction_date, description, reference_type, reference_id,
+                currency, created_by, reference_number
+            ) VALUES ($1, $2, 'cost', $3, $4, $5, $6)
+            RETURNING transaction_id
+            """,
+            refund_date,
+            f"Vendor refund - {cost['cost_category']} - {cost['description']} ({bus_label})",
+            refund_row['cost_id'], currency, user['username'], reference_number
+        )
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, account_id, debit_amount, credit_amount, currency, notes
+            ) VALUES ($1, $2, $3, 0, $4, $5)
+            """,
+            trans_id, int(deposit_account_id), amount, currency,
+            f"Refund received from {cost['vendor'] or 'vendor'} — {bus_label}"
+        )
+        await db.execute(
+            """
+            INSERT INTO transaction_lines (
+                transaction_id, account_id, debit_amount, credit_amount, currency, notes
+            ) VALUES ($1, $2, 0, $3, $4, $5)
+            """,
+            trans_id, inventory_account_id, amount, currency,
+            f"Refund of {cost['cost_category']} - {cost['vendor'] or 'N/A'} — {bus_label}"
+        )
+        await update_account_balances(db, trans_id)
+
+        await log_audit(
+            db, user['user_id'], user['username'],
+            'create', 'cost_items', refund_row['cost_id'],
+            new_values=dict(refund_row),
+            description=f"Recorded refund of {amount} {currency} against cost #{cost_id}: {cost['description']}"
+        )
+
+    return dict(refund_row)
+
 @app.patch("/api/inventory/{inventory_id}/costs/{cost_id}")
 async def update_inventory_cost(
     inventory_id: int,
@@ -2096,6 +2247,11 @@ async def update_inventory_cost(
     if not cost:
         raise HTTPException(status_code=404, detail="Cost item not found")
     await check_unit_not_delivered(db, inventory_id)
+    if cost['refund_of_cost_id']:
+        raise HTTPException(
+            status_code=400,
+            detail="Refund entries can't be edited — delete the refund and record it again."
+        )
 
     updates = await request.json()
     

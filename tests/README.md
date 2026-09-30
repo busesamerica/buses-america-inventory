@@ -16,6 +16,12 @@ reachable once a unit is sold and paid in full) and the resulting guard on
 `cost_items` — once a unit is Delivered, adding, editing, or deleting a
 cost against it is rejected.
 
+`test_cost_refund.py` exercises `POST /api/inventory/{id}/costs/{cost_id}/refund`
+— vendor refunds booked as negative cost entries (Dr Bank / Cr Bus Inventory),
+the over-refund / currency / Delivered guards, and that deleting a refund
+restores the unit's cost and the ledger. Also sells a unit to check COGS nets
+the refund.
+
 `test_account_statement.py` exercises `GET /api/accounting/accounts/{id}/statement`
 — the per-account ledger/statement view (opening balance, dated entries,
 running balance, closing balance). Posts its own throwaway journal entries
