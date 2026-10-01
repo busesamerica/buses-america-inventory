@@ -233,11 +233,13 @@ const AccountingDashboard = () => {
         {/* USD Equivalent */}
         <div style={statCardStyle('blue')}>
           <div style={STAT_CARD_LABEL_STYLE}>💰 Consolidated Cash Position</div>
-          <div style={statCardValueStyle(formatCurrency(cashPosition?.totals?.usd_equivalent || 0, 'USD'), true)}>
-            {formatCurrency(cashPosition?.totals?.usd_equivalent || 0, 'USD')}
+          <div style={statCardValueStyle(cashPosition?.totals?.usd_equivalent == null ? '—' : formatCurrency(cashPosition.totals.usd_equivalent, 'USD'), true)}>
+            {cashPosition?.totals?.usd_equivalent == null ? '—' : formatCurrency(cashPosition.totals.usd_equivalent, 'USD')}
           </div>
           <div style={STAT_CARD_SUBTEXT_STYLE}>
-            Rate: 1 USD = {cashPosition?.exchange_rate?.toFixed(2) || '17.50'} MXN
+            {cashPosition?.exchange_rate
+              ? `Rate: 1 USD = ${cashPosition.exchange_rate.toFixed(2)} MXN`
+              : 'No exchange rate set — add one to see the consolidated total'}
           </div>
         </div>
       </div>

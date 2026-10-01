@@ -946,8 +946,8 @@ function InventoryApp() {
                 </div>
                 <div style={{...statCardStyle('green'),cursor:'pointer'}} onClick={() => setView('accounting')} title="View accounting">
                   <div style={STAT_CARD_LABEL_STYLE}>🏦 Cash Position</div>
-                  <div style={statCardValueStyle(formatCurrency(cashPosition?.totals?.usd_equivalent || 0))}>{formatCurrency(cashPosition?.totals?.usd_equivalent || 0)}</div>
-                  <div style={STAT_CARD_SUBTEXT_STYLE}>USD equivalent, all accounts</div>
+                  <div style={statCardValueStyle(cashPosition?.totals?.usd_equivalent == null ? '—' : formatCurrency(cashPosition.totals.usd_equivalent))}>{cashPosition?.totals?.usd_equivalent == null ? '—' : formatCurrency(cashPosition.totals.usd_equivalent)}</div>
+                  <div style={STAT_CARD_SUBTEXT_STYLE}>{cashPosition?.rate_missing ? 'No exchange rate set' : 'USD equivalent, all accounts'}</div>
                 </div>
               </div>
 
