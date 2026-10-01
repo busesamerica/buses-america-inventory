@@ -705,84 +705,125 @@ async def log_audit(
          description)
 
 # ==================== EXCHANGE RATE HELPER ====================
+#
+# Which rate each feature uses (USD->MXN, from the `exchange_rates` table):
+#   - Sale:            rate on the sale date, locked in inventory.sale_exchange_rate
+#   - Customer payment: rate on the payment date, stored on the payment row
+#                       (payments.payment_exchange_rate / converted_amount)
+#   - Reports (income statement / balance sheet): rate on the report end date
+#   - Period close:    rate on the period end date, and it must be recent
+#                       (see MAX_CLOSING_RATE_AGE_DAYS)
+# The ledger itself stores native-currency amounts only; nothing here books FX
+# gains/losses.
 
-async def get_exchange_rate(db, from_curr: str, to_curr: str, as_of_date=None) -> float:
+# A period can only be closed with a rate dated this close to its end date.
+MAX_CLOSING_RATE_AGE_DAYS = 7
+
+
+async def get_exchange_rate_info(db, from_curr: str, to_curr: str, as_of_date=None) -> dict:
     """
-    Get exchange rate from database, handling both directions.
-    If as_of_date is provided, returns the rate effective on that date
-    (most recent effective_date <= as_of_date).
-    If no date, returns the latest rate.
+    Look up an exchange rate and say where it came from.
+
+    Returns {'rate': float, 'effective_date': date|None, 'exact': bool,
+             'fallback': None|'inverse'|'latest'|'any'}.
+    With as_of_date, 'exact' means a rate dated on/before that date for this
+    exact direction was found; anything else is a fallback the caller may want
+    to reject or warn about (e.g. close_period). Without as_of_date the latest
+    rate is returned (not flagged as a fallback).
     """
     if as_of_date:
-        # Date-based lookup: find the rate effective on or before the given date
-        rate = await db.fetchval(
-            """SELECT rate FROM exchange_rates 
-               WHERE from_currency = $1 AND to_currency = $2 
+        # Date-based lookup: the rate effective on or before the given date
+        row = await db.fetchrow(
+            """SELECT rate, effective_date FROM exchange_rates
+               WHERE from_currency = $1 AND to_currency = $2
                AND is_active = true AND effective_date <= $3
                ORDER BY effective_date DESC LIMIT 1""",
             from_curr, to_curr, as_of_date
         )
-        if rate:
-            return float(rate)
-        
+        if row:
+            return {'rate': float(row['rate']), 'effective_date': row['effective_date'],
+                    'exact': True, 'fallback': None}
+
         # Try inverse
-        inverse_rate = await db.fetchval(
-            """SELECT rate FROM exchange_rates 
-               WHERE from_currency = $1 AND to_currency = $2 
+        row = await db.fetchrow(
+            """SELECT rate, effective_date FROM exchange_rates
+               WHERE from_currency = $1 AND to_currency = $2
                AND is_active = true AND effective_date <= $3
                ORDER BY effective_date DESC LIMIT 1""",
             to_curr, from_curr, as_of_date
         )
-        if inverse_rate:
-            return 1.0 / float(inverse_rate)
-        
+        if row:
+            return {'rate': 1.0 / float(row['rate']), 'effective_date': row['effective_date'],
+                    'exact': False, 'fallback': 'inverse'}
+
         # Fall back to any rate on or before that date
-        any_rate = await db.fetchrow(
-            """SELECT from_currency, to_currency, rate FROM exchange_rates 
+        row = await db.fetchrow(
+            """SELECT from_currency, to_currency, rate, effective_date FROM exchange_rates
                WHERE is_active = true AND effective_date <= $1
                ORDER BY effective_date DESC LIMIT 1""",
             as_of_date
         )
-        if any_rate:
-            if any_rate['from_currency'] == from_curr and any_rate['to_currency'] == to_curr:
-                return float(any_rate['rate'])
-            elif any_rate['from_currency'] == to_curr and any_rate['to_currency'] == from_curr:
-                return 1.0 / float(any_rate['rate'])
-        
-        # No rate found for this date — fall through to latest rate
-    
-    # Latest rate lookup (no date or date lookup failed)
-    rate = await db.fetchval(
-        "SELECT rate FROM exchange_rates WHERE from_currency = $1 AND to_currency = $2 AND is_active = true ORDER BY effective_date DESC LIMIT 1",
+        if row:
+            if row['from_currency'] == from_curr and row['to_currency'] == to_curr:
+                return {'rate': float(row['rate']), 'effective_date': row['effective_date'],
+                        'exact': False, 'fallback': 'any'}
+            elif row['from_currency'] == to_curr and row['to_currency'] == from_curr:
+                return {'rate': 1.0 / float(row['rate']), 'effective_date': row['effective_date'],
+                        'exact': False, 'fallback': 'any'}
+
+        # No rate found for this date - fall through to the latest rate
+        # (flagged below so callers can tell it isn't a rate for as_of_date)
+
+    # Latest rate lookup (no date, or date lookup failed)
+    fallback = 'latest' if as_of_date else None
+    row = await db.fetchrow(
+        "SELECT rate, effective_date FROM exchange_rates WHERE from_currency = $1 AND to_currency = $2 AND is_active = true ORDER BY effective_date DESC LIMIT 1",
         from_curr, to_curr
     )
-    if rate:
-        return float(rate)
-    
+    if row:
+        return {'rate': float(row['rate']), 'effective_date': row['effective_date'],
+                'exact': not as_of_date, 'fallback': fallback}
+
     # Try inverse
-    inverse_rate = await db.fetchval(
-        "SELECT rate FROM exchange_rates WHERE from_currency = $1 AND to_currency = $2 AND is_active = true ORDER BY effective_date DESC LIMIT 1",
+    row = await db.fetchrow(
+        "SELECT rate, effective_date FROM exchange_rates WHERE from_currency = $1 AND to_currency = $2 AND is_active = true ORDER BY effective_date DESC LIMIT 1",
         to_curr, from_curr
     )
-    if inverse_rate:
-        return 1.0 / float(inverse_rate)
-    
+    if row:
+        return {'rate': 1.0 / float(row['rate']), 'effective_date': row['effective_date'],
+                'exact': False, 'fallback': 'inverse'}
+
     # Fallback to any active rate
-    any_rate = await db.fetchrow(
-        "SELECT from_currency, to_currency, rate FROM exchange_rates WHERE is_active = true ORDER BY effective_date DESC LIMIT 1"
+    row = await db.fetchrow(
+        "SELECT from_currency, to_currency, rate, effective_date FROM exchange_rates WHERE is_active = true ORDER BY effective_date DESC LIMIT 1"
     )
-    if any_rate:
-        if any_rate['from_currency'] == from_curr and any_rate['to_currency'] == to_curr:
-            return float(any_rate['rate'])
-        elif any_rate['from_currency'] == to_curr and any_rate['to_currency'] == from_curr:
-            return 1.0 / float(any_rate['rate'])
-    
+    if row:
+        if row['from_currency'] == from_curr and row['to_currency'] == to_curr:
+            return {'rate': float(row['rate']), 'effective_date': row['effective_date'],
+                    'exact': False, 'fallback': 'any'}
+        elif row['from_currency'] == to_curr and row['to_currency'] == from_curr:
+            return {'rate': 1.0 / float(row['rate']), 'effective_date': row['effective_date'],
+                    'exact': False, 'fallback': 'any'}
+
     raise HTTPException(
         status_code=400,
         detail=f"No exchange rate found for {from_curr}/{to_curr}. Please set an exchange rate in the Accounting module."
     )
 
-# ==================== CENTRALIZED COST CALCULATION ====================
+
+async def get_exchange_rate(db, from_curr: str, to_curr: str, as_of_date=None) -> float:
+    """
+    Exchange rate as a plain float, handling both directions.
+    If as_of_date is provided, returns the rate effective on that date
+    (most recent effective_date <= as_of_date). If no date, returns the latest rate.
+    Use get_exchange_rate_info() when the caller needs to know which rate
+    date was actually used.
+    """
+    info = await get_exchange_rate_info(db, from_curr, to_curr, as_of_date)
+    if as_of_date and info['fallback'] == 'latest':
+        print(f"Warning: no {from_curr}/{to_curr} rate on or before {as_of_date}; "
+              f"used the latest rate ({info['effective_date']}) instead")
+    return info['rate']
 
 async def calculate_total_costs(db, inventory_id: int, target_currency: str = 'USD', as_of_date=None) -> dict:
     """
@@ -951,7 +992,11 @@ async def get_ledger_cost_by_currency(db, inventory_id: int, inventory_account) 
     STANDARD path: a unit's cost as actually posted to the ledger - sum of
     transaction_lines on inventory_account for this unit's 'purchase'
     transaction and every 'cost' transaction tied to its cost_items rows,
-    grouped by currency. This is GL-derived COGS, the normal/industry
+    grouped by currency. Amounts stay in their native currency (the ledger
+    stores no base-currency value), so a unit's ledger COGS can be a USD part
+    plus an MXN part; per-unit margins shown in the app combine them at the
+    sale-date rate (inventory.sale_exchange_rate), not at a ledger rate.
+    This is GL-derived COGS, the normal/industry
     practice, and what every non-pre_ledger_reset unit should use: the
     record_sale guardrail already guarantees a real 'purchase' transaction
     matching purchase_price_usd exists before such a unit can be sold, and
@@ -2370,6 +2415,80 @@ async def update_inventory_cost(
 
 # ==================== PAYMENT TRACKING (MULTI-CURRENCY) ====================
 
+async def convert_to_sale_currency(db, amount, payment_currency: str, sale_currency: str, on_date):
+    """
+    Value of a payment in the sale's currency, using the rate on the payment date.
+    Returns (converted_amount: Decimal rounded to cents, rate: float | None);
+    rate is None when no conversion was needed.
+    """
+    amount = Decimal(str(amount))
+    if payment_currency == sale_currency:
+        return amount.quantize(Decimal('0.01')), None
+    if {payment_currency, sale_currency} != {'USD', 'MXN'}:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot convert a {payment_currency} payment to a {sale_currency} sale: only USD and MXN are supported."
+        )
+    rate = await get_exchange_rate(db, 'USD', 'MXN', on_date)
+    dec_rate = Decimal(str(rate))
+    if sale_currency == 'USD':      # paid in MXN: pesos / (MXN per USD)
+        converted = amount / dec_rate
+    else:                           # sale in MXN, paid in USD
+        converted = amount * dec_rate
+    return converted.quantize(Decimal('0.01')), rate
+
+
+async def post_payment_journal_entry(db, *, payment_row, sale_currency: str, bank_account_id: int,
+                                     description: str, bank_note: str, ar_note: str, username: str):
+    """
+    Journal entry for a customer payment: Dr Bank (payment currency/amount),
+    Cr AR in the SALE currency for the payment's converted amount, so a USD sale
+    paid in MXN clears AR-USD instead of crediting AR-MXN. Same-currency payments
+    post exactly as before. The rate used is recorded on the transaction header.
+    Returns the transaction_id, or None if no AR account exists.
+    """
+    pay_currency = payment_row['payment_currency'] or 'USD'
+    ar_account = await db.fetchval(
+        "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND currency = $1 AND is_active = TRUE LIMIT 1",
+        sale_currency
+    )
+    # Fallback: any AR account
+    if not ar_account:
+        ar_account = await db.fetchval(
+            "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND is_active = TRUE LIMIT 1"
+        )
+    if not ar_account:
+        print(f"Warning: No AR account found for currency {sale_currency}")
+        return None
+
+    converted = payment_row['converted_amount']
+    if converted is None:
+        converted = payment_row['payment_amount']
+
+    trans_row = await db.fetchrow("""
+        INSERT INTO transactions (transaction_date, description, reference_type, reference_id, currency, exchange_rate, created_by)
+        VALUES ($1, $2, 'payment', $3, $4, $5, $6)
+        RETURNING transaction_id
+    """, payment_row['payment_date'], description, payment_row['payment_id'], pay_currency,
+        payment_row['payment_exchange_rate'], username)
+    trans_id = trans_row['transaction_id']
+
+    # Debit Bank (cash in)
+    await db.execute("""
+        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+        VALUES ($1, $2, $3, 0, $4, $5)
+    """, trans_id, bank_account_id, payment_row['payment_amount'], pay_currency, bank_note)
+
+    # Credit AR (reduce receivable) in the sale currency
+    await db.execute("""
+        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+        VALUES ($1, $2, 0, $3, $4, $5)
+    """, trans_id, ar_account, converted, sale_currency, ar_note)
+
+    await update_account_balances(db, trans_id)
+    return trans_id
+
+
 @app.post("/api/inventory/{inventory_id}/payments")
 async def add_payment(
     inventory_id: int,
@@ -2416,15 +2535,19 @@ async def add_payment(
     # figures that period's closing locked in.
     await check_period_lock(db, payment.payment_date)
 
-    # Get exchange rate as of payment date
-    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN', payment.payment_date)
+    # Value of this payment in the sale currency, at the payment-date rate.
+    # Stored on the payment so it never changes when later rates are entered.
+    converted_amount, payment_rate = await convert_to_sale_currency(
+        db, payment.payment_amount, payment.payment_currency, sale_currency, payment.payment_date
+    )
 
     # Insert payment
     query = """
         INSERT INTO payments (
             inventory_id, payment_amount, payment_currency, payment_date, 
-            payment_method, payment_type, reference_number, payment_notes, created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            payment_method, payment_type, reference_number, payment_notes, created_by,
+            payment_exchange_rate, converted_amount
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING *
     """
     
@@ -2438,11 +2561,13 @@ async def add_payment(
         payment.payment_type,
         payment.reference_number,
         payment.payment_notes,
-        user['username']
+        user['username'],
+        payment_rate,
+        converted_amount
     )
     
     # Update payment status and balance
-    await update_payment_status(db, inventory_id, sale_currency, sale_price, exchange_rate)
+    await update_payment_status(db, inventory_id, sale_currency, sale_price)
 
     await log_audit(
         db, user['user_id'], user['username'],
@@ -2455,55 +2580,24 @@ async def add_payment(
         )
     )
 
-    # Create accounting entry — Debit Bank, Credit AR
+    # Create accounting entry — Debit Bank, Credit AR (in the sale currency)
     try:
-        # Find AR account for this currency
-        ar_account = await db.fetchval(
-            "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND currency = $1 AND is_active = TRUE LIMIT 1",
-            payment.payment_currency
+        bus_info = await db.fetchrow(
+            "SELECT stock_number, year, make, model FROM inventory WHERE inventory_id = $1",
+            inventory_id
         )
-        # Fallback: any AR account
-        if not ar_account:
-            ar_account = await db.fetchval(
-                "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND is_active = TRUE LIMIT 1"
-            )
+        bus_desc = f"{bus_info['stock_number']} — {bus_info['year']} {bus_info['make']} {bus_info['model']}" if bus_info else f"inventory #{inventory_id}"
 
-        if not ar_account:
-            print(f"Warning: No AR account found for currency {payment.payment_currency}")
-        else:
-            # Get bus info for description
-            bus_info = await db.fetchrow(
-                "SELECT stock_number, year, make, model FROM inventory WHERE inventory_id = $1",
-                inventory_id
-            )
-            bus_desc = f"{bus_info['stock_number']} — {bus_info['year']} {bus_info['make']} {bus_info['model']}" if bus_info else f"inventory #{inventory_id}"
-
-            # Create journal entry: Debit Bank, Credit AR
-            trans_row = await db.fetchrow("""
-                INSERT INTO transactions (transaction_date, description, reference_type, reference_id, currency, created_by)
-                VALUES ($1, $2, 'payment', $3, $4, $5)
-                RETURNING transaction_id
-            """, payment.payment_date,
-                f"Payment received for {bus_desc} — {payment.payment_method} ({payment.payment_type})",
-                row['payment_id'], payment.payment_currency, user['username'])
-
-            trans_id = trans_row['transaction_id']
-
-            # Debit Bank (cash in)
-            await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                VALUES ($1, $2, $3, 0, $4, $5)
-            """, trans_id, payment.payment_account_id, payment.payment_amount, payment.payment_currency,
-                f"Payment received — {payment.payment_method}")
-
-            # Credit AR (reduce receivable)
-            await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                VALUES ($1, $2, 0, $3, $4, $5)
-            """, trans_id, ar_account, payment.payment_amount, payment.payment_currency,
-                f"AR reduction — {payment.payment_type} for {bus_desc}")
-
-            await update_account_balances(db, trans_id)
+        await post_payment_journal_entry(
+            db,
+            payment_row=row,
+            sale_currency=sale_currency,
+            bank_account_id=payment.payment_account_id,
+            description=f"Payment received for {bus_desc} — {payment.payment_method} ({payment.payment_type})",
+            bank_note=f"Payment received — {payment.payment_method}",
+            ar_note=f"AR reduction — {payment.payment_type} for {bus_desc}",
+            username=user['username']
+        )
     except Exception as e:
         print(f"Warning: Payment saved but accounting entry failed: {e}")
 
@@ -2514,16 +2608,17 @@ async def add_payment(
     )
     return result
 
-async def update_payment_status(db, inventory_id: int, sale_currency: str, sale_price: float, exchange_rate: float):
+async def update_payment_status(db, inventory_id: int, sale_currency: str, sale_price: float):
     """
-    Update payment_status and balance_due based on total payments received
-    Handles multi-currency conversion automatically
+    Update payment_status and balance_due based on total payments received.
+    Each payment counts at its own stored sale-currency value (converted at the
+    payment-date rate when it was recorded), so adding or deleting one payment
+    never re-values the others.
     """
     
-    # Get all payments for this inventory
     payments = await db.fetch(
         """
-        SELECT payment_amount, payment_currency 
+        SELECT payment_amount, payment_currency, payment_date, converted_amount
         FROM payments 
         WHERE inventory_id = $1
         ORDER BY payment_date
@@ -2531,27 +2626,18 @@ async def update_payment_status(db, inventory_id: int, sale_currency: str, sale_
         inventory_id
     )
     
-    # Convert all payments to sale currency
-    total_paid_in_sale_currency = 0
+    total_paid_in_sale_currency = 0.0
     
     for payment in payments:
-        payment_amount = float(payment['payment_amount'])
-        payment_currency = payment['payment_currency']
-        
-        if payment_currency == sale_currency:
-            # Same currency - no conversion needed
-            converted_amount = payment_amount
-        elif sale_currency == 'USD' and payment_currency == 'MXN':
-            # Payment in MXN, Sale in USD: divide by rate
-            converted_amount = payment_amount / exchange_rate
-        elif sale_currency == 'MXN' and payment_currency == 'USD':
-            # Payment in USD, Sale in MXN: multiply by rate
-            converted_amount = payment_amount * exchange_rate
+        if payment['converted_amount'] is not None:
+            total_paid_in_sale_currency += float(payment['converted_amount'])
         else:
-            # Shouldn't happen, but default to no conversion
-            converted_amount = payment_amount
-        
-        total_paid_in_sale_currency += converted_amount
+            # Row predates migration 010's backfill: convert at that payment's own date
+            converted, _ = await convert_to_sale_currency(
+                db, payment['payment_amount'], payment['payment_currency'],
+                sale_currency, payment['payment_date']
+            )
+            total_paid_in_sale_currency += float(converted)
     
     # Calculate balance due in sale currency
     balance_due = sale_price - total_paid_in_sale_currency
@@ -2594,8 +2680,11 @@ async def get_payments(
     
     sale_currency = inventory['sale_currency']
     
-    # Get exchange rate
-    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')
+    # Current rate, shown for reference only - individual payments use their own stored rate
+    try:
+        exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')
+    except HTTPException:
+        exchange_rate = None
     
     # Get payments
     query = """
@@ -2609,21 +2698,20 @@ async def get_payments(
     
     for row in rows:
         payment_dict = dict(row)
-        payment_amount = float(payment_dict['payment_amount'])
-        payment_currency = payment_dict['payment_currency']
         
-        # Calculate converted amount (to sale currency)
-        if payment_currency == sale_currency:
-            converted_amount = payment_amount
-        elif sale_currency == 'USD' and payment_currency == 'MXN':
-            converted_amount = payment_amount / exchange_rate
-        elif sale_currency == 'MXN' and payment_currency == 'USD':
-            converted_amount = payment_amount * exchange_rate
+        if payment_dict.get('converted_amount') is not None:
+            converted_amount = float(payment_dict['converted_amount'])
+            conversion_rate = float(payment_dict['payment_exchange_rate']) if payment_dict.get('payment_exchange_rate') is not None else None
         else:
-            converted_amount = payment_amount
+            # Row predates migration 010's backfill: convert at that payment's own date
+            converted, conversion_rate = await convert_to_sale_currency(
+                db, payment_dict['payment_amount'], payment_dict['payment_currency'],
+                sale_currency, payment_dict['payment_date']
+            )
+            converted_amount = float(converted)
         
         payment_dict['converted_amount'] = converted_amount
-        payment_dict['conversion_rate'] = exchange_rate if payment_currency != sale_currency else None
+        payment_dict['conversion_rate'] = conversion_rate
         payments.append(payment_dict)
     
     return {
@@ -2653,9 +2741,6 @@ async def delete_payment(
     sale_currency = inventory['sale_currency']
     sale_price = float(inventory['sale_price'])
     
-    # Get exchange rate
-    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')
-    
     # Delete payment
     result = await db.execute(
         "DELETE FROM payments WHERE payment_id = $1 AND inventory_id = $2",
@@ -2666,7 +2751,7 @@ async def delete_payment(
         raise HTTPException(status_code=404, detail="Payment not found")
     
     # Recalculate payment status
-    await update_payment_status(db, inventory_id, sale_currency, sale_price, exchange_rate)
+    await update_payment_status(db, inventory_id, sale_currency, sale_price)
 
     await log_audit(
         db, user['user_id'], user['username'],
@@ -2782,6 +2867,10 @@ async def import_sale_payments(
     if not payments:
         raise HTTPException(status_code=404, detail="No payments found to import")
     
+    sale_currency = await db.fetchval(
+        "SELECT sale_currency FROM inventory WHERE inventory_id = $1", inventory_id
+    )
+    
     imported = 0
     for payment in payments:
         try:
@@ -2793,44 +2882,23 @@ async def import_sale_payments(
             if existing:
                 continue
             
-            # Find bank account and AR account
             bank_account_id = payment.get('payment_account_id')
-            ar_account = await db.fetchval(
-                "SELECT account_id FROM accounts WHERE account_subtype = 'AR' AND is_active = TRUE LIMIT 1"
-            )
-            
-            if not bank_account_id or not ar_account:
+            if not bank_account_id:
                 continue
             
-            # Create journal entry: Debit Bank, Credit AR
-            trans_row = await db.fetchrow("""
-                INSERT INTO transactions (transaction_date, description, reference_type, reference_id, currency, created_by)
-                VALUES ($1, $2, 'payment', $3, $4, $5)
-                RETURNING transaction_id
-            """, payment['payment_date'],
-                f"Payment received for inventory #{inventory_id} — {payment['payment_method']}",
-                payment['payment_id'], payment['payment_currency'], user['username'])
-            
-            trans_id = trans_row['transaction_id']
-            
-            pay_currency = payment['payment_currency'] or 'USD'
-            
-            # Debit Bank
-            await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                VALUES ($1, $2, $3, 0, $4, $5)
-            """, trans_id, bank_account_id, payment['payment_amount'], pay_currency,
-                f"Payment received — {payment['payment_method']}")
-            
-            # Credit AR
-            await db.execute("""
-                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                VALUES ($1, $2, 0, $3, $4, $5)
-            """, trans_id, ar_account, payment['payment_amount'], pay_currency,
-                f"AR reduction — payment on inventory #{inventory_id}")
-            
-            await update_account_balances(db, trans_id)
-            imported += 1
+            # Same posting as add_payment: Debit Bank, Credit AR in the sale currency
+            trans_id = await post_payment_journal_entry(
+                db,
+                payment_row=payment,
+                sale_currency=sale_currency or payment['payment_currency'] or 'USD',
+                bank_account_id=bank_account_id,
+                description=f"Payment received for inventory #{inventory_id} — {payment['payment_method']}",
+                bank_note=f"Payment received — {payment['payment_method']}",
+                ar_note=f"AR reduction — payment on inventory #{inventory_id}",
+                username=user['username']
+            )
+            if trans_id:
+                imported += 1
         except Exception as e:
             print(f"Warning: Could not import payment {payment['payment_id']}: {e}")
     
@@ -4614,7 +4682,7 @@ async def create_transaction(
     # phantom-currency bucket that join never finds, so the money silently
     # vanishes from the cash dashboard with no error raised anywhere.
     # Every other report (income-statement, balance-sheet, ap-summary, the
-    # FX revaluation step in close_period) buckets an account's activity by
+    # net-income step in close_period) buckets an account's activity by
     # transaction_lines.currency directly, not accounts.currency - so a
     # mismatched line on an Expense/Income/Equity/Liability(AP)/Asset(AR)
     # account is read correctly by all of them. Checking those here too only
@@ -4794,20 +4862,23 @@ async def get_cash_position(
     usd_total = sum(float(acc['balance']) for acc in accounts if acc['currency'] == 'USD')
     mxn_total = sum(float(acc['balance']) for acc in accounts if acc['currency'] == 'MXN')
     
-    # Get current exchange rate
+    # Get current exchange rate. This is a dashboard view so a missing rate must
+    # not turn into an error, but it must not be papered over with an invented
+    # rate either: report it as missing and let the UI say so.
     try:
         exchange_rate = await get_exchange_rate(db, 'USD', 'MXN')
-    except:
-        exchange_rate = 17.50  # Cash position is a dashboard view — graceful fallback
+    except HTTPException:
+        exchange_rate = None
     
     return {
         'accounts': accounts,
         'totals': {
             'usd': usd_total,
             'mxn': mxn_total,
-            'usd_equivalent': usd_total + (mxn_total / exchange_rate)
+            'usd_equivalent': (usd_total + (mxn_total / exchange_rate)) if exchange_rate else None
         },
-        'exchange_rate': exchange_rate
+        'exchange_rate': exchange_rate,
+        'rate_missing': exchange_rate is None
     }
 
 # ==================== PROFIT DISTRIBUTION ====================
@@ -5395,10 +5466,12 @@ async def get_dashboard(db=Depends(get_db), user=Depends(get_current_user)):
     # exchange rate configured yet and no inventory could still load an
     # all-zero Dashboard. Calling it unconditionally here must not turn
     # that into a hard 400 that blocks the whole page.
+    # With no rate configured, MXN extra costs can't be converted: leave them
+    # out of the USD total and flag it (rate_missing) rather than inventing one.
     try:
         mxn_to_usd_rate = await get_exchange_rate(db, 'MXN', 'USD')
     except HTTPException:
-        mxn_to_usd_rate = 1 / 17.50
+        mxn_to_usd_rate = None
     # cost_items is one-to-many per unit (a unit typically has several rows -
     # transport, reconditioning, etc.), so it must be pre-aggregated to one
     # row per inventory_id *before* joining to inventory. Joining the raw
@@ -5431,7 +5504,7 @@ async def get_dashboard(db=Depends(get_db), user=Depends(get_current_user)):
         location_value = (
             float(value_row['purchase_total_usd'])
             + float(value_row['extra_costs_usd'])
-            + float(value_row['extra_costs_mxn']) * mxn_to_usd_rate
+            + (float(value_row['extra_costs_mxn']) * mxn_to_usd_rate if mxn_to_usd_rate else 0.0)
         )
         total_value += location_value
         if value_row['current_location'] == 'US Stock':
@@ -5439,6 +5512,7 @@ async def get_dashboard(db=Depends(get_db), user=Depends(get_current_user)):
 
     result['us_inventory_value'] = us_value
     result['total_inventory_value'] = total_value
+    result['rate_missing'] = mxn_to_usd_rate is None
 
     # Status breakdown: powers the Dashboard's unit-status chart. Cheap
     # single grouped query, not tied to the per-unit cost loop above.
@@ -6012,8 +6086,23 @@ async def close_period(
             detail=f"Period must start after the last closing date ({last_close})"
         )
     
-    # Closing exchange rate (rate on period_end) - recorded for reference only
-    closing_rate = await get_exchange_rate(db, 'USD', 'MXN', period_end)
+    # Closing exchange rate (rate on period_end) - recorded for reference only,
+    # but it must be a real, recent rate: get_exchange_rate silently falls back
+    # to older (or even later) rates, which is how a September close once
+    # used an 8/19 rate without anyone noticing.
+    rate_info = await get_exchange_rate_info(db, 'USD', 'MXN', period_end)
+    rate_date = rate_info['effective_date']
+    if rate_info['fallback'] in ('latest', 'any') or rate_date is None or (period_end - rate_date).days > MAX_CLOSING_RATE_AGE_DAYS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Add a USD/MXN exchange rate dated within {MAX_CLOSING_RATE_AGE_DAYS} days of "
+                f"{period_end} (on or before it) before closing this period. "
+                f"Latest rate on file for that date: "
+                f"{rate_date if rate_date else 'none'}."
+            )
+        )
+    closing_rate = rate_info['rate']
     
     # Get Retained Earnings account
     re_account = await db.fetchval(
@@ -6111,9 +6200,15 @@ async def close_period(
     return {
         "message": f"Period {period_start} to {period_end} closed successfully",
         "closing": dict(closing_record),
-        "net_income": {"usd": net_income_usd, "mxn": net_income_mxn},
-        "fx_gain_loss": 0,
-        "exchange_rate": closing_rate
+        "net_income": {
+            "usd": net_income_usd,
+            "mxn": net_income_mxn,
+            # Both currency buckets combined at the closing rate, for display only
+            "combined_usd": net_income_usd + net_income_mxn / closing_rate,
+            "combined_mxn": net_income_mxn + net_income_usd * closing_rate
+        },
+        "exchange_rate": closing_rate,
+        "rate_date": rate_date
     }
 
 # ========================================
@@ -6153,7 +6248,9 @@ async def get_income_statement(
     end = datetime.strptime(end_date, '%Y-%m-%d').date()
     
     # Get exchange rate as of report end date (closing rate)
-    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN', end)
+    rate_info = await get_exchange_rate_info(db, 'USD', 'MXN', end)
+    exchange_rate = rate_info['rate']
+    exchange_rate_date = rate_info['effective_date']
     
     # Query account activity for the period
     query = """
@@ -6246,6 +6343,7 @@ async def get_income_statement(
             'end_date': end_date,
             'currency': 'USD',
             'exchange_rate': float(exchange_rate),
+            'exchange_rate_date': exchange_rate_date,
             'revenue': {'total': revenue['USD'], 'accounts': revenue['accounts']},
             'cogs': {'total': cogs['USD'], 'accounts': cogs['accounts']},
             'gross_profit': gross_profit_usd + (gross_profit_mxn / float(exchange_rate)),
@@ -6267,6 +6365,7 @@ async def get_income_statement(
             'end_date': end_date,
             'currency': 'MXN',
             'exchange_rate': float(exchange_rate),
+            'exchange_rate_date': exchange_rate_date,
             'revenue': {'total': revenue['MXN'], 'accounts': revenue['accounts']},
             'cogs': {'total': cogs['MXN'], 'accounts': cogs['accounts']},
             'gross_profit': gross_profit_mxn + (gross_profit_usd * float(exchange_rate)),
@@ -6280,6 +6379,7 @@ async def get_income_statement(
             'end_date': end_date,
             'currency': 'BOTH',
             'exchange_rate': float(exchange_rate),
+            'exchange_rate_date': exchange_rate_date,
             'revenue': {
                 'total_usd': revenue['USD'],
                 'total_mxn': revenue['MXN'],
@@ -6315,7 +6415,9 @@ async def get_balance_sheet(
     report_date = datetime.strptime(as_of_date, '%Y-%m-%d').date()
     
     # Get exchange rate as of report date (closing rate)
-    exchange_rate = await get_exchange_rate(db, 'USD', 'MXN', report_date)
+    rate_info = await get_exchange_rate_info(db, 'USD', 'MXN', report_date)
+    exchange_rate = rate_info['rate']
+    exchange_rate_date = rate_info['effective_date']
     
     # Query account balances as of the date
     query = """
@@ -6470,6 +6572,7 @@ async def get_balance_sheet(
             'as_of_date': as_of_date,
             'currency': 'USD',
             'exchange_rate': float(exchange_rate),
+            'exchange_rate_date': exchange_rate_date,
             'assets': {
                 'current': assets['current'],
                 'non_current': assets['non_current'],
@@ -6520,6 +6623,7 @@ async def get_balance_sheet(
             'as_of_date': as_of_date,
             'currency': 'MXN',
             'exchange_rate': float(exchange_rate),
+            'exchange_rate_date': exchange_rate_date,
             'assets': {
                 'current': assets['current'],
                 'non_current': assets['non_current'],
@@ -6549,6 +6653,7 @@ async def get_balance_sheet(
             'as_of_date': as_of_date,
             'currency': 'BOTH',
             'exchange_rate': float(exchange_rate),
+            'exchange_rate_date': exchange_rate_date,
             'assets': {
                 'current': assets['current'],
                 'non_current': assets['non_current'],

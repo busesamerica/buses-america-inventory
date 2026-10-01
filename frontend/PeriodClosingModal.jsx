@@ -106,7 +106,7 @@ const PeriodClosingModal = ({ isOpen, onClose, onComplete }) => {
                   h('th', { style: { textAlign:'left',padding:'0.4rem 0',color:'#6b7280',fontWeight:'600' } }, 'Period'),
                   h('th', { style: { textAlign:'right',padding:'0.4rem 0',color:'#6b7280',fontWeight:'600' } }, 'Net Income (USD)'),
                   h('th', { style: { textAlign:'right',padding:'0.4rem 0',color:'#6b7280',fontWeight:'600' } }, 'Net Income (MXN)'),
-                  h('th', { style: { textAlign:'right',padding:'0.4rem 0',color:'#6b7280',fontWeight:'600' } }, 'FX Gain/Loss'),
+                  h('th', { style: { textAlign:'right',padding:'0.4rem 0',color:'#6b7280',fontWeight:'600' } }, 'Combined (MXN)'),
                   h('th', { style: { textAlign:'right',padding:'0.4rem 0',color:'#6b7280',fontWeight:'600' } }, 'Rate')
                 )
               ),
@@ -116,7 +116,7 @@ const PeriodClosingModal = ({ isOpen, onClose, onComplete }) => {
                     h('td', { style: { padding:'0.4rem 0',color:'#111827' } }, formatDate(c.period_start) + ' \u2014 ' + formatDate(c.period_end)),
                     h('td', { style: { padding:'0.4rem 0',textAlign:'right',fontWeight:'600' } }, formatCurrency(c.net_income_usd, 'USD')),
                     h('td', { style: { padding:'0.4rem 0',textAlign:'right',fontWeight:'600' } }, formatCurrency(c.net_income_mxn, 'MXN')),
-                    h('td', { style: { padding:'0.4rem 0',textAlign:'right',fontWeight:'600',color: parseFloat(c.fx_gain_loss || 0) >= 0 ? '#059669' : '#dc2626' } }, formatCurrency(c.fx_gain_loss, 'MXN')),
+                    h('td', { style: { padding:'0.4rem 0',textAlign:'right',fontWeight:'600' } }, formatCurrency(parseFloat(c.net_income_mxn || 0) + parseFloat(c.net_income_usd || 0) * parseFloat(c.exchange_rate || 0), 'MXN')),
                     h('td', { style: { padding:'0.4rem 0',textAlign:'right',color:'#6b7280' } }, parseFloat(c.exchange_rate || 0).toFixed(4))
                   );
                 })
@@ -135,7 +135,8 @@ const PeriodClosingModal = ({ isOpen, onClose, onComplete }) => {
           h('div', { style: { fontSize:'0.8rem',color:'#065f46' } },
             'Net Income: ' + formatCurrency(result.net_income.usd, 'USD') + ' / ' + formatCurrency(result.net_income.mxn, 'MXN')),
           h('div', { style: { fontSize:'0.8rem',color:'#065f46' } },
-            'FX Gain/Loss: ' + formatCurrency(result.fx_gain_loss, 'MXN') + ' at rate ' + result.exchange_rate)
+            'Combined: ' + formatCurrency(result.net_income.combined_mxn, 'MXN') + ' / ' + formatCurrency(result.net_income.combined_usd, 'USD') +
+            ' at rate ' + result.exchange_rate + (result.rate_date ? ' (dated ' + formatDate(result.rate_date) + ')' : ''))
         ),
 
         !result && h('div', null,

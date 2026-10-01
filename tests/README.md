@@ -31,6 +31,13 @@ increases (Asset) and credit-increases (Income) directions, `start_date`
 correctly folds earlier activity into `opening_balance`, and an unknown
 `account_id` 404s.
 
+`test_fx_payments.py` exercises customer payments in a different currency than the
+sale (a USD sale paid partly in MXN clears AR-USD at the payment-date rate, stores the
+rate and converted amount on the payment, and `balance_due` doesn't drift when other
+payments are added or deleted) and that `POST /api/accounting/period-close` refuses to
+run without a recent exchange rate and reports the rate date and combined net income.
+Sells BA-105 and closes a January 2000 period.
+
 ## Setup
 
 `bus_inventory_schema_FINAL.sql` + `migrations/` (applied by `migrate.py`)
@@ -57,6 +64,7 @@ python tests/test_quotes.py
 python tests/test_vin_decode.py
 python tests/test_cost_guard.py
 python tests/test_account_statement.py
+python tests/test_fx_payments.py
 ```
 
 The seed creates the session token `TEST-TOKEN-123`, which the test uses to

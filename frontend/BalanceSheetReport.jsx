@@ -180,6 +180,12 @@ const BalanceSheetReport = ({ isOpen, onClose }) => {
                 <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>
                   As of {formatDate(reportData.as_of_date, 'long')}
                 </div>
+                {reportData.currency !== 'BOTH' && reportData.exchange_rate ? (
+                  <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                    Converted at 1 USD = {Number(reportData.exchange_rate).toFixed(4)} MXN
+                    {reportData.exchange_rate_date ? ` (rate dated ${formatDate(reportData.exchange_rate_date)})` : ''}
+                  </div>
+                ) : null}
               </div>
 
               {/* ASSETS Section */}
