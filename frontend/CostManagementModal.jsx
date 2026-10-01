@@ -250,6 +250,46 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
     }
   };
 
+  // Rendered directly under the cost row being refunded so it's always in view.
+  const renderRefundForm = () => (
+    <form ref={(el) => el && el.scrollIntoView({ behavior: 'smooth', block: 'center' })} onSubmit={handleRefundSubmit} style={{
+                      border: '2px solid #10b981', borderRadius: '0.5rem', padding: '1rem',
+                      display: 'grid', gap: '0.75rem', background: '#f0fdf4'
+                    }}>
+      <div style={{ fontWeight: '700' }}>
+                        Record refund — {refundTarget.description} ({formatCurrency(refundTarget.amount, refundTarget.currency)})
+      </div>
+                      {error && <div style={{ color: '#b91c1c', fontSize: '0.875rem' }}>{error}</div>}
+      <input type="number" step="0.01" min="0.01" placeholder="Refund amount"
+                        value={refundForm.amount}
+                        onChange={(e) => setRefundForm({ ...refundForm, amount: e.target.value })}
+                        style={{ padding: '0.5rem' }} />
+      <input type="date" value={refundForm.refund_date}
+                        onChange={(e) => setRefundForm({ ...refundForm, refund_date: e.target.value })}
+                        style={{ padding: '0.5rem' }} />
+      <select value={refundForm.deposit_account_id}
+                        onChange={(e) => setRefundForm({ ...refundForm, deposit_account_id: e.target.value })}
+                        style={{ padding: '0.5rem' }}>
+        <option value="">Deposited to account…</option>
+                        {bankAccounts.filter(a => a.currency === refundTarget.currency).map(a => (
+          <option key={a.account_id} value={a.account_id}>{a.account_name} ({a.currency})</option>
+                        ))}
+      </select>
+      <input type="text" placeholder="Reference / credit memo # (optional)"
+                        value={refundForm.reference}
+                        onChange={(e) => setRefundForm({ ...refundForm, reference: e.target.value })}
+                        style={{ padding: '0.5rem' }} />
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <button type="submit" disabled={saving} style={buttonStyle('green', 'md', saving)}>
+                          {saving ? 'Saving...' : '✅ Record Refund'}
+        </button>
+        <button type="button" onClick={() => setRefundTarget(null)} style={buttonStyle('redSoft', 'md')}>
+                          Cancel
+        </button>
+      </div>
+    </form>
+  );
+
   const handleDeleteCost = async (costId) => {
     if (!window.confirm('Delete this cost entry? This will also reverse its accounting entry.')) return;
     
@@ -754,44 +794,6 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                 </div>
               ) : (
                 <div style={{ display: 'grid', gap: '1.5rem' }}>
-                  {refundTarget && (
-                    <form onSubmit={handleRefundSubmit} style={{
-                      border: '2px solid #10b981', borderRadius: '0.5rem', padding: '1rem',
-                      display: 'grid', gap: '0.75rem', background: '#f0fdf4'
-                    }}>
-                      <div style={{ fontWeight: '700' }}>
-                        Record refund — {refundTarget.description} ({formatCurrency(refundTarget.amount, refundTarget.currency)})
-                      </div>
-                      {error && <div style={{ color: '#b91c1c', fontSize: '0.875rem' }}>{error}</div>}
-                      <input type="number" step="0.01" min="0.01" placeholder="Refund amount"
-                        value={refundForm.amount}
-                        onChange={(e) => setRefundForm({ ...refundForm, amount: e.target.value })}
-                        style={{ padding: '0.5rem' }} />
-                      <input type="date" value={refundForm.refund_date}
-                        onChange={(e) => setRefundForm({ ...refundForm, refund_date: e.target.value })}
-                        style={{ padding: '0.5rem' }} />
-                      <select value={refundForm.deposit_account_id}
-                        onChange={(e) => setRefundForm({ ...refundForm, deposit_account_id: e.target.value })}
-                        style={{ padding: '0.5rem' }}>
-                        <option value="">Deposited to account…</option>
-                        {bankAccounts.filter(a => a.currency === refundTarget.currency).map(a => (
-                          <option key={a.account_id} value={a.account_id}>{a.account_name} ({a.currency})</option>
-                        ))}
-                      </select>
-                      <input type="text" placeholder="Reference / credit memo # (optional)"
-                        value={refundForm.reference}
-                        onChange={(e) => setRefundForm({ ...refundForm, reference: e.target.value })}
-                        style={{ padding: '0.5rem' }} />
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button type="submit" disabled={saving} style={buttonStyle('green', 'md', saving)}>
-                          {saving ? 'Saving...' : '✅ Record Refund'}
-                        </button>
-                        <button type="button" onClick={() => setRefundTarget(null)} style={buttonStyle('redSoft', 'md')}>
-                          Cancel
-                        </button>
-                      </div>
-                    </form>
-                  )}
                   {Object.entries(costsByCategory).map(([category, categoryCosts]) => (
                     <div key={category} style={{
                       border: '1px solid #e5e7eb',
@@ -807,7 +809,8 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                         {category} ({categoryCosts.length})
                       </div>
                       {categoryCosts.map((cost) => (
-                        <div key={cost.cost_id} style={{
+                        <React.Fragment key={cost.cost_id}>
+                        <div style={{
                           padding: '1rem',
                           borderBottom: '1px solid #f3f4f6',
                           display: 'flex',
@@ -854,6 +857,8 @@ const CostManagementModal = ({ bus, onClose, onSave, currentExchangeRate }) => {
                             </button>
                           </div>
                         </div>
+                        {refundTarget && refundTarget.cost_id === cost.cost_id && renderRefundForm()}
+                        </React.Fragment>
                       ))}
                     </div>
                   ))}
