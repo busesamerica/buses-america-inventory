@@ -6269,6 +6269,11 @@ async def get_income_statement(
             LEFT JOIN transaction_lines tl ON a.account_id = tl.account_id
             LEFT JOIN transactions t ON tl.transaction_id = t.transaction_id
             WHERE t.transaction_date >= $1 AND t.transaction_date <= $2
+              -- Period-closing entries move every income/expense balance into
+              -- Retained Earnings, so including them zeroes the statement for any
+              -- range that contains a closed period. Income statements report
+              -- pre-closing activity.
+              AND COALESCE(t.reference_type, '') <> 'period_close'
             GROUP BY a.account_id, a.account_code, a.account_name, a.account_type, a.account_subtype
         )
         SELECT 

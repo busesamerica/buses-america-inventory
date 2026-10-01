@@ -149,6 +149,17 @@ if not any(a.get("account_subtype") == "Retained Earnings" for a in accounts):
     })
     check("Retained Earnings account created for the test", status in (200, 201), f"({status}) {res}")
 
+# Activity inside the period, so the income statement has something to lose when it's closed.
+sales_usd = next(a for a in accounts if a["currency"] == "USD" and a.get("account_subtype") == "Sales")
+status, res = call("POST", "/api/accounting/transactions", {
+    "transaction_date": "2000-01-15", "description": "FX test sale", "reference_type": "manual", "currency": "USD",
+    "lines": [
+        {"account_id": ar_usd["account_id"], "debit_amount": 500, "credit_amount": 0, "currency": "USD"},
+        {"account_id": sales_usd["account_id"], "debit_amount": 0, "credit_amount": 500, "currency": "USD"},
+    ],
+})
+check("January 2000 revenue posted", status in (200, 201), f"({status}) {res}")
+
 period = {"period_start": "2000-01-01", "period_end": "2000-01-31"}
 status, err = call("POST", "/api/accounting/period-close", period)
 check("close refused without a recent rate", status == 400 and "exchange rate" in str(err.get("detail", "")).lower(),
@@ -175,6 +186,14 @@ if status == 200:
     check("close no longer books or reports FX gain/loss",
           "fx_gain_loss" not in closed and float(closed["closing"]["fx_gain_loss"]) == 0
           and closed["closing"]["revaluation_transaction_id"] is None, closed)
+
+    # --- the income statement must not be wiped out by the closing entry ------
+    status, inc = call("GET", "/api/accounting/reports/income-statement"
+                              "?start_date=2000-01-01&end_date=2000-01-31&currency=USD")
+    check("income statement still shows closed-period revenue",
+          status == 200 and abs(float(inc["revenue"]["total"]) - 500) < 0.01, f"({status}) {inc}")
+    check("income statement net income matches the close",
+          status == 200 and abs(float(inc["net_income"]) - 500) < 0.01, f"({status}) {inc}")
 
 print()
 print(f"{passed} passed, {failed} failed")
