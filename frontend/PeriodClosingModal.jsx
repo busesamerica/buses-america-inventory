@@ -55,7 +55,7 @@ const PeriodClosingModal = ({ isOpen, onClose, onComplete }) => {
       setError('Cannot close a period that has not ended yet');
       return;
     }
-    if (!window.confirm('Close period ' + form.period_start + ' to ' + form.period_end + '?\n\nThis will:\n- Close all income/expense accounts to Retained Earnings\n- Create FX revaluation entry\n- Lock the period from edits\n\nThis action cannot be undone.')) {
+    if (!window.confirm('Close period ' + form.period_start + ' to ' + form.period_end + '?\n\nThis will:\n- Close all income/expense accounts to Retained Earnings\n- Lock the period from edits\n\nThis action cannot be undone.')) {
       return;
     }
     setSaving(true);
@@ -162,7 +162,7 @@ const PeriodClosingModal = ({ isOpen, onClose, onComplete }) => {
           ),
 
           h('div', { style: { padding:'0.75rem',background:'#fef3c7',borderRadius:'0.5rem',fontSize:'0.8rem',color:'#92400e',marginBottom:'1rem' } },
-            '\u26A0\uFE0F This will close all income and expense accounts to Retained Earnings, create an FX revaluation entry, and lock the period. This action cannot be undone.'
+            '\u26A0\uFE0F This will close all income and expense accounts to Retained Earnings and lock the period. This action cannot be undone.'
           ),
 
           h('button', {

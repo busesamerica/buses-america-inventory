@@ -5978,10 +5978,16 @@ async def close_period(
     """
     Close an accounting period:
     1. Verify no overlap with existing closings
-    2. Calculate net income for the period
+    2. Calculate net income for the period (per currency)
     3. Close income/expense accounts to Retained Earnings
-    4. Run FX revaluation at closing rate
-    5. Lock the period
+    4. Lock the period
+
+    No FX revaluation entry is booked here. The ledger keeps every account's
+    activity in its native currency (USD lines stay USD, MXN lines stay MXN) and
+    carries no historical MXN cost for USD balances, so there is nothing to
+    revalue against - the old revaluation treated whole USD balances as gains.
+    Unrealized FX is shown on the balance sheet report instead, where the
+    closing-rate conversion is applied (see get_balance_sheet).
     """
     period_start = request.period_start
     period_end = request.period_end
@@ -6006,40 +6012,8 @@ async def close_period(
             detail=f"Period must start after the last closing date ({last_close})"
         )
     
-    # Get closing exchange rate (rate on period_end)
+    # Closing exchange rate (rate on period_end) - recorded for reference only
     closing_rate = await get_exchange_rate(db, 'USD', 'MXN', period_end)
-    
-    # === Step 1: Calculate net income for the period ===
-    income_data = await db.fetchrow("""
-        SELECT 
-            COALESCE(SUM(CASE WHEN a.account_type = 'Income' AND tl.currency = 'USD' THEN tl.credit_amount - tl.debit_amount ELSE 0 END), 0) as income_usd,
-            COALESCE(SUM(CASE WHEN a.account_type = 'Income' AND tl.currency = 'MXN' THEN tl.credit_amount - tl.debit_amount ELSE 0 END), 0) as income_mxn,
-            COALESCE(SUM(CASE WHEN a.account_type = 'Expense' AND tl.currency = 'USD' THEN tl.debit_amount - tl.credit_amount ELSE 0 END), 0) as expense_usd,
-            COALESCE(SUM(CASE WHEN a.account_type = 'Expense' AND tl.currency = 'MXN' THEN tl.debit_amount - tl.credit_amount ELSE 0 END), 0) as expense_mxn
-        FROM transaction_lines tl
-        JOIN accounts a ON tl.account_id = a.account_id
-        JOIN transactions t ON tl.transaction_id = t.transaction_id
-        WHERE a.account_type IN ('Income', 'Expense')
-          AND t.transaction_date >= $1 AND t.transaction_date <= $2
-    """, period_start, period_end)
-    
-    net_income_usd = float(income_data['income_usd']) - float(income_data['expense_usd'])
-    net_income_mxn = float(income_data['income_mxn']) - float(income_data['expense_mxn'])
-    
-    # === Step 2: Close income/expense accounts to Retained Earnings ===
-    # Get all income and expense accounts with activity in this period
-    active_accounts = await db.fetch("""
-        SELECT a.account_id, a.account_name, a.account_type, tl.currency,
-               SUM(tl.debit_amount) as total_debit,
-               SUM(tl.credit_amount) as total_credit
-        FROM transaction_lines tl
-        JOIN accounts a ON tl.account_id = a.account_id
-        JOIN transactions t ON tl.transaction_id = t.transaction_id
-        WHERE a.account_type IN ('Income', 'Expense')
-          AND t.transaction_date >= $1 AND t.transaction_date <= $2
-        GROUP BY a.account_id, a.account_name, a.account_type, tl.currency
-        HAVING SUM(tl.debit_amount) != 0 OR SUM(tl.credit_amount) != 0
-    """, period_start, period_end)
     
     # Get Retained Earnings account
     re_account = await db.fetchval(
@@ -6048,162 +6022,97 @@ async def close_period(
     if not re_account:
         raise HTTPException(status_code=400, detail="Retained Earnings account not found")
     
-    # Create closing transaction
-    closing_trans = await db.fetchrow("""
-        INSERT INTO transactions (transaction_date, description, reference_type, currency, created_by)
-        VALUES ($1, $2, 'period_close', 'MXN', $3)
-        RETURNING transaction_id
-    """, period_end,
-        f"Period Closing {period_start} to {period_end}",
-        user['username'])
-    
-    closing_trans_id = closing_trans['transaction_id']
-    
-    # Close each income/expense account to RE
-    for acct in active_accounts:
-        acct_type = acct['account_type']
-        total_debit = float(acct['total_debit'])
-        total_credit = float(acct['total_credit'])
-        currency = acct['currency']
+    # One DB transaction: a failure part-way must not leave a closing entry
+    # posted without a period_closings row (the old code could).
+    async with db.transaction():
+        # === Step 1: Net income for the period, per currency ===
+        income_data = await db.fetchrow("""
+            SELECT 
+                COALESCE(SUM(CASE WHEN a.account_type = 'Income' AND tl.currency = 'USD' THEN tl.credit_amount - tl.debit_amount ELSE 0 END), 0) as income_usd,
+                COALESCE(SUM(CASE WHEN a.account_type = 'Income' AND tl.currency = 'MXN' THEN tl.credit_amount - tl.debit_amount ELSE 0 END), 0) as income_mxn,
+                COALESCE(SUM(CASE WHEN a.account_type = 'Expense' AND tl.currency = 'USD' THEN tl.debit_amount - tl.credit_amount ELSE 0 END), 0) as expense_usd,
+                COALESCE(SUM(CASE WHEN a.account_type = 'Expense' AND tl.currency = 'MXN' THEN tl.debit_amount - tl.credit_amount ELSE 0 END), 0) as expense_mxn
+            FROM transaction_lines tl
+            JOIN accounts a ON tl.account_id = a.account_id
+            JOIN transactions t ON tl.transaction_id = t.transaction_id
+            WHERE a.account_type IN ('Income', 'Expense')
+              AND t.transaction_date >= $1 AND t.transaction_date <= $2
+        """, period_start, period_end)
         
-        if acct_type == 'Income':
-            # Income has credit balance — debit income, credit RE
-            net = total_credit - total_debit
-            if abs(net) > 0.01:
-                await db.execute("""
-                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                    VALUES ($1, $2, $3, 0, $4, $5)
-                """, closing_trans_id, acct['account_id'], abs(net), currency,
-                    f"Close {acct['account_name']} to RE")
-                
-                await db.execute("""
-                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                    VALUES ($1, $2, 0, $3, $4, $5)
-                """, closing_trans_id, re_account, abs(net), currency,
-                    f"RE — {acct['account_name']} ({currency})")
+        net_income_usd = float(income_data['income_usd']) - float(income_data['expense_usd'])
+        net_income_mxn = float(income_data['income_mxn']) - float(income_data['expense_mxn'])
         
-        elif acct_type == 'Expense':
-            # Expense has debit balance — credit expense, debit RE
-            net = total_debit - total_credit
-            if abs(net) > 0.01:
-                await db.execute("""
-                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                    VALUES ($1, $2, 0, $3, $4, $5)
-                """, closing_trans_id, acct['account_id'], abs(net), currency,
-                    f"Close {acct['account_name']} to RE")
-                
-                await db.execute("""
-                    INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                    VALUES ($1, $2, $3, 0, $4, $5)
-                """, closing_trans_id, re_account, abs(net), currency,
-                    f"RE — {acct['account_name']} ({currency})")
-    
-    await update_account_balances(db, closing_trans_id)
-    
-    # === Step 3: FX Revaluation ===
-    # Get all USD monetary accounts (Bank, Cash, AR, AP, Inventory)
-    fx_gain_loss_account = await db.fetchval(
-        "SELECT account_id FROM accounts WHERE account_name = 'Unrealized FX Gain/Loss' LIMIT 1"
-    )
-    
-    fx_total = 0
-    revaluation_trans_id = None
-    
-    if fx_gain_loss_account:
-        usd_accounts = await db.fetch("""
-            SELECT ab.account_id, a.account_name, a.account_type, ab.balance
-            FROM account_balances ab
-            JOIN accounts a ON ab.account_id = a.account_id
-            WHERE ab.currency = 'USD' AND ABS(ab.balance) > 0.01
-              AND a.account_subtype IN ('Bank', 'Cash', 'AR', 'AP', 'Inventory')
-        """)
+        # === Step 2: Close income/expense accounts to Retained Earnings ===
+        active_accounts = await db.fetch("""
+            SELECT a.account_id, a.account_name, tl.currency,
+                   SUM(tl.debit_amount) as total_debit,
+                   SUM(tl.credit_amount) as total_credit
+            FROM transaction_lines tl
+            JOIN accounts a ON tl.account_id = a.account_id
+            JOIN transactions t ON tl.transaction_id = t.transaction_id
+            WHERE a.account_type IN ('Income', 'Expense')
+              AND t.transaction_date >= $1 AND t.transaction_date <= $2
+            GROUP BY a.account_id, a.account_name, tl.currency
+            HAVING SUM(tl.debit_amount) != 0 OR SUM(tl.credit_amount) != 0
+        """, period_start, period_end)
         
-        if usd_accounts:
-            # Create revaluation transaction
-            reval_trans = await db.fetchrow("""
-                INSERT INTO transactions (transaction_date, description, reference_type, currency, created_by)
-                VALUES ($1, $2, 'revaluation', 'MXN', $3)
-                RETURNING transaction_id
-            """, period_end,
-                f"FX Revaluation at {closing_rate} — Period ending {period_end}",
-                user['username'])
+        closing_trans = await db.fetchrow("""
+            INSERT INTO transactions (transaction_date, description, reference_type, currency, created_by)
+            VALUES ($1, $2, 'period_close', 'MXN', $3)
+            RETURNING transaction_id
+        """, period_end,
+            f"Period Closing {period_start} to {period_end}",
+            user['username'])
+        closing_trans_id = closing_trans['transaction_id']
+        
+        # Zero each account by posting the opposite of its balance, whatever its
+        # sign: a credit balance (income, or an expense account that went net
+        # credit such as a gain/refund) is debited; a debit balance is credited.
+        # RE takes the other side.
+        for acct in active_accounts:
+            currency = acct['currency']
+            credit_balance = float(acct['total_credit']) - float(acct['total_debit'])
+            amount = abs(credit_balance)
+            if amount <= 0.01:
+                continue
             
-            revaluation_trans_id = reval_trans['transaction_id']
+            if credit_balance > 0:
+                acct_debit, acct_credit = amount, 0
+            else:
+                acct_debit, acct_credit = 0, amount
             
-            for usd_acct in usd_accounts:
-                usd_balance = float(usd_acct['balance'])
-                # What this USD balance is worth in MXN at closing rate
-                mxn_at_closing = usd_balance * closing_rate
-                
-                # What it's currently recorded as in MXN (from MXN balance for same account)
-                mxn_recorded = await db.fetchval("""
-                    SELECT COALESCE(balance, 0) FROM account_balances 
-                    WHERE account_id = $1 AND currency = 'MXN'
-                """, usd_acct['account_id'])
-                mxn_recorded = float(mxn_recorded) if mxn_recorded else 0
-                
-                # The FX gain/loss for this account
-                # For assets: positive difference = gain (USD worth more)
-                # For liabilities: positive difference = loss (owe more)
-                fx_diff = mxn_at_closing - mxn_recorded
-                
-                if abs(fx_diff) > 0.01 and mxn_recorded == 0:
-                    # No MXN balance recorded — the entire USD balance converts
-                    # This is the unrealized gain/loss from holding USD
-                    fx_total += fx_diff
-            
-            # Record net FX gain/loss
-            fx_total = round(fx_total, 2)
-            
-            if abs(fx_total) > 0.01:
-                if fx_total > 0:
-                    # FX Gain: Credit FX account (reduces expense = gain)
-                    await db.execute("""
-                        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                        VALUES ($1, $2, 0, $3, 'MXN', $4)
-                    """, revaluation_trans_id, fx_gain_loss_account, abs(fx_total),
-                        f"Unrealized FX gain at rate {closing_rate}")
-                    # Debit RE for the gain
-                    await db.execute("""
-                        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                        VALUES ($1, $2, $3, 0, 'MXN', $4)
-                    """, revaluation_trans_id, re_account, abs(fx_total),
-                        f"FX gain to RE at rate {closing_rate}")
-                else:
-                    # FX Loss: Debit FX account (increases expense = loss)
-                    await db.execute("""
-                        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                        VALUES ($1, $2, $3, 0, 'MXN', $4)
-                    """, revaluation_trans_id, fx_gain_loss_account, abs(fx_total),
-                        f"Unrealized FX loss at rate {closing_rate}")
-                    # Credit RE for the loss
-                    await db.execute("""
-                        INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
-                        VALUES ($1, $2, 0, $3, 'MXN', $4)
-                    """, revaluation_trans_id, re_account, abs(fx_total),
-                        f"FX loss to RE at rate {closing_rate}")
-                
-                await update_account_balances(db, revaluation_trans_id)
-    
-    # === Step 4: Record the closing ===
-    closing_record = await db.fetchrow("""
-        INSERT INTO period_closings (
-            period_start, period_end, closing_date, exchange_rate,
-            net_income_usd, net_income_mxn, fx_gain_loss,
-            closing_transaction_id, revaluation_transaction_id,
-            notes, created_by
-        ) VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING *
-    """, period_start, period_end, closing_rate,
-        net_income_usd, net_income_mxn, fx_total,
-        closing_trans_id, revaluation_trans_id,
-        request.notes, user['username'])
+            await db.execute("""
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, $3, $4, $5, $6)
+            """, closing_trans_id, acct['account_id'], acct_debit, acct_credit, currency,
+                f"Close {acct['account_name']} to RE")
+            await db.execute("""
+                INSERT INTO transaction_lines (transaction_id, account_id, debit_amount, credit_amount, currency, notes)
+                VALUES ($1, $2, $3, $4, $5, $6)
+            """, closing_trans_id, re_account, acct_credit, acct_debit, currency,
+                f"RE — {acct['account_name']} ({currency})")
+        
+        await update_account_balances(db, closing_trans_id)
+        
+        # === Step 3: Record the closing (no FX revaluation - see docstring) ===
+        closing_record = await db.fetchrow("""
+            INSERT INTO period_closings (
+                period_start, period_end, closing_date, exchange_rate,
+                net_income_usd, net_income_mxn, fx_gain_loss,
+                closing_transaction_id, revaluation_transaction_id,
+                notes, created_by
+            ) VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, 0, $6, NULL, $7, $8)
+            RETURNING *
+        """, period_start, period_end, closing_rate,
+            net_income_usd, net_income_mxn,
+            closing_trans_id,
+            request.notes, user['username'])
     
     return {
         "message": f"Period {period_start} to {period_end} closed successfully",
         "closing": dict(closing_record),
         "net_income": {"usd": net_income_usd, "mxn": net_income_mxn},
-        "fx_gain_loss": fx_total,
+        "fx_gain_loss": 0,
         "exchange_rate": closing_rate
     }
 
